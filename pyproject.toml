@@ -1,0 +1,27 @@
+[project]
+name = "career-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "miitchpls", email = "51779074+miitchpls@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162.5",
+    "python-jobspy>=1.4.1,<1.5",  # boards.py uses LinkedIn._fetch_details (not public API)
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+career-agent = "career_agent:main"
+
+[build-system]
+requires = ["uv_build>=0.12.8,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.16.0",
+    "pytest>=9.2.0",
+]
