@@ -1,6 +1,7 @@
 import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, SearchXIcon, SparklesIcon } from "lucide-react"
 import { AnimatePresence, motion, type Variants } from "motion/react"
 
+import { CvMark } from "@/components/cv/tailored-cv"
 import { SiteMark, WorkModeBadge } from "@/components/jobs/work-mode-badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -188,7 +189,10 @@ export function JobsTable({
             onClick={() => onOpen(job)}
           >
             <TableCell className="max-w-0 pl-4">
-              <div className="truncate font-medium">{job.title}</div>
+              <div className="truncate font-medium">
+                {job.title}
+                <CvMark url={job.url} />
+              </div>
               <div className="truncate text-xs text-muted-foreground">{job.company ?? "—"}</div>
             </TableCell>
             <TableCell className="max-w-48 truncate text-muted-foreground">{job.location || "—"}</TableCell>
