@@ -1,9 +1,10 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import {
   AlertTriangleIcon,
   ArrowUpRightIcon,
   AwardIcon,
   BriefcaseIcon,
+  CameraIcon,
   CheckIcon,
   FolderGitIcon,
   GraduationCapIcon,
@@ -18,7 +19,18 @@ import {
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { MediaStrip, SkillLine } from "@/components/profile/fields"
+import {
+  CertificationDialog,
+  EducationDialog,
+  ExperienceDialog,
+  IdentityDialog,
+  LanguageDialog,
+  ProjectDialog,
+  RemoveSkillDialog,
+  SummaryDialog,
+} from "@/components/profile/profile-dialogs"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -26,8 +38,26 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ExperienceDialog, IdentityDialog, SummaryDialog } from "@/components/profile/profile-dialogs"
-import { completeness, profileStore, reviewCount, useProfile, type Experience, type Profile } from "@/lib/profile-mock"
+import {
+  completeness,
+  fmtMonthYear,
+  fmtRange,
+  isCefr,
+  levelLabel,
+  profileStore,
+  removeSkill,
+  reviewCount,
+  skillUses,
+  upsert,
+  useProfile,
+  withSkills,
+  type Certification,
+  type Education,
+  type Experience,
+  type Language,
+  type Profile,
+  type Project,
+} from "@/lib/profile-mock"
 import { cn } from "@/lib/utils"
 
 const initials = (s: string) =>
@@ -38,10 +68,26 @@ const initials = (s: string) =>
     .map((w) => w[0]?.toUpperCase())
     .join("") || "?"
 
+type Change = (p: Profile) => void
+/** Which entry a section's dialog shows: an existing one, a new one, or none. */
+type Editing<T> = T | "new" | null
+
+function useEditing<T>() {
+  const [editing, setEditing] = useState<Editing<T>>(null)
+  return {
+    editing,
+    entry: editing === "new" ? null : editing,
+    open: editing !== null,
+    edit: (e: T) => setEditing(e),
+    add: () => setEditing("new"),
+    onOpenChange: (o: boolean) => !o && setEditing(null),
+  }
+}
+
 export function ProfileView() {
   const { profile, stage, source } = useProfile()
   const pending = reviewCount(profile)
-  const update = (p: Profile) => profileStore.confirm(p)
+  const update = profileStore.update
 
   return (
     <div className="space-y-4">
@@ -53,11 +99,9 @@ export function ProfileView() {
           <Experiences profile={profile} onChange={update} />
           <EducationSection profile={profile} onChange={update} />
           <Skills profile={profile} onChange={update} />
-          <div className="grid gap-4 md:grid-cols-2">
-            <LanguagesSection profile={profile} />
-            <ProjectsSection profile={profile} />
-          </div>
-          <Certifications profile={profile} />
+          <LanguagesSection profile={profile} onChange={update} />
+          <ProjectsSection profile={profile} onChange={update} />
+          <Certifications profile={profile} onChange={update} />
         </div>
         <Aside profile={profile} />
       </div>
@@ -75,9 +119,7 @@ function ReviewBanner({ pending, source }: { pending: number; source: string | n
     >
       <AlertTriangleIcon className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
       <div className="min-w-0 flex-1 text-sm">
-        <span className="font-medium">
-          {pending === 1 ? "1 campo da verificare" : `${pending} campi da verificare`}
-        </span>
+        <span className="font-medium">{pending === 1 ? "1 campo da verificare" : `${pending} campi da verificare`}</span>
         <span className="text-muted-foreground"> · importati da {source}. Controllali prima di generare un CV.</span>
       </div>
       <Button size="sm" onClick={profileStore.confirmAll}>
@@ -114,7 +156,7 @@ function Section({
   )
 }
 
-function AddButton({ label, onClick }: { label: string; onClick?: () => void }) {
+function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -127,7 +169,21 @@ function AddButton({ label, onClick }: { label: string; onClick?: () => void }) 
   )
 }
 
-function EmptyHint({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
+function EditButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={label}
+      className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+      onClick={onClick}
+    >
+      <PencilIcon />
+    </Button>
+  )
+}
+
+function EmptyHint({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -171,65 +227,119 @@ function ReviewFrame({
   )
 }
 
-function Identity({ profile: p, onChange }: { profile: Profile; onChange: (p: Profile) => void }) {
+/** Square mark beside an entry: company initials, or the section's icon. */
+function Mark({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid size-10 shrink-0 place-items-center rounded-lg border bg-muted/50 text-xs font-medium text-muted-foreground">
+      {children}
+    </div>
+  )
+}
+
+// --- Identity --------------------------------------------------------------------------------
+
+/** The avatar is the photo picker: hover shows a camera, click opens the system file dialog. */
+function Photo({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
+  const input = useRef<HTMLInputElement>(null)
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => input.current?.click()}
+        aria-label={p.photo ? "Cambia foto" : "Aggiungi foto"}
+        className="group/photo relative block shrink-0 self-start rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <Avatar className="size-24 border shadow-xs transition-transform duration-300 ease-out group-hover/photo:scale-[1.04]">
+          {p.photo && <AvatarImage src={p.photo} alt="" className="object-cover" />}
+          <AvatarFallback className="text-2xl font-medium">{initials(p.name)}</AvatarFallback>
+        </Avatar>
+        <span className="absolute inset-0 flex scale-95 flex-col items-center justify-center gap-0.5 rounded-full bg-black/60 text-white opacity-0 backdrop-blur-[2px] transition-all duration-300 ease-out group-hover/photo:scale-100 group-hover/photo:opacity-100 group-focus-visible/photo:scale-100 group-focus-visible/photo:opacity-100">
+          <CameraIcon className="size-4 transition-transform duration-300 group-hover/photo:-translate-y-0.5" />
+          <span className="text-[10px] font-medium">{p.photo ? "Cambia" : "Aggiungi"}</span>
+        </span>
+        {!p.photo && (
+          <span className="absolute right-0.5 bottom-0.5 grid size-7 place-items-center rounded-full border-2 border-card bg-foreground text-background transition-opacity group-hover/photo:opacity-0">
+            <PlusIcon className="size-3" />
+          </span>
+        )}
+      </button>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) onChange({ ...p, photo: URL.createObjectURL(f) })
+          e.target.value = ""
+        }}
+      />
+    </>
+  )
+}
+
+function Identity({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
   const [edit, setEdit] = useState(false)
   const blank = !p.name
   return (
-    <Card className="gap-0 overflow-hidden py-0">
-      {/* Cover: a quiet dotted grid fading out, Vercel-style, no stock imagery. */}
-      <div className="relative h-24 border-b bg-muted/40">
-        <div className="absolute inset-0 [background-image:radial-gradient(var(--border)_1px,transparent_1px)] [background-size:14px_14px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
-      </div>
-      <div className="relative px-5 pb-5">
-        <Avatar className="-mt-10 size-20 border-4 border-card shadow-sm">
-          <AvatarFallback className="text-xl font-medium">{initials(p.name)}</AvatarFallback>
-        </Avatar>
-        <Button variant="outline" size="sm" className="absolute top-3 right-5" onClick={() => setEdit(true)}>
-          <PencilIcon />
-          Modifica
-        </Button>
+    <Card className="relative flex-row items-center gap-5 px-5 py-5">
+      <Photo profile={p} onChange={onChange} />
+      <div className="min-w-0 flex-1 space-y-2 pr-24">
         {blank ? (
-          <div className="mt-3 space-y-1">
+          <div className="space-y-1">
             <p className="text-lg font-semibold tracking-tight text-muted-foreground">Il tuo nome</p>
             <p className="text-sm text-muted-foreground">Aggiungi nome, titolo e contatti per iniziare.</p>
           </div>
         ) : (
-          <div className="mt-3 space-y-2">
+          <>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">{p.name}</h1>
+              <h2 className="text-xl font-semibold tracking-tight">{p.name}</h2>
               <p className="text-sm">{p.headline}</p>
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <MapPinIcon className="size-3.5" />
-                {p.location}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <MailIcon className="size-3.5" />
-                {p.email}
-              </span>
+              {p.location && (
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPinIcon className="size-3.5" />
+                  {p.location}
+                </span>
+              )}
+              {p.email && (
+                <span className="inline-flex items-center gap-1.5">
+                  <MailIcon className="size-3.5" />
+                  {p.email}
+                </span>
+              )}
             </div>
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {p.links.map((l) => (
-                <a
-                  key={l.label}
-                  href={l.url}
-                  className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors hover:bg-muted"
-                >
-                  {l.label}
-                  <ArrowUpRightIcon className="size-3 text-muted-foreground" />
-                </a>
-              ))}
-            </div>
-          </div>
+            {p.links.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {p.links.map((l) => (
+                  <a
+                    key={l.id}
+                    href={l.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={l.url}
+                    className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors hover:bg-muted"
+                  >
+                    {l.label || l.url.replace(/^https?:\/\//, "")}
+                    <ArrowUpRightIcon className="size-3 text-muted-foreground" />
+                  </a>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
+      <Button variant="outline" size="sm" className="absolute top-5 right-5" onClick={() => setEdit(true)}>
+        <PencilIcon />
+        Modifica
+      </Button>
       <IdentityDialog open={edit} onOpenChange={setEdit} profile={p} onSave={onChange} />
     </Card>
   )
 }
 
-function Summary({ profile: p, onChange }: { profile: Profile; onChange: (p: Profile) => void }) {
+function Summary({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
   const [edit, setEdit] = useState(false)
   return (
     <Section
@@ -253,70 +363,51 @@ function Summary({ profile: p, onChange }: { profile: Profile; onChange: (p: Pro
   )
 }
 
-function Experiences({ profile: p, onChange }: { profile: Profile; onChange: (p: Profile) => void }) {
-  const [editing, setEditing] = useState<Experience | "new" | null>(null)
-  const save = (e: Experience) =>
-    onChange({
-      ...p,
-      experiences: p.experiences.some((x) => x.id === e.id)
-        ? p.experiences.map((x) => (x.id === e.id ? e : x))
-        : [e, ...p.experiences],
-    })
+// --- Entries ---------------------------------------------------------------------------------
+
+function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
+  const ed = useEditing<Experience>()
+  const save = (e: Experience) => onChange(withSkills({ ...p, experiences: upsert(p.experiences, e) }, e.skills))
 
   return (
-    <Section
-      icon={BriefcaseIcon}
-      title="Esperienze"
-      count={p.experiences.length}
-      action={<AddButton label="Aggiungi esperienza" onClick={() => setEditing("new")} />}
-    >
+    <Section icon={BriefcaseIcon} title="Esperienze" count={p.experiences.length} action={<AddButton label="Aggiungi esperienza" onClick={ed.add} />}>
       {p.experiences.length === 0 ? (
-        <EmptyHint onClick={() => setEditing("new")}>Aggiungi la tua prima esperienza</EmptyHint>
+        <EmptyHint onClick={ed.add}>Aggiungi la tua prima esperienza</EmptyHint>
       ) : (
         <ol className="space-y-5">
           {p.experiences.map((e, i) => (
             <li key={e.id} className="group relative flex gap-3">
-              {/* Timeline rail between company marks. */}
               {i < p.experiences.length - 1 && (
                 <span className="absolute top-11 bottom-[-1.25rem] left-[1.1875rem] w-px bg-border" aria-hidden />
               )}
-              <div className="grid size-10 shrink-0 place-items-center rounded-lg border bg-muted/50 text-xs font-medium text-muted-foreground">
-                {initials(e.company)}
-              </div>
+              <Mark>{initials(e.company)}</Mark>
               <div className="min-w-0 flex-1">
-                <ReviewFrame
-                  note={e.review}
-                  onConfirm={() => save({ ...e, review: undefined })}
-                  onEdit={() => setEditing(e)}
-                >
+                <ReviewFrame note={e.review} onConfirm={() => save({ ...e, review: undefined })} onEdit={() => ed.edit(e)}>
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{e.role}</p>
                       <p className="text-sm text-muted-foreground">
-                        {e.company} · {e.place}
+                        {[e.company, e.employment].filter(Boolean).join(" · ")}
                       </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                        {e.start} – {e.end ?? "oggi"}
-                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{fmtRange(e.start, e.end, e.current)}</p>
+                      {(e.location || e.locationType) && (
+                        <p className="text-xs text-muted-foreground">{[e.location, e.locationType].filter(Boolean).join(" · ")}</p>
+                      )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Modifica esperienza"
-                      className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                      onClick={() => setEditing(e)}
-                    >
-                      <PencilIcon />
-                    </Button>
+                    <EditButton label="Modifica esperienza" onClick={() => ed.edit(e)} />
                   </div>
-                  <ul className="mt-2 space-y-1">
-                    {e.bullets.map((b) => (
-                      <li key={b} className="flex gap-2 text-sm text-pretty">
-                        <span className="mt-2 size-1 shrink-0 rounded-full bg-muted-foreground/60" />
-                        {b}
-                      </li>
-                    ))}
-                  </ul>
+                  {e.bullets.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {e.bullets.map((b) => (
+                        <li key={b} className="flex gap-2 text-sm text-pretty">
+                          <span className="mt-2 size-1 shrink-0 rounded-full bg-muted-foreground/60" />
+                          {b}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <SkillLine skills={e.skills} />
+                  <MediaStrip media={e.media} />
                 </ReviewFrame>
               </div>
             </li>
@@ -324,111 +415,143 @@ function Experiences({ profile: p, onChange }: { profile: Profile; onChange: (p:
         </ol>
       )}
       <ExperienceDialog
-        experience={editing === "new" ? null : editing}
-        open={editing !== null}
-        onOpenChange={(o) => !o && setEditing(null)}
+        open={ed.open}
+        onOpenChange={ed.onOpenChange}
+        entry={ed.entry}
+        profile={p}
         onSave={save}
+        onDelete={(e) => onChange({ ...p, experiences: p.experiences.filter((x) => x.id !== e.id) })}
       />
     </Section>
   )
 }
 
-function EducationSection({ profile: p, onChange }: { profile: Profile; onChange: (p: Profile) => void }) {
+function EducationSection({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
+  const ed = useEditing<Education>()
+  const save = (e: Education) => onChange(withSkills({ ...p, education: upsert(p.education, e) }, e.skills))
+
   return (
-    <Section
-      icon={GraduationCapIcon}
-      title="Formazione"
-      count={p.education.length}
-      action={<AddButton label="Aggiungi formazione" />}
-    >
+    <Section icon={GraduationCapIcon} title="Formazione" count={p.education.length} action={<AddButton label="Aggiungi formazione" onClick={ed.add} />}>
       {p.education.length === 0 ? (
-        <EmptyHint>Aggiungi un titolo di studio</EmptyHint>
+        <EmptyHint onClick={ed.add}>Aggiungi un titolo di studio</EmptyHint>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-5">
           {p.education.map((d) => (
-            <li key={d.id} className="flex gap-3">
-              <div className="grid size-10 shrink-0 place-items-center rounded-lg border bg-muted/50">
-                <GraduationCapIcon className="size-4 text-muted-foreground" />
-              </div>
+            <li key={d.id} className="group flex gap-3">
+              <Mark>
+                <GraduationCapIcon className="size-4" />
+              </Mark>
               <div className="min-w-0 flex-1">
-                <ReviewFrame
-                  note={d.review}
-                  onEdit={() => {}}
-                  onConfirm={() =>
-                    onChange({
-                      ...p,
-                      education: p.education.map((x) => (x.id === d.id ? { ...x, review: undefined } : x)),
-                    })
-                  }
-                >
-                  <p className="text-sm font-medium">{d.school}</p>
-                  <p className="text-sm text-muted-foreground">{d.degree}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{d.years}</p>
+                <ReviewFrame note={d.review} onEdit={() => ed.edit(d)} onConfirm={() => save({ ...d, review: undefined })}>
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{d.school}</p>
+                      <p className="text-sm text-muted-foreground">{[d.degree, d.field].filter(Boolean).join(", ")}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                        {[fmtMonthYear(d.start), fmtMonthYear(d.end)].filter(Boolean).join(" – ")}
+                      </p>
+                      {d.grade && <p className="text-xs text-muted-foreground">Votazione: {d.grade}</p>}
+                    </div>
+                    <EditButton label="Modifica formazione" onClick={() => ed.edit(d)} />
+                  </div>
+                  {d.activities && (
+                    <p className="mt-2 text-sm text-pretty">
+                      <span className="text-muted-foreground">Attività e associazioni: </span>
+                      {d.activities}
+                    </p>
+                  )}
+                  {d.description && <p className="mt-1.5 text-sm text-pretty">{d.description}</p>}
+                  <SkillLine skills={d.skills} />
+                  <MediaStrip media={d.media} />
                 </ReviewFrame>
               </div>
             </li>
           ))}
         </ul>
       )}
+      <EducationDialog
+        open={ed.open}
+        onOpenChange={ed.onOpenChange}
+        entry={ed.entry}
+        profile={p}
+        onSave={save}
+        onDelete={(e) => onChange({ ...p, education: p.education.filter((x) => x.id !== e.id) })}
+      />
     </Section>
   )
 }
 
-function Skills({ profile: p, onChange }: { profile: Profile; onChange: (p: Profile) => void }) {
+function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
   const [draft, setDraft] = useState("")
+  const [removing, setRemoving] = useState<string | null>(null)
   const inferred = p.skills.filter((s) => s.inferred).length
   const add = () => {
     const name = draft.trim()
-    if (name && !p.skills.some((s) => s.name.toLowerCase() === name.toLowerCase()))
-      onChange({ ...p, skills: [...p.skills, { name }] })
+    if (name) onChange(withSkills(p, [name]))
     setDraft("")
   }
-  const setSkills = (skills: Profile["skills"]) => onChange({ ...p, skills })
+  const remove = (name: string) => (skillUses(p, name).length ? setRemoving(name) : onChange(removeSkill(p, name)))
 
   return (
     <Section icon={WrenchIcon} title="Competenze" count={p.skills.length}>
       <div className="flex flex-wrap gap-1.5">
         <AnimatePresence initial={false}>
-          {p.skills.map((s) => (
-            <motion.span
-              key={s.name}
-              layout
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.12 } }}
-              className={cn(
-                "group inline-flex h-7 items-center gap-1 rounded-full border pr-1 pl-2.5 text-xs",
-                s.inferred && "border-dashed border-amber-500/50 bg-amber-500/5",
-              )}
-            >
-              {s.name}
-              {s.inferred ? (
-                <>
+          {p.skills.map((s) => {
+            const uses = skillUses(p, s.name)
+            return (
+              <motion.span
+                key={s.name}
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.12 } }}
+                className={cn(
+                  "group inline-flex h-7 items-center gap-1 rounded-full border pr-1 pl-2.5 text-xs",
+                  s.inferred && "border-dashed border-amber-500/50 bg-amber-500/5",
+                )}
+              >
+                {s.name}
+                {uses.length > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="grid h-4 min-w-4 cursor-default place-items-center rounded-full bg-secondary px-1 text-[10px] text-muted-foreground tabular-nums">
+                        {uses.length}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="mb-1 font-medium">Usata in</p>
+                      {uses.map((u) => (
+                        <p key={u.id}>{u.label}</p>
+                      ))}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                {s.inferred && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
                         aria-label={`Conferma ${s.name}`}
                         className="grid size-5 place-items-center rounded-full text-amber-600 hover:bg-amber-500/15 dark:text-amber-400"
-                        onClick={() => setSkills(p.skills.map((x) => (x.name === s.name ? { name: x.name } : x)))}
+                        onClick={() => onChange({ ...p, skills: p.skills.map((x) => (x.name === s.name ? { name: x.name } : x)) })}
                       >
                         <CheckIcon className="size-3" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Dedotta dal testo: confermala</TooltipContent>
                   </Tooltip>
-                </>
-              ) : null}
-              <button
-                type="button"
-                aria-label={`Rimuovi ${s.name}`}
-                className="grid size-5 place-items-center rounded-full text-muted-foreground opacity-50 transition-opacity group-hover:opacity-100 hover:bg-muted"
-                onClick={() => setSkills(p.skills.filter((x) => x.name !== s.name))}
-              >
-                <XIcon className="size-3" />
-              </button>
-            </motion.span>
-          ))}
+                )}
+                <button
+                  type="button"
+                  aria-label={`Rimuovi ${s.name}`}
+                  className="grid size-5 place-items-center rounded-full text-muted-foreground opacity-50 transition-opacity group-hover:opacity-100 hover:bg-muted"
+                  onClick={() => remove(s.name)}
+                >
+                  <XIcon className="size-3" />
+                </button>
+              </motion.span>
+            )
+          })}
         </AnimatePresence>
         <Input
           value={draft}
@@ -439,75 +562,177 @@ function Skills({ profile: p, onChange }: { profile: Profile; onChange: (p: Prof
           className="h-7 w-28 rounded-full border-dashed px-2.5 text-xs shadow-none"
         />
       </div>
-      {inferred > 0 && (
-        <p className="mt-3 text-xs text-muted-foreground">
-          Quelle tratteggiate sono dedotte dal testo e non scritte nel CV: confermale solo se le sai usare davvero.
-        </p>
-      )}
+      <p className="mt-3 text-xs text-muted-foreground">
+        Il numero indica in quante voci del profilo la usi.
+        {inferred > 0 && " Quelle tratteggiate sono dedotte dal testo: confermale solo se le sai usare davvero."}
+      </p>
+      <RemoveSkillDialog
+        skill={removing}
+        uses={removing ? skillUses(p, removing) : []}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        onConfirm={() => removing && onChange(removeSkill(p, removing))}
+      />
     </Section>
   )
 }
 
-function LanguagesSection({ profile: p }: { profile: Profile }) {
+function LanguagesSection({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
+  const ed = useEditing<Language>()
   return (
-    <Section icon={LanguagesIcon} title="Lingue" action={<AddButton label="Aggiungi lingua" />}>
+    <Section icon={LanguagesIcon} title="Lingue" count={p.languages.length} action={<AddButton label="Aggiungi lingua" onClick={ed.add} />}>
       {p.languages.length === 0 ? (
-        <EmptyHint>Aggiungi una lingua</EmptyHint>
+        <EmptyHint onClick={ed.add}>Aggiungi una lingua</EmptyHint>
       ) : (
         <ul className="divide-y">
           {p.languages.map((l) => (
-            <li key={l.name} className="flex items-center justify-between py-2 text-sm first:pt-0 last:pb-0">
-              {l.name}
-              <Badge variant="secondary" className="font-mono">
-                {l.level}
+            <li key={l.id} className="group flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">{l.name}</p>
+                {l.certificate && <p className="text-xs text-muted-foreground">{l.certificate}</p>}
+              </div>
+              <Badge variant="secondary" className={cn(isCefr(l.level) && "font-mono")}>
+                {levelLabel(l.level)}
               </Badge>
+              <EditButton label={`Modifica ${l.name}`} onClick={() => ed.edit(l)} />
             </li>
           ))}
         </ul>
       )}
+      <LanguageDialog
+        open={ed.open}
+        onOpenChange={ed.onOpenChange}
+        entry={ed.entry}
+        profile={p}
+        onSave={(l) => onChange({ ...p, languages: upsert(p.languages, l) })}
+        onDelete={(l) => onChange({ ...p, languages: p.languages.filter((x) => x.id !== l.id) })}
+      />
     </Section>
   )
 }
 
-function ProjectsSection({ profile: p }: { profile: Profile }) {
+function ProjectsSection({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
+  const ed = useEditing<Project>()
+  const save = (x: Project) => onChange(withSkills({ ...p, projects: upsert(p.projects, x) }, x.skills))
+  const owner = (id: string | null) =>
+    id && (p.experiences.find((e) => e.id === id)?.company ?? p.education.find((e) => e.id === id)?.school)
+
   return (
-    <Section icon={FolderGitIcon} title="Progetti" action={<AddButton label="Aggiungi progetto" />}>
+    <Section icon={FolderGitIcon} title="Progetti" count={p.projects.length} action={<AddButton label="Aggiungi progetto" onClick={ed.add} />}>
       {p.projects.length === 0 ? (
-        <EmptyHint>Aggiungi un progetto</EmptyHint>
+        <EmptyHint onClick={ed.add}>Aggiungi un progetto</EmptyHint>
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-5">
           {p.projects.map((x) => (
-            <li key={x.id}>
-              <a href={x.url} className="inline-flex items-center gap-1 text-sm font-medium hover:underline">
-                {x.name}
-                <ArrowUpRightIcon className="size-3 text-muted-foreground" />
-              </a>
-              <p className="text-sm text-muted-foreground">{x.summary}</p>
+            <li key={x.id} className="group flex gap-3">
+              <Mark>
+                <FolderGitIcon className="size-4" />
+              </Mark>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{x.name}</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {[fmtRange(x.start, x.end, x.current), owner(x.associatedWith) && `con ${owner(x.associatedWith)}`]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <EditButton label="Modifica progetto" onClick={() => ed.edit(x)} />
+                </div>
+                {x.description && <p className="mt-1.5 text-sm text-pretty">{x.description}</p>}
+                {x.url && (
+                  <a
+                    href={x.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors hover:bg-muted"
+                  >
+                    Mostra il progetto
+                    <ArrowUpRightIcon className="size-3 text-muted-foreground" />
+                  </a>
+                )}
+                <SkillLine skills={x.skills} />
+                <MediaStrip media={x.media} />
+              </div>
             </li>
           ))}
         </ul>
       )}
+      <ProjectDialog
+        open={ed.open}
+        onOpenChange={ed.onOpenChange}
+        entry={ed.entry}
+        profile={p}
+        onSave={save}
+        onDelete={(x) => onChange({ ...p, projects: p.projects.filter((y) => y.id !== x.id) })}
+      />
     </Section>
   )
 }
 
-function Certifications({ profile: p }: { profile: Profile }) {
+function Certifications({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
+  const ed = useEditing<Certification>()
+  const save = (c: Certification) => onChange(withSkills({ ...p, certifications: upsert(p.certifications, c) }, c.skills))
+
   return (
-    <Section icon={AwardIcon} title="Certificazioni" action={<AddButton label="Aggiungi certificazione" />}>
+    <Section
+      icon={AwardIcon}
+      title="Licenze e certificazioni"
+      count={p.certifications.length}
+      action={<AddButton label="Aggiungi certificazione" onClick={ed.add} />}
+    >
       {p.certifications.length === 0 ? (
-        <EmptyHint>Aggiungi una certificazione</EmptyHint>
+        <EmptyHint onClick={ed.add}>Aggiungi una certificazione</EmptyHint>
       ) : (
-        <ul className="space-y-1">
+        <ul className="space-y-5">
           {p.certifications.map((c) => (
-            <li key={c} className="text-sm">
-              {c}
+            <li key={c.id} className="group flex gap-3">
+              <Mark>{initials(c.issuer)}</Mark>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{c.name}</p>
+                    <p className="text-sm text-muted-foreground">{c.issuer}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                      {[c.issued && `Rilasciata ${fmtMonthYear(c.issued)}`, c.expires && `scade ${fmtMonthYear(c.expires)}`]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                    {c.credentialId && <p className="font-mono text-[11px] text-muted-foreground">ID {c.credentialId}</p>}
+                  </div>
+                  <EditButton label="Modifica certificazione" onClick={() => ed.edit(c)} />
+                </div>
+                {c.url && (
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors hover:bg-muted"
+                  >
+                    Mostra credenziale
+                    <ArrowUpRightIcon className="size-3 text-muted-foreground" />
+                  </a>
+                )}
+                <SkillLine skills={c.skills} />
+                <MediaStrip media={c.media} />
+              </div>
             </li>
           ))}
         </ul>
       )}
+      <CertificationDialog
+        open={ed.open}
+        onOpenChange={ed.onOpenChange}
+        entry={ed.entry}
+        profile={p}
+        onSave={save}
+        onDelete={(c) => onChange({ ...p, certifications: p.certifications.filter((x) => x.id !== c.id) })}
+      />
     </Section>
   )
 }
+
+// --- Sidebar ---------------------------------------------------------------------------------
 
 function Aside({ profile }: { profile: Profile }) {
   const { score, missing } = completeness(profile)
@@ -542,6 +767,7 @@ function Aside({ profile }: { profile: Profile }) {
         <Pref label="Lingua" defaultValue="job" options={[["job", "Quella dell'annuncio"], ["it", "Italiano"], ["en", "Inglese"], ["de", "Tedesco"]]} />
         <Pref label="Formato" defaultValue="auto" options={[["auto", "Automatico"], ["a4", "A4"], ["letter", "Letter"]]} />
         <Pref label="Modello" defaultValue="modern" options={[["modern", "Moderno"], ["classic", "Classico"], ["compact", "Compatto"]]} />
+        <Pref label="Foto nel CV" defaultValue="auto" options={[["auto", "Dove si usa"], ["always", "Sempre"], ["never", "Mai"]]} />
       </Card>
 
       <Card className="gap-2 px-5 py-4">
@@ -569,7 +795,7 @@ function Aside({ profile }: { profile: Profile }) {
 function Pref({ label, defaultValue, options }: { label: string; defaultValue: string; options: [string, string][] }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
       <Select defaultValue={defaultValue}>
         <SelectTrigger size="sm" className="h-7 w-40 text-xs">
           <SelectValue />

@@ -7,14 +7,14 @@ import { useTheme } from "next-themes"
 import { toast } from "sonner"
 
 import { Composer } from "@/components/composer/composer"
-import { ProfileButton } from "@/components/profile/profile-button"
+import { MainNav } from "@/components/profile/main-nav"
 import { ProfilePage } from "@/components/profile/profile-page"
 import { JobSheet } from "@/components/jobs/job-sheet"
 import { JobsTable } from "@/components/jobs/jobs-table"
 import { RunProgress } from "@/components/run/run-progress"
 import { StartSearchButton } from "@/components/run/start-search"
 import { useStartSearch } from "@/lib/use-start-search"
-import { SaveSearchButton, SavedSearchesMenu } from "@/components/saved/saved-searches"
+import { SaveSearchButton, SavedSearchShelf, SavedSearchesMenu } from "@/components/saved/saved-searches"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -56,10 +56,14 @@ function Results({
   filters,
   onOpen,
   onClearFilters,
+  onLoadSaved,
+  onRunSaved,
 }: {
   filters: FilterState
   onOpen: (j: Job) => void
   onClearFilters: () => void
+  onLoadSaved: (s: SavedSearch) => void
+  onRunSaved: (s: SavedSearch) => void
 }) {
   const [, setFilters] = useFilters()
   const query = useMemo(() => toQuery(filters), [filters])
@@ -87,6 +91,8 @@ function Results({
         <div className="ml-auto flex items-center gap-1.5">
           {/* Saving and fetching live here, not in the composer: the bar only filters what's saved. */}
           <StartSearchButton query={query} running={running} />
+          {/* Saving and loading live side by side: the bookmark pair of the results. */}
+          <SavedSearchesMenu current={query} running={running} onLoad={onLoadSaved} onRun={onRunSaved} />
           <SaveSearchButton query={query} disabled={activeCount(filters) === 0} />
         </div>
       </div>
@@ -172,6 +178,10 @@ export default function App() {
     setFilters({ ...fromQuery(s.query), sort: filters.sort, dir: filters.dir })
     setSubmitted(true)
   }
+  const runSavedSearch = (s: SavedSearch) => {
+    loadSaved(s)
+    runSaved.mutate({ saved: s })
+  }
   const goHome = () => {
     setView(null)
     setFilters({ ...CLEARED, q: null })
@@ -192,16 +202,8 @@ export default function App() {
             <span className="text-sm font-medium">career-agent</span>
           </button>
           <div className="ml-auto flex items-center gap-1">
-            <SavedSearchesMenu
-              current={query}
-              running={!!status?.running}
-              onLoad={loadSaved}
-              onRun={(s) => {
-                loadSaved(s)
-                runSaved.mutate({ saved: s })
-              }}
-            />
-            <ProfileButton active={view === "profilo"} onClick={openProfile} />
+            <MainNav view={view ?? "offerte"} onChange={(v) => (v === "profilo" ? openProfile() : setView(null))} />
+            <span className="mx-2 h-5 w-px bg-border" aria-hidden />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon-sm" aria-label="Altre azioni">
@@ -233,7 +235,7 @@ export default function App() {
 
       {view === "profilo" ? (
         <main className="flex-1">
-          <ProfilePage onBack={() => setView(null)} />
+          <ProfilePage />
         </main>
       ) : (
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-16">
@@ -261,6 +263,19 @@ export default function App() {
             autoFocus={!submitted}
             onSubmit={() => setSubmitted(true)}
           />
+          <AnimatePresence>
+            {!submitted && (
+              <motion.div
+                key="shelf"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: 0.35, delay: 0.2 } }}
+                exit={{ opacity: 0, y: 8, transition: { duration: 0.15 } }}
+                className="absolute inset-x-0 top-full mt-10"
+              >
+                <SavedSearchShelf current={query} running={!!status?.running} onLoad={loadSaved} onRun={runSavedSearch} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         <AnimatePresence>
@@ -272,7 +287,13 @@ export default function App() {
               exit={{ opacity: 0, y: 16, transition: { duration: 0.15 } }}
               className="mt-10"
             >
-              <Results filters={filters} onOpen={setOpen} onClearFilters={goHome} />
+              <Results
+                filters={filters}
+                onOpen={setOpen}
+                onClearFilters={goHome}
+                onLoadSaved={loadSaved}
+                onRunSaved={runSavedSearch}
+              />
             </motion.section>
           )}
         </AnimatePresence>

@@ -1,5 +1,5 @@
 import { useRef } from "react"
-import { ArrowLeftIcon, DownloadIcon, MoreHorizontalIcon, RotateCcwIcon, UploadIcon } from "lucide-react"
+import { DownloadIcon, MoreHorizontalIcon, RotateCcwIcon, UploadIcon } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 
@@ -16,18 +16,18 @@ import {
 import { hasProfile, profileStore, useProfile } from "@/lib/profile-mock"
 
 /** The profile lives on its own page: the search stays the home, this is a side room. */
-export function ProfilePage({ onBack }: { onBack: () => void }) {
+export function ProfilePage() {
   const state = useProfile()
   const file = useRef<HTMLInputElement>(null)
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 pb-16">
-      <div className="flex h-14 items-center gap-2">
-        <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={onBack}>
-          <ArrowLeftIcon />
-          Offerte
-        </Button>
-        {hasProfile(state) && (
+      {hasProfile(state) && (
+        <div className="flex flex-wrap items-end gap-3 pt-10 pb-6">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">Profilo</h1>
+            <p className="text-sm text-muted-foreground">La base da cui scriviamo ogni CV su misura. Resta sul tuo computer.</p>
+          </div>
           <div className="ml-auto flex items-center gap-1.5">
             <Button variant="outline" size="sm" onClick={() => file.current?.click()}>
               <UploadIcon />
@@ -62,8 +62,8 @@ export function ProfilePage({ onBack }: { onBack: () => void }) {
               }}
             />
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         <motion.div

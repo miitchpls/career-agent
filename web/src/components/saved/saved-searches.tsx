@@ -94,11 +94,14 @@ export function SavedSearchesMenu({
   onLoad,
   onRun,
   running,
+  children,
 }: {
   current: Query
   onLoad: (s: SavedSearch) => void
   onRun: (s: SavedSearch) => void
   running: boolean
+  /** Custom trigger; defaults to the toolbar button. */
+  children?: React.ReactNode
 }) {
   const { data: saved = [] } = useSaved()
   const [open, setOpen] = useState(false)
@@ -122,11 +125,13 @@ export function SavedSearchesMenu({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground">
-          <BookmarkIcon />
-          Salvate
-          {saved.length > 0 && <span className="font-mono text-[11px] tabular-nums">{saved.length}</span>}
-        </Button>
+        {children ?? (
+          <Button variant="outline" size="sm" disabled={saved.length === 0}>
+            <BookmarkIcon />
+            Salvate
+            {saved.length > 0 && <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{saved.length}</span>}
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[26rem] p-0">
         <Command>
@@ -205,5 +210,86 @@ export function SavedSearchesMenu({
         </Command>
       </PopoverContent>
     </Popover>
+  )
+}
+
+/* ------------------------------------------------------------------ shelf */
+
+const SHELF = 4
+
+/**
+ * Saved searches on the empty home, under the composer: the moment you open the app
+ * is when you want to rerun one. The full list opens from "Tutte".
+ */
+export function SavedSearchShelf({
+  current,
+  onLoad,
+  onRun,
+  running,
+}: {
+  current: Query
+  onLoad: (s: SavedSearch) => void
+  onRun: (s: SavedSearch) => void
+  running: boolean
+}) {
+  const { data: saved = [] } = useSaved()
+  if (saved.length === 0) return null
+  const recent = [...saved]
+    .sort((a, b) => (b.last_run_at ?? "").localeCompare(a.last_run_at ?? ""))
+    .slice(0, SHELF)
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between px-1">
+        <p className="text-xs font-medium text-muted-foreground">Ricerche salvate</p>
+        {saved.length > SHELF && (
+          <SavedSearchesMenu current={current} onLoad={onLoad} onRun={onRun} running={running}>
+            <Button variant="link" size="xs" className="h-auto px-0 text-xs text-muted-foreground">
+              Tutte ({saved.length})
+            </Button>
+          </SavedSearchesMenu>
+        )}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {recent.map((s) => (
+          <div
+            key={s.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => onLoad(s)}
+            onKeyDown={(e) => e.key === "Enter" && onLoad(s)}
+            className="group/shelf flex cursor-pointer items-center gap-3 rounded-xl border bg-card px-3.5 py-3 text-left transition-colors outline-none hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <BookmarkIcon className="size-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium" title={querySummary(s.query)}>
+                {s.name}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {s.last_run_at ? `Eseguita ${relativeDay(s.last_run_at)}` : "Mai eseguita"}
+              </p>
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Esegui ${s.name}`}
+                  disabled={running}
+                  className="opacity-0 transition-opacity group-hover/shelf:opacity-100 group-focus-visible/shelf:opacity-100"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onRun(s)
+                  }}
+                >
+                  <PlayIcon />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Avvia subito la ricerca sui portali</TooltipContent>
+            </Tooltip>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
