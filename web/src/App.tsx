@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircleIcon, MoonIcon, MoreHorizontalIcon, SunIcon, Trash2Icon } from "lucide-react"
+import { parseAsStringLiteral, useQueryState } from "nuqs"
 import { AnimatePresence, motion, type Transition } from "motion/react"
 import { useTheme } from "next-themes"
 import { toast } from "sonner"
 
 import { Composer } from "@/components/composer/composer"
+import { ProfileButton } from "@/components/profile/profile-button"
+import { ProfilePage } from "@/components/profile/profile-page"
 import { JobSheet } from "@/components/jobs/job-sheet"
 import { JobsTable } from "@/components/jobs/jobs-table"
 import { RunProgress } from "@/components/run/run-progress"
@@ -136,6 +139,13 @@ export default function App() {
   // Results show only after the user runs the query; a shared link with filters opens straight on them.
   const [submitted, setSubmitted] = useState(() => hasQuery(filters))
   const qc = useQueryClient()
+  // The profile is a separate page in the URL (?view=profilo), so back and forward work.
+  const [view, setView] = useQueryState("view", parseAsStringLiteral(["profilo"] as const).withOptions({ history: "push" }))
+  const openProfile = () => {
+    setOpen(null)
+    setView("profilo")
+    window.scrollTo({ top: 0 })
+  }
 
   // Emptying the query sends the bar back to the middle of the page
   // (state adjusted during render, React's pattern for "reset state when a value changes").
@@ -158,10 +168,12 @@ export default function App() {
   const runSaved = useStartSearch(() => setSubmitted(true))
 
   const loadSaved = (s: SavedSearch) => {
+    setView(null)
     setFilters({ ...fromQuery(s.query), sort: filters.sort, dir: filters.dir })
     setSubmitted(true)
   }
   const goHome = () => {
+    setView(null)
     setFilters({ ...CLEARED, q: null })
     setSubmitted(false)
   }
@@ -171,7 +183,7 @@ export default function App() {
       <header
         className={cn(
           "sticky top-0 z-20 border-b border-transparent bg-background/80 backdrop-blur transition-colors duration-500",
-          submitted && "border-border",
+          (submitted || view) && "border-border",
         )}
       >
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-6">
@@ -189,6 +201,7 @@ export default function App() {
                 runSaved.mutate({ saved: s })
               }}
             />
+            <ProfileButton active={view === "profilo"} onClick={openProfile} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon-sm" aria-label="Altre azioni">
@@ -218,6 +231,11 @@ export default function App() {
         </div>
       </header>
 
+      {view === "profilo" ? (
+        <main className="flex-1">
+          <ProfilePage onBack={() => setView(null)} />
+        </main>
+      ) : (
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-16">
         {/* The spacer jumps between heights; the bar glides between them via a layout animation. */}
         {/* min-h leaves room for the hero text, which sits above the bar without taking layout space. */}
@@ -259,8 +277,9 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+      )}
 
-      <JobSheet job={open} onClose={() => setOpen(null)} />
+      <JobSheet job={open} onClose={() => setOpen(null)} onOpenProfile={openProfile} />
     </div>
   )
 }
