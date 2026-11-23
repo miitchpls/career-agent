@@ -13,8 +13,9 @@ import {
 } from "lucide-react"
 
 import type { JobType, Place, PlaceOption, Scope, Site } from "@/lib/api"
-import { MODE_LABEL, POSTED, SITES, type FilterState } from "@/lib/filters"
-import { DEFAULT_CURRENCY, formatAmount, parseCurrency, parseSalary } from "@/lib/currencies"
+import { POSTED, SITES, type FilterState } from "@/lib/filters"
+import { msgs } from "@/lib/i18n"
+import { DEFAULT_CURRENCY, formatAmount, parseCurrency, parseSalary, salaryRangeK, type Currency } from "@/lib/currencies"
 import { JOB_TYPES } from "@/lib/job-types"
 import { joinModes, splitModes, type KnownMode } from "@/lib/modes"
 import { samePlace, toPlace } from "@/lib/places"
@@ -77,20 +78,24 @@ export function removeLast(f: FilterState): Patch | null {
 
 /* ------------------------------------------------------------------ parsing */
 
+// What users may type, in any of the UI languages (the parser doesn't depend on the locale).
 const MODE_WORDS: [KnownMode, string[]][] = [
-  ["onsite", ["in sede", "sede", "onsite", "on-site", "on site", "ufficio", "in presenza", "presenza"]],
-  ["hybrid", ["ibrido", "ibrida", "hybrid", "smart working"]],
-  ["remote", ["remoto", "remota", "da remoto", "remote", "full remote", "telelavoro"]],
+  ["onsite", ["in sede", "sede", "onsite", "on-site", "on site", "ufficio", "in presenza", "presenza", "office", "in office", "vor ort", "büro", "사무실", "사무실 근무", "출근", "상주"]],
+  ["hybrid", ["ibrido", "ibrida", "hybrid", "smart working", "하이브리드", "혼합 근무"]],
+  ["remote", ["remoto", "remota", "da remoto", "remote", "full remote", "telelavoro", "homeoffice", "home office", "원격", "원격 근무", "재택", "재택근무", "리모트"]],
 ]
-const OR_WORDS = ["o", "or", "oppure", "|"]
-const ANYWHERE_WORDS = ["ovunque", "everywhere", "anywhere", "worldwide", "tutto il mondo"]
+const OR_WORDS = ["o", "or", "oppure", "oder", "또는", "|"]
+const ANYWHERE_WORDS = ["ovunque", "everywhere", "anywhere", "worldwide", "tutto il mondo", "überall", "weltweit", "어디서나", "전 세계", "전세계"]
 const POSTED_WORDS: [number, string[]][] = [
-  [24, ["oggi", "24h", "24 ore", "ultime 24 ore", "1g", "1 giorno"]],
-  [72, ["3g", "3 giorni", "ultimi 3 giorni"]],
-  [168, ["settimana", "7g", "7 giorni", "1 settimana", "ultimi 7 giorni", "ultima settimana"]],
-  [336, ["2 settimane", "14g", "14 giorni", "ultime 2 settimane"]],
-  [720, ["mese", "30g", "30 giorni", "1 mese", "ultimo mese", "ultimi 30 giorni"]],
+  [24, ["oggi", "24h", "24 ore", "ultime 24 ore", "1g", "1 giorno", "today", "last 24 hours", "heute", "letzte 24 stunden", "오늘", "24시간", "최근 24시간"]],
+  [72, ["3g", "3 giorni", "ultimi 3 giorni", "3 days", "last 3 days", "3 tage", "letzte 3 tage", "3일", "최근 3일"]],
+  [168, ["settimana", "7g", "7 giorni", "1 settimana", "ultimi 7 giorni", "ultima settimana", "week", "last week", "last 7 days", "woche", "letzte woche", "letzte 7 tage", "1주", "일주일", "최근 1주", "최근 7일"]],
+  [336, ["2 settimane", "14g", "14 giorni", "ultime 2 settimane", "2 weeks", "last 2 weeks", "2 wochen", "letzte 2 wochen", "2주", "최근 2주"]],
+  [720, ["mese", "30g", "30 giorni", "1 mese", "ultimo mese", "ultimi 30 giorni", "month", "last month", "last 30 days", "monat", "letzter monat", "letzte 30 tage", "1개월", "한 달", "최근 1개월", "최근 30일"]],
 ]
+/** Starts of "ultimi…", "last…", "letzte…", "최근…": typing one lists every date choice. */
+const LAST = /^(ultim|last|letzt|최근)/
+const SALARY_WORDS = ["stipendio", "ral", "salary", "gehalt", "lohn", "연봉", "급여"]
 
 const prefixOf = (t: string, words: string[]) => t.length >= 2 && words.some((w) => w.startsWith(t))
 
@@ -116,10 +121,7 @@ export type Panel = "scope" | "salary" | "posted" | "jobtype"
 /** A chip being typed: "Titolo contiene …" or "Testo contiene …". */
 export type DraftKind = "title" | "q"
 
-export const DRAFT_LABEL: Record<DraftKind, string> = {
-  title: "Titolo contiene",
-  q: "Testo contiene",
-}
+export const draftLabel = (kind: DraftKind) => (kind === "title" ? msgs().suggest.titleContains : msgs().suggest.textContains)
 
 /** What committing a draft chip with `text` does. */
 export function commitDraft(f: FilterState, kind: DraftKind, text: string): Patch | null {
@@ -146,6 +148,7 @@ export function suggest(
   newGroup: boolean,
   places: PlaceOption[] = [],
 ): Suggestion[] {
+  const tr = msgs().suggest
   const raw = text.trim()
   const t = raw.toLowerCase()
   if (!t) return idleSuggestions(f, newGroup)
@@ -154,64 +157,71 @@ export function suggest(
   const hasScopes = f.where.length > 0
 
   if (OR_WORDS.includes(t) && hasScopes)
-    out.push({ id: "or", icon: GitForkIcon, label: "Aggiungi un'alternativa: oppure…", hint: "es. … oppure ovunque da remoto", patch: null, keepGroup: true })
+    out.push({ id: "or", icon: GitForkIcon, label: tr.orAlternative, hint: tr.orAlternativeHint, patch: null, keepGroup: true })
 
   // "100.000", "100'000 chf", "80k", "stipendio 90", "€ 80k", "120000 dollari", "80k l'anno"
   const sal =
-    /^(?:stipendio|ral|salary|>=?|≥|da)?\s*([€$£])?\s*(\d{1,3}(?:[.'’ ]\d{3})+|\d{2,7})\s*(k|mila)?\s*([a-z€$£]{1,8})?\s*(?:\/\s*anno|annui|l'anno)?$/i.exec(t)
-  const salCur = sal?.[4] ? parseCurrency(sal[4]) : sal?.[1] ? parseCurrency(sal[1]) : null
-  const amount = sal && (!sal[4] || salCur) ? parseSalary(`${sal[2]}${sal[3] ?? ""}`) : null
+    /^(?:stipendio|ral|salary|gehalt|lohn|연봉|급여|>=?|≥|da|from|ab)?\s*([€$£])?\s*(\d{1,3}(?:[.,'’ ]\d{3})+|\d{2,11})\s*(k(?![a-z])|mila|tsd)?\s*([a-z€$£]{1,8})?\s*(?:\/\s*(?:anno|year|jahr)|annui|l'anno|a year|per year|pro jahr)?$/i.exec(t)
+  let salCur: Currency | null = sal?.[4] ? parseCurrency(sal[4]) : sal?.[1] ? parseCurrency(sal[1]) : null
+  let amount = sal && (!sal[4] || salCur) ? parseSalary(`${sal[2]}${sal[3] ?? ""}`, salCur ?? f.cur) : null
+  // Won, as Koreans write it: "연봉 6000만", "6천만원", "1억 2천만", "₩60,000,000", "60,000,000원".
+  const won = /^(?:연봉|급여)?\s*(₩)?\s*([\d.,\s]+(?:천)?[만억]?[\d.,\s천만]*)\s*(원)?$/.exec(t)
+  if (amount === null && won && (won[1] || won[3] || /[만억]/.test(won[2]))) {
+    amount = parseSalary(won[2].trim(), "KRW")
+    salCur = "KRW"
+  }
   if (amount !== null) {
     const n = Math.round(amount / 1000)
     const cur = salCur ?? f.cur
-    if (n >= 10 && n <= 10_000)
+    const [lo, hi] = salaryRangeK(cur)
+    if (n >= lo && n <= hi)
       out.push({
         id: `salary:${n}:${cur}`,
         icon: CoinsIcon,
-        label: `Stipendio ≥ ${formatAmount(n * 1000)} ${cur} / anno`,
-        hint: "le altre valute vengono convertite",
+        label: tr.salary(formatAmount(n * 1000, cur), cur),
+        hint: tr.salaryHint,
         patch: { salary: n, cur: cur === DEFAULT_CURRENCY ? null : cur },
       })
-  } else if (prefixOf(t, ["stipendio", "ral", "salary"])) {
-    out.push({ id: "salary-panel", icon: CoinsIcon, label: "Stipendio minimo…", hint: "o scrivi una cifra, es. 100.000", patch: null, panel: "salary" })
+  } else if (prefixOf(t, SALARY_WORDS)) {
+    out.push({ id: "salary-panel", icon: CoinsIcon, label: tr.salaryPanel, hint: tr.salaryPanelHint, patch: null, panel: "salary" })
   }
 
   for (const [hours, words] of POSTED_WORDS) {
-    if (words.some((w) => w === t) || (t.startsWith("ultim") && t.length >= 5 && words.some((w) => w.startsWith(t))))
-      out.push({ id: `posted:${hours}`, icon: CalendarIcon, label: POSTED.find((p) => p.value === hours)!.label, patch: { posted: hours } })
+    if (words.some((w) => w === t) || (LAST.test(t) && t.length >= 4 && words.some((w) => w.startsWith(t))))
+      out.push({ id: `posted:${hours}`, icon: CalendarIcon, label: msgs().posted[hours], patch: { posted: hours } })
   }
-  if (t.startsWith("ultim") && !out.some((s) => s.id.startsWith("posted")))
-    for (const p of POSTED) out.push({ id: `posted:${p.value}`, icon: CalendarIcon, label: p.label, patch: { posted: p.value } })
+  if (LAST.test(t) && !out.some((s) => s.id.startsWith("posted")))
+    for (const h of POSTED) out.push({ id: `posted:${h}`, icon: CalendarIcon, label: msgs().posted[h], patch: { posted: h } })
 
   for (const [mode, words] of MODE_WORDS)
     if (prefixOf(t, words))
-      out.push({ id: `mode:${mode}`, icon: HouseIcon, label: MODE_LABEL[mode], hint: newGroup ? "nell'alternativa" : !hasScopes ? "modalità" : "modalità del luogo", patch: ops.addMode(f, mode, newGroup) })
+      out.push({ id: `mode:${mode}`, icon: HouseIcon, label: msgs().modes[mode], hint: newGroup ? tr.inAlternative : !hasScopes ? tr.mode : tr.modeOfPlace, patch: ops.addMode(f, mode, newGroup) })
 
   if (prefixOf(t, ANYWHERE_WORDS))
-    out.push({ id: "anywhere", icon: GlobeIcon, label: "Ovunque", hint: "nessun vincolo di luogo", patch: ops.setAnywhere(f, newGroup) })
+    out.push({ id: "anywhere", icon: GlobeIcon, label: msgs().common.anywhere, hint: tr.anywhereHint, patch: ops.setAnywhere(f, newGroup) })
 
   for (const jt of JOB_TYPES)
     if (!f.jt.includes(jt.value) && (prefixOf(t, jt.words) || jt.words.includes(t)))
-      out.push({ id: `jt:${jt.value}`, icon: BriefcaseBusinessIcon, label: `Tipo di impiego: ${jt.label}`, patch: ops.addJobType(f, jt.value) })
-  if (prefixOf(t, ["tipo di impiego", "impiego", "contratto di lavoro"]))
-    out.push({ id: "jobtype-panel", icon: BriefcaseBusinessIcon, label: "Tipo di impiego…", patch: null, panel: "jobtype" })
+      out.push({ id: `jt:${jt.value}`, icon: BriefcaseBusinessIcon, label: tr.jobType(msgs().jobTypes[jt.value]), patch: ops.addJobType(f, jt.value) })
+  if (prefixOf(t, ["tipo di impiego", "impiego", "contratto di lavoro", "job type", "employment", "anstellung", "beschäftigung"]))
+    out.push({ id: "jobtype-panel", icon: BriefcaseBusinessIcon, label: tr.jobTypePanel, patch: null, panel: "jobtype" })
 
   for (const s of SITES)
     if (prefixOf(t, [s.value]) && !f.sites.includes(s.value))
-      out.push({ id: `site:${s.value}`, icon: BriefcaseIcon, label: `Solo ${s.label}`, hint: "portale", patch: ops.addSite(f, s.value) })
+      out.push({ id: `site:${s.value}`, icon: BriefcaseIcon, label: tr.onlySite(s.label), hint: tr.site, patch: ops.addSite(f, s.value) })
 
   const cityItems: Suggestion[] = places.map((o) => ({
     id: `place:${o.geo_id ?? `${o.city}:${o.country}`}`,
     icon: MapPinIcon,
     label: placeLabel(o),
-    hint: newGroup ? "nell'alternativa" : hasScopes ? "aggiungi al luogo" : "luogo",
+    hint: newGroup ? tr.inAlternative : hasScopes ? tr.addToPlace : tr.place,
     patch: ops.addPlace(f, toPlace(o), newGroup),
   }))
   const keyword: Suggestion = {
     id: `title:${t}`,
     icon: TypeIcon,
-    label: `Titolo contiene «${raw}»`,
-    hint: f.title.length ? "in alternativa alle altre" : "termine cercato sui portali",
+    label: tr.titleQuoted(raw),
+    hint: f.title.length ? tr.titleOther : tr.titleHint,
     patch: ops.addTitle(f, raw),
     keepGroup: newGroup,
   }
@@ -221,25 +231,26 @@ export function suggest(
   if (cityItems.length && (exactCity || !command)) out.push(...cityItems.slice(0, 5), keyword)
   else out.push(keyword, ...cityItems.slice(0, 5))
 
-  out.push({ id: `q:${t}`, icon: TextSearchIcon, label: `Testo contiene «${raw}»`, hint: "titolo, azienda e descrizione", patch: { q: raw }, keepGroup: newGroup })
+  out.push({ id: `q:${t}`, icon: TextSearchIcon, label: tr.textQuoted(raw), hint: tr.textHint, patch: { q: raw }, keepGroup: newGroup })
   return out
 }
 
 function idleSuggestions(f: FilterState, newGroup: boolean): Suggestion[] {
+  const tr = msgs().suggest
   // Same two filters offered when typing, first: they open a chip to type into.
   const out: Suggestion[] = [
-    { id: "draft:title", icon: TypeIcon, label: `${DRAFT_LABEL.title}…`, hint: "termine cercato sui portali", patch: null, draft: "title", keepGroup: newGroup },
-    { id: "draft:q", icon: TextSearchIcon, label: `${DRAFT_LABEL.q}…`, hint: "titolo, azienda e descrizione", patch: null, draft: "q", keepGroup: newGroup },
+    { id: "draft:title", icon: TypeIcon, label: `${tr.titleContains}…`, hint: tr.titleHint, patch: null, draft: "title", keepGroup: newGroup },
+    { id: "draft:q", icon: TextSearchIcon, label: `${tr.textContains}…`, hint: tr.textHint, patch: null, draft: "q", keepGroup: newGroup },
   ]
   if (f.where.length && !newGroup)
-    out.push({ id: "or", icon: GitForkIcon, label: "Oppure…", hint: "aggiungi un'alternativa di luogo e modalità", patch: null, keepGroup: true })
+    out.push({ id: "or", icon: GitForkIcon, label: tr.or, hint: tr.orHint, patch: null, keepGroup: true })
   if (!f.where.length || newGroup)
-    out.push({ id: "anywhere", icon: GlobeIcon, label: "Ovunque", patch: ops.setAnywhere(f, newGroup) })
+    out.push({ id: "anywhere", icon: GlobeIcon, label: msgs().common.anywhere, patch: ops.setAnywhere(f, newGroup) })
   for (const [mode] of MODE_WORDS)
     if (!f.where.at(-1)?.modes.includes(mode) || newGroup)
-      out.push({ id: `mode:${mode}`, icon: HouseIcon, label: MODE_LABEL[mode], hint: "modalità", patch: ops.addMode(f, mode, newGroup) })
-  if (f.salary === null) out.push({ id: "salary-panel", icon: CoinsIcon, label: "Stipendio minimo…", patch: null, panel: "salary" })
-  if (!f.jt.length) out.push({ id: "jobtype-panel", icon: BriefcaseBusinessIcon, label: "Tipo di impiego…", hint: "full time, part time, tirocinio…", patch: null, panel: "jobtype" })
-  if (f.posted === null) out.push({ id: "posted-panel", icon: CalendarIcon, label: "Pubblicate negli ultimi…", patch: null, panel: "posted" })
+      out.push({ id: `mode:${mode}`, icon: HouseIcon, label: msgs().modes[mode], hint: tr.mode, patch: ops.addMode(f, mode, newGroup) })
+  if (f.salary === null) out.push({ id: "salary-panel", icon: CoinsIcon, label: tr.salaryPanel, patch: null, panel: "salary" })
+  if (!f.jt.length) out.push({ id: "jobtype-panel", icon: BriefcaseBusinessIcon, label: tr.jobTypePanel, hint: tr.jobTypePanelHint, patch: null, panel: "jobtype" })
+  if (f.posted === null) out.push({ id: "posted-panel", icon: CalendarIcon, label: tr.postedPanel, patch: null, panel: "posted" })
   return out
 }

@@ -9,12 +9,13 @@ import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import type { JobType, Place, Scope, Site } from "@/lib/api"
-import { type Currency, CURRENCIES, formatAmount, parseSalary } from "@/lib/currencies"
+import { type Currency, CURRENCIES, formatAmount, parseSalary, salaryRangeK } from "@/lib/currencies"
 import { POSTED, SITES } from "@/lib/filters"
 import { JOB_TYPES } from "@/lib/job-types"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { joinModes, splitModes } from "@/lib/modes"
+import { useT } from "@/lib/i18n"
 import { samePlace } from "@/lib/places"
 
 /* ------------------------------------------------------------------ shell */
@@ -36,6 +37,7 @@ export function EditorShell({
   onRemove?: () => void
   canApply?: boolean
 }) {
+  const t = useT().common
   return (
     <div
       className="flex w-[22rem] flex-col"
@@ -52,16 +54,16 @@ export function EditorShell({
         <div className="flex items-center gap-2 border-t bg-muted/40 px-3 py-2">
           {onRemove && (
             <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onRemove}>
-              Rimuovi
+              {t.remove}
             </Button>
           )}
           <div className="ml-auto flex gap-2">
             <Button variant="ghost" size="sm" onClick={onCancel}>
-              Annulla
+              {t.cancel}
             </Button>
             {onApply && (
               <Button size="sm" disabled={!canApply} onClick={onApply}>
-                Applica
+                {t.apply}
               </Button>
             )}
           </div>
@@ -72,6 +74,7 @@ export function EditorShell({
 }
 
 function Token({ children, onRemove }: { children: ReactNode; onRemove: () => void }) {
+  const t = useT().common
   return (
     <span className="inline-flex h-6 items-center gap-1 rounded-md border bg-muted/50 pr-0.5 pl-2 text-xs">
       {children}
@@ -79,7 +82,7 @@ function Token({ children, onRemove }: { children: ReactNode; onRemove: () => vo
         type="button"
         onClick={onRemove}
         className="grid size-5 place-items-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-        aria-label="Rimuovi"
+        aria-label={t.remove}
       >
         <XIcon className="size-3" />
       </button>
@@ -104,12 +107,14 @@ export function ScopeEditor({
   const [places, setPlaces] = useState<Place[]>(initial?.places ?? [])
   const [modes, setModes] = useState(() => splitModes(initial?.modes ?? []))
 
+  const all = useT()
+  const t = all.editors
   const add = (p: Place) => setPlaces((list) => (list.some((x) => samePlace(x, p)) ? list : [...list, p]))
 
   return (
     <EditorShell
-      title="Dove"
-      hint="Una delle città scelte, con una delle modalità. Aggiungi altri gruppi con «oppure»."
+      title={t.where}
+      hint={t.whereHint}
       onApply={() => onApply({ anywhere: anywhere || places.length === 0, places: anywhere ? [] : places, modes: joinModes(modes.known, modes.includeUnknown) })}
       onCancel={onCancel}
       onRemove={onRemove}
@@ -118,7 +123,7 @@ export function ScopeEditor({
       <div className="flex items-center justify-between rounded-lg border px-3 py-2">
         <Label htmlFor="anywhere" className="flex items-center gap-2 text-sm font-normal">
           <GlobeIcon className="size-4 text-muted-foreground" />
-          Ovunque
+          {all.common.anywhere}
         </Label>
         <Switch id="anywhere" checked={anywhere} onCheckedChange={setAnywhere} />
       </div>
@@ -130,7 +135,7 @@ export function ScopeEditor({
             <div className="flex flex-wrap items-center gap-1">
               {places.map((p, i) => (
                 <span key={`${p.geo_id ?? p.city}-${p.country}`} className="contents">
-                  {i > 0 && <span className="text-[11px] text-muted-foreground">o</span>}
+                  {i > 0 && <span className="text-[11px] text-muted-foreground">{all.common.or}</span>}
                   <Token onRemove={() => setPlaces(places.filter((_, j) => j !== i))}>
                     {p.city}
                     <span className="font-mono text-[10px] text-muted-foreground uppercase">{p.country}</span>
@@ -143,7 +148,7 @@ export function ScopeEditor({
       )}
 
       <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground">Modalità di lavoro</p>
+        <p className="text-xs font-medium text-muted-foreground">{t.modes}</p>
         <ModesPicker
           known={modes.known}
           includeUnknown={modes.includeUnknown}
@@ -155,9 +160,6 @@ export function ScopeEditor({
 }
 
 /* ------------------------------------------------------------------ salary */
-
-/** Mirrors the server's limit on `Query.salary_min` (thousands per year). */
-const SALARY_MAX_K = 10_000
 
 export function SalaryEditor({
   initial,
@@ -174,20 +176,22 @@ export function SalaryEditor({
   onCancel: () => void
   onRemove?: () => void
 }) {
+  const t = useT().editors
   // The full yearly amount, shown with thousands separators as it's typed ("100.000").
   const [value, setValue] = useState(initial !== null ? formatAmount(initial * 1000) : "")
   const [unknown, setUnknown] = useState(includeUnknown)
   const [currency, setCurrency] = useState<Currency>(initialCurrency)
-  const amount = parseSalary(value)
-  const valid = amount !== null && amount >= 1000 && amount / 1000 <= SALARY_MAX_K
-  // "100" is read as 100.000: say so, so it's never a surprise.
-  const readAsThousands = valid && Number(value.replace(/\D/g, "")) < 1000
+  const amount = parseSalary(value, currency)
+  const [lo, hi] = salaryRangeK(currency)
+  const valid = amount !== null && amount / 1000 >= lo && amount / 1000 <= hi
+  // "100" is read as 100.000, and "6000" won as 6000만: say so, so it's never a surprise.
+  const reread = valid && amount !== Number(value.replace(/\D/g, ""))
   const apply = () => valid && onApply(Math.round(amount / 1000), unknown, currency)
 
   return (
     <EditorShell
-      title="Stipendio annuo minimo"
-      hint="Confrontato con il massimo della forchetta. Gli annunci in altre valute vengono convertiti al cambio BCE del giorno."
+      title={t.salary}
+      hint={t.salaryHint}
       onCancel={onCancel}
       onRemove={onRemove}
       canApply={valid}
@@ -203,7 +207,7 @@ export function SalaryEditor({
           placeholder="100.000"
           value={value}
           onChange={(e) => {
-            const digits = e.target.value.replace(/\D/g, "").slice(0, 8)
+            const digits = e.target.value.replace(/\D/g, "").slice(0, 11) // up to billions: won
             setValue(digits ? formatAmount(Number(digits)) : "")
           }}
           onKeyDown={(e) => e.key === "Enter" && apply()}
@@ -211,7 +215,7 @@ export function SalaryEditor({
         />
         <InputGroupAddon align="inline-end" className="pr-1">
           <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
-            <SelectTrigger size="sm" aria-label="Valuta" className="h-6 border-0 bg-transparent px-1.5 font-mono text-xs shadow-none">
+            <SelectTrigger size="sm" aria-label={t.currency} className="h-6 border-0 bg-transparent px-1.5 font-mono text-xs shadow-none">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -224,12 +228,12 @@ export function SalaryEditor({
           </Select>
         </InputGroupAddon>
       </InputGroup>
-      {readAsThousands && (
+      {reread && (
         <p className="-mt-1 text-xs text-muted-foreground">
-          Inteso come <span className="font-mono">{formatAmount(amount)}</span> {currency}
+          {t.readAs} <span className="font-mono">{formatAmount(amount, currency)}</span> {currency}
         </p>
       )}
-      <IncludeUnknown label="Includi offerte senza stipendio" checked={unknown} onCheckedChange={setUnknown} />
+      <IncludeUnknown label={t.unknownSalary} checked={unknown} onCheckedChange={setUnknown} />
     </EditorShell>
   )
 }
@@ -249,12 +253,14 @@ export function JobTypeEditor({
   onCancel: () => void
   onRemove?: () => void
 }) {
+  const all = useT()
+  const t = all.editors
   const [types, setTypes] = useState(initial)
   const [unknown, setUnknown] = useState(initial.length ? initialUnknown : true)
   return (
     <EditorShell
-      title="Tipo di impiego"
-      hint="Basta uno dei tipi scelti. Su Indeed, con un solo tipo, la ricerca sui portali è già filtrata."
+      title={t.jobType}
+      hint={t.jobTypeHint}
       onCancel={onCancel}
       onRemove={onRemove}
       canApply={types.length > 0}
@@ -273,15 +279,15 @@ export function JobTypeEditor({
         }}
         className="grid w-full grid-cols-3 sm:flex"
       >
-        {JOB_TYPES.map((t) => (
-          <ToggleGroupItem key={t.value} value={t.value} className="flex-1 px-2 text-xs">
-            {t.label}
+        {JOB_TYPES.map((jt) => (
+          <ToggleGroupItem key={jt.value} value={jt.value} className="flex-1 px-2 text-xs">
+            {all.jobTypes[jt.value]}
           </ToggleGroupItem>
         ))}
       </ToggleGroup>
       <IncludeUnknown
-        label="Includi annunci senza tipo indicato"
-        hint={types.length ? "Molti annunci non lo dichiarano." : "Senza tipi scelti valgono tutti, anche quelli non indicati."}
+        label={t.unknownTypes}
+        hint={types.length ? t.unknownTypesOn : t.unknownTypesOff}
         checked={types.length ? unknown : true}
         disabled={!types.length}
         onCheckedChange={setUnknown}
@@ -301,20 +307,21 @@ export function PostedEditor({
   onApply: (hours: number) => void
   onCancel: () => void
 }) {
+  const all = useT()
   return (
-    <EditorShell title="Pubblicata entro" hint="Vale sia per la ricerca sui portali sia per la lista." onCancel={onCancel}>
+    <EditorShell title={all.editors.posted} hint={all.editors.postedHint} onCancel={onCancel}>
       <Command className="-mx-1 w-auto bg-transparent p-0" defaultValue={String(initial ?? "")}>
         <CommandList>
           <CommandGroup className="p-0">
-            {POSTED.map((p) => (
+            {POSTED.map((h) => (
               <CommandItem
-                key={p.value}
-                value={String(p.value)}
-                data-checked={initial === p.value}
-                onSelect={() => onApply(p.value)}
+                key={h}
+                value={String(h)}
+                data-checked={initial === h}
+                onSelect={() => onApply(h)}
                 className="cursor-pointer"
               >
-                {p.label}
+                {all.posted[h]}
               </CommandItem>
             ))}
           </CommandGroup>
@@ -338,11 +345,12 @@ export function SitesEditor({
   onRemove?: () => void
 }) {
   const [sites, setSites] = useState<Site[]>(initial.length ? initial : SITES.map((s) => s.value))
+  const t = useT().editors
   const toggle = (v: Site) => setSites(sites.includes(v) ? sites.filter((x) => x !== v) : [...sites, v])
   return (
     <EditorShell
-      title="Portale"
-      hint="Indeed cerca solo dentro un paese: con «Ovunque» viene saltato."
+      title={t.site}
+      hint={t.siteHint}
       onCancel={onCancel}
       onRemove={onRemove}
       canApply={sites.length > 0}

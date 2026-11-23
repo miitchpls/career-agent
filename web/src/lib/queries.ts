@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query"
 
 import { api, type Direction, type PlaceOption, type Query, type Sort } from "@/lib/api"
+import { useLocale } from "@/lib/i18n"
 
 const PAGE = 50
 
@@ -45,8 +46,9 @@ function useDebounced<T>(value: T, ms: number): T {
 /** City autocomplete (the server falls back to an offline catalogue if geocoding is down). */
 export function usePlaces(text: string): { places: PlaceOption[]; loading: boolean } {
   const q = useDebounced(text.trim(), 180)
+  const locale = useLocale() // names come back in the UI's language
   const res = useQuery({
-    queryKey: ["places", q.toLowerCase()],
+    queryKey: ["places", locale, q.toLowerCase()],
     queryFn: () => api.places(q),
     enabled: q.length >= 2,
     staleTime: Infinity,

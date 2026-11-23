@@ -11,7 +11,7 @@ from . import fx
 from .query import Query, Sql, salary_in, where
 
 DB_PATH = Path("data/jobs.db")
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -60,6 +60,46 @@ CREATE TABLE IF NOT EXISTS saved_searches (
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL,
     last_run_at TEXT
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL             -- JSON
+);
+-- Profile. The original files stay on disk under data/, so an import can be rerun later.
+CREATE TABLE IF NOT EXISTS documents (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    sha256      TEXT NOT NULL UNIQUE,
+    filename    TEXT,               -- NULL for pasted text
+    mime        TEXT NOT NULL,
+    path        TEXT NOT NULL,      -- relative to the data directory
+    text        TEXT NOT NULL,      -- what the AI read
+    uploaded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS profile_revisions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    data        TEXT NOT NULL,      -- JSON of career_agent.profile.Profile; the latest row is the profile
+    source      TEXT NOT NULL,      -- manual | import
+    document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS profile_drafts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    status      TEXT NOT NULL,      -- running | ready | failed | confirmed | discarded
+    provider    TEXT NOT NULL,
+    model       TEXT,               -- NULL: the CLI's default
+    data        TEXT,               -- JSON Profile, once ready (edited while reviewing)
+    raw         TEXT,               -- the AI's answer as it came, for debugging
+    error       TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS profile_files (
+    id          TEXT PRIMARY KEY,   -- random, used in the URL
+    filename    TEXT,
+    mime        TEXT NOT NULL,
+    path        TEXT NOT NULL,      -- relative to the data directory
+    created_at  TEXT NOT NULL
 );
 """
 
@@ -243,16 +283,6 @@ def _converted(job: dict, currency: str, rates: dict[str, float]) -> dict | None
     return {"min": lo, "max": hi, "currency": currency}
 
 
-def clear() -> None:
-    """Empty the cache of scraped postings, and forget which board searches ran recently,
-    so the next search asks the boards again. Saved searches are kept, and so are the
-    request counts and pauses: they protect against blocks, not a cache."""
-    with connect() as conn:
-        conn.execute("DELETE FROM hits")
-        conn.execute("DELETE FROM jobs")
-        conn.execute("DELETE FROM board_searches")
-
-
 # --------------------------------------------------------------------------- saved searches
 
 
@@ -384,3 +414,243 @@ def board_paused_until(site: str) -> datetime | None:
         return None
     until = datetime.fromisoformat(r["until"])
     return until if until > datetime.now(UTC) else None
+
+
+# --- Settings -----------------------------------------------------------------------------
+
+
+def get_setting(key: str) -> str | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        ).fetchone()
+    return row["value"] if row else None
+
+
+def set_setting(key: str, value: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+
+# --- Profile ------------------------------------------------------------------------------
+
+DRAFT_OPEN = ("running", "ready", "failed")
+
+
+def data_dir() -> Path:
+    """Where uploaded files live, next to the database."""
+    return DB_PATH.parent
+
+
+def add_document(
+    sha256: str, filename: str | None, mime: str, path: str, text: str
+) -> int:
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO documents (sha256, filename, mime, path, text, uploaded_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (sha256, filename, mime, path, text, _now()),
+        )
+        return cur.lastrowid
+
+
+def document_by_sha(sha256: str) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM documents WHERE sha256 = ?", (sha256,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def touch_document(doc_id: int, filename: str | None) -> None:
+    """The same file uploaded again: remember its latest name."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE documents SET filename = ?, uploaded_at = ? WHERE id = ?",
+            (filename, _now(), doc_id),
+        )
+
+
+def get_document(doc_id: int) -> dict | None:
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def create_draft(document_id: int, provider: str, model: str | None) -> int:
+    """A new import; whatever draft was open before is dropped."""
+    now = _now()
+    with connect() as conn:
+        conn.execute(
+            f"UPDATE profile_drafts SET status = 'discarded', updated_at = ? "
+            f"WHERE status IN ({', '.join('?' * len(DRAFT_OPEN))})",
+            (now, *DRAFT_OPEN),
+        )
+        cur = conn.execute(
+            "INSERT INTO profile_drafts (document_id, status, provider, model, created_at, updated_at) "
+            "VALUES (?, 'running', ?, ?, ?, ?)",
+            (document_id, provider, model, now, now),
+        )
+        return cur.lastrowid
+
+
+_DRAFT_FIELDS = {"status", "data", "raw", "error"}
+
+
+def update_draft(draft_id: int, when_status: str | None = None, **fields) -> bool:
+    """Set draft columns; with `when_status`, only if the draft is still in that state
+    (so a run that finishes after being cancelled can't resurrect it)."""
+    assert fields and set(fields) <= _DRAFT_FIELDS
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    sql = f"UPDATE profile_drafts SET {sets}, updated_at = ? WHERE id = ?"
+    params: list = [*fields.values(), _now(), draft_id]
+    if when_status:
+        sql += " AND status = ?"
+        params.append(when_status)
+    with connect() as conn:
+        return conn.execute(sql, params).rowcount > 0
+
+
+def _draft(row: sqlite3.Row | None) -> dict | None:
+    if not row:
+        return None
+    d = dict(row)
+    d["data"] = json.loads(d["data"]) if d["data"] else None
+    d.pop("raw", None)
+    return d
+
+
+_DRAFT_SELECT = (
+    "SELECT profile_drafts.*, documents.filename, documents.uploaded_at "
+    "FROM profile_drafts JOIN documents ON documents.id = profile_drafts.document_id "
+)
+
+
+def get_draft(draft_id: int) -> dict | None:
+    with connect() as conn:
+        return _draft(
+            conn.execute(
+                _DRAFT_SELECT + "WHERE profile_drafts.id = ?", (draft_id,)
+            ).fetchone()
+        )
+
+
+def open_draft() -> dict | None:
+    """The import in progress, waiting for review, or just failed: at most one."""
+    with connect() as conn:
+        return _draft(
+            conn.execute(
+                _DRAFT_SELECT + f"WHERE status IN ({', '.join('?' * len(DRAFT_OPEN))}) "
+                "ORDER BY profile_drafts.id DESC LIMIT 1",
+                DRAFT_OPEN,
+            ).fetchone()
+        )
+
+
+# Stored instead of a message when no request (so no language) is around: translated on read.
+INTERRUPTED = "import_interrupted"
+
+
+def fail_running_drafts(error: str = INTERRUPTED) -> None:
+    """At startup: no run survives a restart."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE profile_drafts SET status = 'failed', error = ?, updated_at = ? "
+            "WHERE status = 'running'",
+            (error, _now()),
+        )
+
+
+def save_profile(data: dict, source: str, document_id: int | None = None) -> dict:
+    """A new revision, unless nothing changed since the last one."""
+    text = json.dumps(data, ensure_ascii=False, sort_keys=True)
+    with connect() as conn:
+        last = conn.execute(
+            "SELECT * FROM profile_revisions ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if last and last["data"] == text and source == "manual":
+            return _revision(last)
+        cur = conn.execute(
+            "INSERT INTO profile_revisions (data, source, document_id, created_at) VALUES (?, ?, ?, ?)",
+            (text, source, document_id, _now()),
+        )
+        row = conn.execute(
+            "SELECT * FROM profile_revisions WHERE id = ?", (cur.lastrowid,)
+        ).fetchone()
+    return _revision(row)
+
+
+def _revision(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "data": json.loads(row["data"]),
+        "source": row["source"],
+        "document_id": row["document_id"],
+        "created_at": row["created_at"],
+    }
+
+
+def latest_profile() -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM profile_revisions ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    return _revision(row) if row else None
+
+
+def add_file(file_id: str, filename: str | None, mime: str, path: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO profile_files (id, filename, mime, path, created_at) VALUES (?, ?, ?, ?, ?)",
+            (file_id, filename, mime, path, _now()),
+        )
+
+
+def get_file(file_id: str) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM profile_files WHERE id = ?", (file_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def unused_files(older_than: timedelta = timedelta(minutes=10)) -> list[dict]:
+    """Uploaded files neither the profile nor the open draft points to any more: a replaced
+    photo, a removed attachment. Recent uploads are spared: a dialog may be about to save them."""
+    cutoff = (datetime.now(UTC) - older_than).isoformat(timespec="seconds")
+    with connect() as conn:
+        used = " ".join(
+            r[0]
+            for r in conn.execute(
+                "SELECT data FROM (SELECT data FROM profile_revisions ORDER BY id DESC LIMIT 1) "
+                "UNION ALL SELECT data FROM profile_drafts "
+                f"WHERE status IN ({', '.join('?' * len(DRAFT_OPEN))}) AND data IS NOT NULL",
+                DRAFT_OPEN,
+            )
+        )
+        rows = conn.execute(
+            "SELECT * FROM profile_files WHERE created_at < ?", (cutoff,)
+        ).fetchall()
+    return [dict(r) for r in rows if f"/api/profile/files/{r['id']}" not in used]
+
+
+def delete_file(file_id: str) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM profile_files WHERE id = ?", (file_id,))
+
+
+def clear_profile() -> list[str]:
+    """Forget the profile entirely: revisions, drafts, uploaded CVs and attached files.
+    Returns the stored paths (relative to the data directory) to delete from disk."""
+    with connect() as conn:
+        paths = [r["path"] for r in conn.execute("SELECT path FROM documents")]
+        paths += [r["path"] for r in conn.execute("SELECT path FROM profile_files")]
+        conn.executescript(
+            "DELETE FROM profile_drafts; DELETE FROM profile_revisions; "
+            "DELETE FROM documents; DELETE FROM profile_files;"
+        )
+    return paths

@@ -53,6 +53,22 @@ describe("suggest", () => {
     expect(suggest("ultimi 7", empty, false)[0].patch).toEqual({ posted: 168 })
   })
 
+  it("reads won as Koreans write it", () => {
+    const won = (t: string, f = empty) => suggest(t, f, false).find((s) => s.id.startsWith("salary:"))?.patch
+    expect(won("연봉 6000만")).toEqual({ salary: 60_000, cur: "KRW" })
+    expect(won("6천만원")).toEqual({ salary: 60_000, cur: "KRW" })
+    expect(won("1억 2천만")).toEqual({ salary: 120_000, cur: "KRW" })
+    expect(won("1.5억")).toEqual({ salary: 150_000, cur: "KRW" })
+    expect(won("₩60,000,000")).toEqual({ salary: 60_000, cur: "KRW" })
+    expect(won("60,000,000원")).toEqual({ salary: 60_000, cur: "KRW" })
+    expect(won("60000000 krw")).toEqual({ salary: 60_000, cur: "KRW" })
+    // With won already chosen, a bare number is in 만, as on Korean job sites.
+    expect(won("6000", { ...empty, cur: "KRW" })).toEqual({ salary: 60_000, cur: "KRW" })
+    // The plausible range follows the currency: 60 million is a salary in won, not in francs.
+    expect(won("60000000")).toBeUndefined()
+    expect(won("50만")).toBeUndefined() // 500,000 won a year: not a salary
+  })
+
   it("doesn't add the same city twice to a group", () => {
     const f = apply(empty, suggest("Napoli", empty, false, NAPLES)[0])
     expect(apply(f, suggest("Napoli", f, false, NAPLES)[0]).where[0].places).toHaveLength(1)

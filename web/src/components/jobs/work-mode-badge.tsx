@@ -1,5 +1,5 @@
 import type { WorkMode } from "@/lib/api"
-import { MODE_LABEL } from "@/lib/filters"
+import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 const DOT: Record<WorkMode, string> = {
@@ -10,6 +10,7 @@ const DOT: Record<WorkMode, string> = {
 }
 
 export function WorkModeBadge({ mode, className }: { mode: WorkMode; className?: string }) {
+  const t = useT()
   return (
     <span
       className={cn(
@@ -19,7 +20,7 @@ export function WorkModeBadge({ mode, className }: { mode: WorkMode; className?:
       )}
     >
       <span className={cn("size-1.5 rounded-full", DOT[mode])} />
-      {mode === "unknown" ? "N/D" : MODE_LABEL[mode]}
+      {mode === "unknown" ? t.jobs.na : t.modes[mode]}
     </span>
   )
 }

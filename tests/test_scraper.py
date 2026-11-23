@@ -202,6 +202,18 @@ def test_start_runs_nothing_when_everything_is_recent(monkeypatch):
     assert not r.state.running and r.state.phase == "idle"
 
 
+def test_force_reruns_recent_searches_but_respects_holds(monkeypatch):
+    monkeypatch.setattr(scraper.Runner, "_run", lambda *a: None)
+    q = Query.model_validate({"scopes": ZURICH, "title_any": ["python"]})
+    for pq in plan(q)[0]:
+        db.record_board_search(pq.fingerprint(None))
+    db.record_requests("linkedin", scraper.DAILY_REQUESTS["linkedin"])
+    r = scraper.Runner()
+    summary = r.start(q, force=True)
+    assert (summary["queries"], summary["recent"], summary["held"]) == (1, 0, 1)
+    assert [st.status for st in r.state.steps] == ["skipped", "pending"]
+
+
 def test_a_different_date_window_is_a_different_search():
     (pq, *_), _, _ = plan(
         Query.model_validate({"scopes": ZURICH, "title_any": ["python"]})
