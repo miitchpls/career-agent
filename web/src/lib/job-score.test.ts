@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { EMPTY_GOALS, formatScore, goalSalary, goalsSet, hasTargets, shownScore } from "@/lib/job-score"
+import { formatScore, shownScore } from "@/lib/job-score"
 import { setLocale } from "@/lib/i18n"
 import type { JobScore } from "@/lib/api"
 
@@ -28,18 +28,9 @@ describe("job score", () => {
   })
 
   it("shows the latest finished score, or the last one that did", () => {
-    expect(shownScore({ score: score("ready"), earlier: null, targets_set: true })?.id).toBe(1)
+    expect(shownScore({ score: score("ready"), earlier: null })?.id).toBe(1)
     const earlier = score("ready", 1)
-    expect(shownScore({ score: score("running", 2), earlier, targets_set: true })).toBe(earlier)
-    expect(shownScore({ score: score("failed", 2), earlier: null, targets_set: true })).toBeNull()
-  })
-
-  it("knows when goals are set", () => {
-    expect(goalsSet(EMPTY_GOALS)).toBe(false)
-    expect(goalsSet({ ...EMPTY_GOALS, workModes: ["remote"] })).toBe(true)
-    // Pay and dealbreakers alone don't give the goals dimension anything to compare.
-    expect(hasTargets({ ...EMPTY_GOALS, minSalary: 1, dealbreakers: ["x"] })).toBe(false)
-    expect(hasTargets({ ...EMPTY_GOALS, places: ["Zurigo"] })).toBe(true)
-    expect(goalSalary({ ...EMPTY_GOALS, minSalary: 110000 })).toBe("110.000 CHF")
+    expect(shownScore({ score: score("running", 2), earlier })).toBe(earlier)
+    expect(shownScore({ score: score("failed", 2), earlier: null })).toBeNull()
   })
 })

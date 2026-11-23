@@ -174,7 +174,11 @@ export default function App() {
     const run = linkRun.current
     const { job, known } = await api.pasteJob(url, posting, filters.cur)
     if (run !== linkRun.current) return
-    if (!known) void client.invalidateQueries({ queryKey: ["jobs"] })
+    if (!known) {
+      void client.invalidateQueries({ queryKey: ["jobs"] })
+      // The pasted text may fill the work mode or the place the checks read.
+      void client.invalidateQueries({ queryKey: ["job-match", url] })
+    }
     setPending(null)
     setOpen(job)
   }
@@ -345,7 +349,14 @@ export default function App() {
       </main>
       )}
 
-      <JobSheet job={open} pending={pending} onClose={closeSheet} onPaste={pasteJob} onOpenProfile={openProfile} />
+      <JobSheet
+        job={open}
+        pending={pending}
+        query={submitted && !view ? query : null}
+        onClose={closeSheet}
+        onPaste={pasteJob}
+        onOpenProfile={openProfile}
+      />
     </div>
   )
 }

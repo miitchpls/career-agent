@@ -1,6 +1,19 @@
 import { useCallback, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import Markdown from "react-markdown"
-import { AlertCircleIcon, ArrowUpRightIcon, Building2Icon, ClipboardPasteIcon, GaugeIcon, FilePenLineIcon, FileUserIcon, MapPinIcon } from "lucide-react"
+import {
+  AlertCircleIcon,
+  ArrowUpRightIcon,
+  Building2Icon,
+  CheckIcon,
+  CircleHelpIcon,
+  ClipboardPasteIcon,
+  FilePenLineIcon,
+  FileUserIcon,
+  GaugeIcon,
+  MapPinIcon,
+  XIcon,
+} from "lucide-react"
 
 import { TailoredCv, type CvPhase } from "@/components/cv/tailored-cv"
 
@@ -12,16 +25,58 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { Job, PastedPosting } from "@/lib/api"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { api, type Job, type PastedPosting, type Query } from "@/lib/api"
 import type { LinkSite } from "@/lib/job-link"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
 import { useT } from "@/lib/i18n"
 import { formatScore, shownScore, useScore } from "@/lib/job-score"
+import { describe } from "@/lib/search-match"
+import { cn } from "@/lib/utils"
 import { parseStoredJobTypes } from "@/lib/job-types"
 import { useGenerated } from "@/lib/cv-mock"
 import { hasProfile, useProfile } from "@/lib/profile"
 
 type Tab = "job" | "fit" | "cv"
+
+const MATCH_ICON = {
+  ok: { icon: CheckIcon, className: "text-emerald-600 dark:text-emerald-400" },
+  unknown: { icon: CircleHelpIcon, className: "text-muted-foreground" },
+  no: { icon: XIcon, className: "text-red-600 dark:text-red-400" },
+}
+
+/** The current search's conditions, met or not by this posting (no AI: the same rules as the filters). */
+function SearchMatch({ url, query }: { url: string; query: Query }) {
+  const t = useT().match
+  // Only what the check reads: editing the title words or the free text doesn't refetch.
+  const { scopes, salary_min, salary_currency, job_types, posted_within } = query
+  const { data } = useQuery({
+    queryKey: ["job-match", url, JSON.stringify([scopes, salary_min, salary_currency, job_types, posted_within])],
+    queryFn: () => api.match(url, query),
+    staleTime: 30_000,
+  })
+  const lines = (data?.checks ?? []).map(describe).filter((l) => l !== null)
+  if (!lines.length) return null
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="mr-0.5 cursor-default text-muted-foreground">{t.title}</span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-64">{t.hint}</TooltipContent>
+      </Tooltip>
+      {lines.map((l) => {
+        const m = MATCH_ICON[l.state]
+        return (
+          <span key={l.text} className="inline-flex h-6 items-center gap-1 rounded-md border px-1.5">
+            <m.icon className={cn("size-3.5", m.className)} />
+            {l.text}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -46,12 +101,15 @@ export interface PendingJob {
 export function JobSheet({
   job,
   pending = null,
+  query = null,
   onClose,
   onPaste,
   onOpenProfile,
 }: {
   job: Job | null
   pending?: PendingJob | null
+  /** The search the sheet was opened from, to check the posting against; null: none. */
+  query?: Query | null
   onClose: () => void
   /** Saves the text the user copied for a posting the board wouldn't show, or showed without text. */
   onPaste: (url: string, posting: PastedPosting) => Promise<void>
@@ -64,7 +122,7 @@ export function JobSheet({
       <SheetContent className="flex flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl data-[side=right]:lg:max-w-3xl">
         {/* Keyed by posting: tab and CV state start over for each one. */}
         {job ? (
-          <JobDetails key={job.url} job={job} onOpenProfile={onOpenProfile} onPaste={onPaste} />
+          <JobDetails key={job.url} job={job} query={query} onOpenProfile={onOpenProfile} onPaste={onPaste} />
         ) : (
           pending && <PendingDetails key={pending.url} pending={pending} onClose={onClose} onPaste={onPaste} />
         )}
@@ -75,10 +133,12 @@ export function JobSheet({
 
 function JobDetails({
   job,
+  query,
   onOpenProfile,
   onPaste,
 }: {
   job: Job
+  query: Query | null
   onOpenProfile: () => void
   onPaste: (url: string, posting: PastedPosting) => Promise<void>
 }) {
@@ -119,6 +179,7 @@ function JobDetails({
             </span>
           )}
         </SheetDescription>
+        {query && <SearchMatch url={job.url} query={query} />}
         <div className="flex items-center gap-2 pt-1">
           <Button asChild size="sm">
             <a href={job.url} target="_blank" rel="noreferrer">

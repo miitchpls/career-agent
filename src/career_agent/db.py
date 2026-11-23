@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS job_scores (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     url         TEXT NOT NULL REFERENCES jobs(url) ON DELETE CASCADE,
     revision_id INTEGER REFERENCES profile_revisions(id) ON DELETE CASCADE,  -- the profile scored
-    inputs      TEXT NOT NULL,      -- score.fingerprint: the posting's text and the goals
+    inputs      TEXT NOT NULL,      -- score.fingerprint: the posting's text and the score preferences
     status      TEXT NOT NULL,      -- running | ready | failed | cancelled
     provider    TEXT NOT NULL,
     model       TEXT,
@@ -336,6 +336,13 @@ def get_job(url: str) -> dict | None:
     with connect() as conn:
         row = conn.execute("SELECT * FROM jobs WHERE url = ?", (url,)).fetchone()
     return dict(row) if row else None
+
+
+def hit_places(url: str) -> list[str]:
+    """The places (hits.place keys) where searches found a posting."""
+    with connect() as conn:
+        rows = conn.execute("SELECT DISTINCT place FROM hits WHERE url = ?", (url,))
+        return [r["place"] for r in rows]
 
 
 def fill_job(url: str, **fields) -> None:

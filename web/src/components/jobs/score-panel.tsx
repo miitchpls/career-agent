@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { AlertTriangleIcon, CheckIcon, GaugeIcon, LoaderCircleIcon, MinusIcon, RefreshCwIcon, XIcon } from "lucide-react"
 
-import { GoalsDialog } from "@/components/profile/goals"
+import { ScorePrefsDialog } from "@/components/profile/score-prefs"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -13,8 +13,7 @@ import {
   formatScore,
   shownScore,
   useCancelScore,
-  useGoals,
-  hasTargets,
+  useScorePrefs,
   useScore,
   useStartScore,
 } from "@/lib/job-score"
@@ -32,8 +31,8 @@ export function ScorePanel({ job, onOpenProfile }: { job: Job; onOpenProfile: ()
   const cancel = useCancelScore(job.url)
   const engine = activeEngine(useAiEngines().data)
   const profile = useProfile()
-  const { goals } = useGoals()
-  const [editGoals, setEditGoals] = useState(false)
+  const { prefs } = useScorePrefs()
+  const [editPrefs, setEditPrefs] = useState(false)
 
   const latest = state.data?.score ?? null
   const shown = shownScore(state.data)
@@ -62,13 +61,12 @@ export function ScorePanel({ job, onOpenProfile }: { job: Job; onOpenProfile: ()
       {blocked.text} {blocked.action}
     </p>
   )
-  const goalsNote = !hasTargets(goals) && (
-    <div className="flex items-start gap-2.5 rounded-lg border border-dashed px-3.5 py-3 text-xs text-pretty text-muted-foreground">
-      <GaugeIcon className="mt-px size-3.5 shrink-0" />
-      <span>
-        {t.noGoals} <LinkButton onClick={() => setEditGoals(true)}>{t.addGoals}</LinkButton>
-      </span>
-    </div>
+  const n = prefs.dealbreakers.length
+  const prefsNote = (
+    <p className="max-w-md text-xs text-pretty text-muted-foreground">
+      {n ? t.prefsSome(n) : t.prefsNone}{" "}
+      <LinkButton onClick={() => setEditPrefs(true)}>{n ? t.editPrefs : t.addPrefs}</LinkButton>
+    </p>
   )
 
   if (state.isPending)
@@ -124,7 +122,7 @@ export function ScorePanel({ job, onOpenProfile }: { job: Job; onOpenProfile: ()
           </div>
           {startButton(false)}
           {blockedNote}
-          {goalsNote}
+          {prefsNote}
         </div>
       )}
 
@@ -133,10 +131,9 @@ export function ScorePanel({ job, onOpenProfile }: { job: Job; onOpenProfile: ()
           score={shown}
           result={shown.result}
           action={!running && latest?.status !== "failed" ? startButton(true) : null}
-          goalsNote={goalsNote}
         />
       )}
-      <GoalsDialog open={editGoals} onOpenChange={setEditGoals} />
+      <ScorePrefsDialog open={editPrefs} onOpenChange={setEditPrefs} />
     </div>
   )
 }
@@ -157,12 +154,10 @@ function Result({
   score,
   result: r,
   action,
-  goalsNote,
 }: {
   score: JobScore
   result: ScoreResult
   action: React.ReactNode
-  goalsNote: React.ReactNode
 }) {
   const t = useT().score
   const when = new Date(score.created_at).toLocaleString(intlTag(), { dateStyle: "medium", timeStyle: "short" })
@@ -211,7 +206,7 @@ function Result({
 
       <Section title={t.dimensionsTitle} hint={t.dimensionsHint}>
         <div className="space-y-3">
-          {(["cv", "goals", "salary", "company"] as const).map((d) => (
+          {(["cv", "salary", "company"] as const).map((d) => (
             <Dimension key={d} label={t.dimensions[d]} {...r.dimensions[d]} />
           ))}
         </div>
@@ -231,7 +226,6 @@ function Result({
             </ul>
           </div>
         )}
-        {goalsNote && <div className="mt-4">{goalsNote}</div>}
       </Section>
 
       {r.requirements.length > 0 && (

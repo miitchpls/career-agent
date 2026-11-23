@@ -298,6 +298,80 @@ def where(q: Query, rates: dict[str, float] | None = None) -> Sql:
     return Sql("WHERE " + "\n  AND ".join(texts), [x for c in conds for x in c.params])
 
 
+# --------------------------------------------------------------------------- one posting
+
+Check = Literal["place", "mode", "salary", "job_type", "posted"]
+CheckState = Literal["ok", "unknown", "no"]
+
+
+def match(
+    q: Query, job: dict, hit_places: list[str], rates: dict[str, float]
+) -> list[dict]:
+    """How one saved posting meets each condition of the query, as `conditions` reads them:
+    ok, unknown (the posting doesn't say), or no. Only the conditions the query sets."""
+    out: list[dict] = []
+
+    def add(kind: Check, state: CheckState, **values) -> None:
+        out.append({"kind": kind, "state": state, **values})
+
+    placed = [s for s in q.scopes if not s.anywhere and s.places]
+    # A posting opened from a link, or found only by "anywhere" searches, has no place of
+    # its own: whether it's in the search's places is unknown, and every group may apply.
+    hits = set(hit_places) - {"link", ANYWHERE_KEY}
+    if placed and not hits:
+        add("place", "unknown")
+        in_place = list(q.scopes)
+    else:
+        # Groups whose place condition holds (anywhere, or a place the posting was found in).
+        in_place = [
+            s
+            for s in q.scopes
+            if s.anywhere
+            or not s.places
+            or hits & {k for p in s.places for k in p.keys}
+        ]
+        if placed:
+            found = [p.city for s in placed for p in s.places if hits & set(p.keys)]
+            add("place", "ok" if in_place else "no", value=found[0] if found else None)
+    if in_place and all(s.modes for s in in_place):
+        wanted = sorted({m for s in in_place for m in s.modes})
+        mode = job.get("work_mode") or "unknown"
+        state = "ok" if mode in wanted else "unknown" if mode == "unknown" else "no"
+        add("mode", state, value=mode, expected=wanted)
+
+    if q.salary_min is not None:
+        top = job.get("max_amount")
+        top = job.get("min_amount") if top is None else top
+        amount = fx.convert(top, job.get("currency"), q.salary_currency, rates)
+        floor = q.salary_min * 1000
+        state = "unknown" if amount is None else "ok" if amount >= floor else "no"
+        add(
+            "salary",
+            state,
+            value=None if amount is None else round(amount),
+            expected=floor,
+            currency=q.salary_currency,
+        )
+
+    if q.job_types:
+        stored = [x for x in (job.get("job_type") or "").split(",") if x]
+        state = (
+            "unknown"
+            if not stored
+            else "ok"
+            if set(stored) & set(q.job_types)
+            else "no"
+        )
+        add("job_type", state, value=stored, expected=list(q.job_types))
+
+    if q.posted_within:
+        posted = job.get("date_posted")
+        cutoff = (date.today() - timedelta(hours=q.posted_within)).isoformat()
+        state = "unknown" if not posted else "ok" if posted >= cutoff else "no"
+        add("posted", state, value=posted, expected=q.posted_within)
+    return out
+
+
 # --------------------------------------------------------------------------- scrape plan
 
 MAX_QUERIES = 16

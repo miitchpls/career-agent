@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import ai, cv_render, db, geo, job_link, score
+from . import ai, cv_render, db, fx, geo, job_link, score
 from .i18n import LOCALE, parse_accept_language, t
 from .profile import (
     MAX_UPLOAD_MB,
@@ -24,7 +24,7 @@ from .profile import (
     save_cv_prefs,
     store_upload,
 )
-from .query import Query
+from .query import Query, match
 from .review import Reviewer, State
 from .scraper import Runner
 
@@ -107,6 +107,21 @@ def jobs_paste(body: PasteJobRequest):
     return {"job": job, "known": known}
 
 
+class MatchRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+    query: Query
+
+
+@app.post("/api/jobs/match")
+def jobs_match(body: MatchRequest):
+    """How a saved posting meets each condition of the current search (no AI, no request)."""
+    job = db.get_job(body.url)
+    if job is None:
+        raise HTTPException(404, t("score_no_job"))
+    _, rates = fx.rates()
+    return {"checks": match(body.query, job, db.hit_places(body.url), rates)}
+
+
 # --- Fit score ---------------------------------------------------------------------------------
 
 
@@ -122,7 +137,7 @@ def score_get(url: str):
 
 @app.post("/api/jobs/score", status_code=202)
 def score_start(body: ScoreRequest):
-    """Score a saved posting against the profile and the goals with the user's AI CLI."""
+    """Score a saved posting against the profile with the user's AI CLI."""
     try:
         scorer.start(body.url)
     except LookupError as e:
@@ -141,15 +156,15 @@ def score_cancel(url: str):
     return score.state(url)
 
 
-@app.get("/api/goals")
-def goals_get():
-    """What the user is looking for: target roles, minimum pay, work modes, places..."""
-    return score.goals().model_dump(by_alias=True)
+@app.get("/api/score/preferences")
+def score_prefs_get():
+    """What the fit score reads whatever the search: dealbreakers and a note."""
+    return score.prefs().model_dump(by_alias=True)
 
 
-@app.put("/api/goals")
-def goals_put(body: score.Goals):
-    return score.save_goals(body).model_dump(by_alias=True)
+@app.put("/api/score/preferences")
+def score_prefs_put(body: score.ScorePrefs):
+    return score.save_prefs(body).model_dump(by_alias=True)
 
 
 @app.get("/api/places")

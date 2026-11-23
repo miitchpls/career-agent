@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { api, type Goals, type JobScore, type ScoreDecision, type ScoreState } from "@/lib/api"
-import { formatAmount, type Currency } from "@/lib/currencies"
+import { api, type JobScore, type ScoreDecision, type ScorePrefs, type ScoreState } from "@/lib/api"
 import { intlTag, msgs } from "@/lib/i18n"
 
 /** 4.2 → "4,2" in Italian, "4.2" in English: always one decimal, as career-ops writes it. */
@@ -58,39 +57,20 @@ function useScoreMutation(url: string, fn: () => Promise<ScoreState>) {
 export const useStartScore = (url: string) => useScoreMutation(url, () => api.score.start(url))
 export const useCancelScore = (url: string) => useScoreMutation(url, () => api.score.cancel(url))
 
-export const EMPTY_GOALS: Goals = {
-  roles: [],
-  minSalary: null,
-  salaryCurrency: "CHF",
-  workModes: [],
-  places: [],
-  company: [],
-  dealbreakers: [],
+export const EMPTY_SCORE_PREFS: ScorePrefs = { dealbreakers: [], note: "" }
+
+export function useScorePrefs() {
+  const { data, isPending } = useQuery({ queryKey: ["score-prefs"], queryFn: api.scorePrefs.get, staleTime: Infinity })
+  return { prefs: data ?? EMPTY_SCORE_PREFS, loading: isPending }
 }
 
-/** Roles, work modes or places: what the goals dimension compares the role with
- * (`Goals.has_targets`). Without them it has no score. */
-export const hasTargets = (g: Goals) => !!(g.roles.length || g.workModes.length || g.places.length)
-
-export const goalsSet = (g: Goals) =>
-  !!(g.roles.length || g.minSalary || g.workModes.length || g.places.length || g.company.length || g.dealbreakers.length)
-
-/** "110.000 CHF" */
-export const goalSalary = (g: Goals) =>
-  g.minSalary ? `${formatAmount(g.minSalary, g.salaryCurrency as Currency)} ${g.salaryCurrency}` : null
-
-export function useGoals() {
-  const { data, isPending } = useQuery({ queryKey: ["goals"], queryFn: api.goals.get, staleTime: Infinity })
-  return { goals: data ?? EMPTY_GOALS, loading: isPending }
-}
-
-export function useSaveGoals() {
+export function useSaveScorePrefs() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: api.goals.save,
-    onSuccess: (goals) => {
-      client.setQueryData(["goals"], goals)
-      // Scores depend on the goals: they may now be stale.
+    mutationFn: api.scorePrefs.save,
+    onSuccess: (prefs) => {
+      client.setQueryData(["score-prefs"], prefs)
+      // Scores depend on them: they may now be stale.
       void client.invalidateQueries({ queryKey: ["job-score"] })
     },
     onError: (e) => toast.error(msgs().profile.saveFailed, { description: e.message }),

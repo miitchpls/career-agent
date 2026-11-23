@@ -305,7 +305,7 @@ export interface ReviewState {
 
 /** From the score through one table: 4.5 strong apply, 4.0 apply, 3.0 consider, below skip. */
 export type ScoreDecision = "strong_apply" | "apply" | "consider" | "skip"
-export type ScoreDimension = "cv" | "goals" | "salary" | "company"
+export type ScoreDimension = "cv" | "salary" | "company"
 export type Importance = "critical" | "high" | "meaningful" | "preferred" | "low_signal"
 
 export interface ScoreResult {
@@ -346,7 +346,7 @@ export interface JobScore {
   result: ScoreResult | null
   error: string | null
   created_at: string
-  /** Ready scores: the profile, the goals or the posting changed since. */
+  /** Ready scores: the profile, the score preferences or the posting changed since. */
   stale?: boolean
 }
 
@@ -354,20 +354,23 @@ export interface JobScore {
 export interface ScoreState {
   score: JobScore | null
   earlier: JobScore | null
-  /** Whether the goals name roles, work modes or places (the goals dimension needs them). */
-  targets_set: boolean
 }
 
-/** What the user is looking for (`career_agent.score.Goals`). */
-export interface Goals {
-  roles: string[]
-  /** Yearly, gross. */
-  minSalary: number | null
-  salaryCurrency: string
-  workModes: Exclude<WorkMode, "unknown">[]
-  places: string[]
-  company: string[]
+/** What the fit score reads whatever the search (`career_agent.score.ScorePrefs`). */
+export interface ScorePrefs {
+  /** Hard no's in the user's words: a posting that states one is a "skip". */
   dealbreakers: string[]
+  note: string
+}
+
+/** How a posting meets one condition of the current search (`career_agent.query.match`). */
+export interface MatchCheck {
+  kind: "place" | "mode" | "salary" | "job_type" | "posted"
+  /** unknown: the posting doesn't say. */
+  state: "ok" | "unknown" | "no"
+  value?: string | number | string[] | null
+  expected?: number | string[]
+  currency?: string
 }
 
 /** A posting copied by the user from the board's page, when the board won't show it to us. */
@@ -393,10 +396,12 @@ export const api = {
     start: (url: string) => post<ScoreState>("/api/jobs/score", { url }),
     cancel: (url: string) => del<ScoreState>(`/api/jobs/score?url=${encodeURIComponent(url)}`),
   },
-  goals: {
-    get: () => request<Goals>("/api/goals"),
-    save: (goals: Goals) => put<Goals>("/api/goals", goals),
+  scorePrefs: {
+    get: () => request<ScorePrefs>("/api/score/preferences"),
+    save: (prefs: ScorePrefs) => put<ScorePrefs>("/api/score/preferences", prefs),
   },
+  /** How a saved posting meets each condition of a search: no AI, no request to a board. */
+  match: (url: string, query: Query) => post<{ checks: MatchCheck[] }>("/api/jobs/match", { url, query }),
   search: (query: Query, force = false) => post<RunSummary>(`/api/search${force ? "?force=true" : ""}`, query),
   cancel: () => post<{ ok: true }>("/api/cancel", {}),
   status: () => request<RunStatus>("/api/status"),
