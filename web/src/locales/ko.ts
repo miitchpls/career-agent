@@ -591,19 +591,17 @@ export const ko: Messages = {
 
   review: {
     card: "검토",
-    cardText: "항상 실행되는 점검과, 요청 시 경력 항목·설명·자기소개에 대한 AI 제안.",
     counts: (checks, open) =>
-      [checks && `점검 ${checks}개`, open && `제안 ${open}개`].filter(Boolean).join(" · ") || "문제가 없습니다",
+      [checks && `수정할 항목 ${checks}개`, open && `제안 ${open}개`].filter(Boolean).join(" · ") || "문제가 없습니다",
     start: "AI로 검토",
     open: "검토 열기",
     title: "프로필 검토",
     description: "AI가 제안하고 결정은 직접 합니다: 클릭하기 전에는 아무것도 바뀌지 않습니다.",
     checks: {
-      title: "점검",
-      hint: "AI 없이, 수정할 때마다 갱신됩니다.",
+      title: "수정할 항목",
+      hint: "AI 없이 찾았으며, 프로필을 수정하면 바로 갱신됩니다.",
       none: "문제가 없습니다.",
       show: "보기",
-      noHeadline: "이름 아래 헤드라인이 없습니다.",
       endBeforeStart: (label) => `${label}: 종료일이 시작일보다 앞섭니다.`,
       future: (label) => `${label}: 시작일이 미래입니다.`,
       noBullets: (label) => `${label}: 한 일에 대한 항목이 없습니다.`,

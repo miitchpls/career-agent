@@ -105,9 +105,8 @@ describe("profile checks", () => {
       ],
       projects: [{ ...profile.projects[0], description: "" }],
     }
-    expect(ids(p)).toEqual(["headline", "a:endBeforeStart", "b:bullets", "c:numbers", "c:long:1", "c:dup:2", "p1:description"])
-    expect(profileChecks(p)[0].target).toBe("profile-identity")
-    expect(profileChecks(p)[1].target).toBe("entry-a")
+    expect(ids(p)).toEqual(["a:endBeforeStart", "b:bullets", "c:numbers", "c:long:1", "c:dup:2", "p1:description"])
+    expect(profileChecks(p)[0].target).toBe("entry-a")
   })
 
   it("stay quiet on a tidy profile", () => {

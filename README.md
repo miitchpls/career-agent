@@ -114,7 +114,7 @@ entry, and to keep projects or clients within a role in its bullets.
 
 The **Review** card on the profile page has two parts:
 
-- **Checks**, without AI, recomputed on every edit: a missing headline, dates that end before they start or start
+- **Checks**, without AI, recomputed on every edit: dates that end before they start or start
   in the future, experiences with no bullets or no figures, long or repeated bullets, projects without a
   description. **Show** scrolls to the entry.
 - **Suggestions**, on request, from the same AI CLI as the import. It rereads bullets, descriptions, summary and
