@@ -264,13 +264,19 @@ function EmptyHint({ children, onClick }: { children: React.ReactNode; onClick: 
   )
 }
 
-/** Amber frame around imported data the user hasn't confirmed yet. */
-function ReviewFrame({
+/**
+ * An entry's row: its mark, then its content. Imported data the user hasn't confirmed yet gets
+ * an amber frame around the whole row; the negative margin cancels the padding, so the mark and
+ * the text stay aligned with the other entries.
+ */
+function EntryRow({
+  mark,
   note,
   onConfirm,
   onEdit,
   children,
 }: {
+  mark: React.ReactNode
   note?: string | null
   onConfirm: () => void
   onEdit: () => void
@@ -278,21 +284,36 @@ function ReviewFrame({
 }) {
   const all = useT()
   const t = all.profileView
-  if (!note) return <>{children}</>
+  // flow-root keeps the negative margin from collapsing into the list's spacing, which would
+  // pull the next entry 12px closer.
   return (
-    <div className="-mx-3 rounded-lg bg-amber-500/5 p-3 ring-1 ring-amber-500/25">
-      {children}
-      <div className="mt-3 flex items-center gap-2 border-t border-amber-500/20 pt-2.5">
-        <span className="size-1.5 rounded-full bg-amber-500" />
-        <span className="flex-1 text-xs text-amber-700 dark:text-amber-300">{note}</span>
-        <Button variant="ghost" size="xs" onClick={onEdit}>
-          {all.common.edit}
-        </Button>
-        <Button variant="outline" size="xs" onClick={onConfirm}>
-          <CheckIcon />
-          {t.looksRight}
-        </Button>
+    <div className="flow-root">
+    <div
+      className={cn(
+        "flex gap-3",
+        // Opaque, so it also covers the experience timeline running behind it.
+        note &&
+          "relative -m-3 rounded-lg bg-[color-mix(in_oklab,var(--color-amber-500)_5%,var(--card))] p-3 ring-1 ring-amber-500/25",
+      )}
+    >
+      {mark}
+      <div className="min-w-0 flex-1">
+        {children}
+        {note && (
+          <div className="mt-3 flex items-center gap-2 border-t border-amber-500/20 pt-2.5">
+            <span className="size-1.5 shrink-0 rounded-full bg-amber-500" />
+            <span className="flex-1 text-xs text-amber-700 dark:text-amber-300">{note}</span>
+            <Button variant="ghost" size="xs" onClick={onEdit}>
+              {all.common.edit}
+            </Button>
+            <Button variant="outline" size="xs" onClick={onConfirm}>
+              <CheckIcon />
+              {t.looksRight}
+            </Button>
+          </div>
+        )}
       </div>
+    </div>
     </div>
   )
 }
@@ -458,13 +479,13 @@ function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Cha
       ) : (
         <ol className="space-y-5">
           {p.experiences.map((e, i) => (
-            <li key={e.id} className="group relative flex gap-3">
+            <li key={e.id} className="group relative">
               {i < p.experiences.length - 1 && (
                 <span className="absolute top-11 bottom-[-1.25rem] left-[1.1875rem] w-px bg-border" aria-hidden />
               )}
-              <Mark>{initials(e.company)}</Mark>
-              <div className="min-w-0 flex-1">
-                <ReviewFrame note={e.review} onConfirm={() => save({ ...e, review: null })} onEdit={() => ed.edit(e)}>
+              <EntryRow
+                mark={<Mark>{initials(e.company)}</Mark>}
+                note={e.review} onConfirm={() => save({ ...e, review: null })} onEdit={() => ed.edit(e)}>
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{e.role}</p>
@@ -490,8 +511,7 @@ function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Cha
                   )}
                   <SkillLine skills={e.skills} />
                   <MediaStrip media={e.media} />
-                </ReviewFrame>
-              </div>
+              </EntryRow>
             </li>
           ))}
         </ol>
@@ -521,12 +541,14 @@ function EducationSection({ profile: p, onChange }: { profile: Profile; onChange
       ) : (
         <ul className="space-y-5">
           {p.education.map((d) => (
-            <li key={d.id} className="group flex gap-3">
-              <Mark>
-                <GraduationCapIcon className="size-4" />
-              </Mark>
-              <div className="min-w-0 flex-1">
-                <ReviewFrame note={d.review} onEdit={() => ed.edit(d)} onConfirm={() => save({ ...d, review: null })}>
+            <li key={d.id} className="group">
+              <EntryRow
+                mark={
+                  <Mark>
+                    <GraduationCapIcon className="size-4" />
+                  </Mark>
+                }
+                note={d.review} onEdit={() => ed.edit(d)} onConfirm={() => save({ ...d, review: null })}>
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{d.school}</p>
@@ -547,8 +569,7 @@ function EducationSection({ profile: p, onChange }: { profile: Profile; onChange
                   {d.description && <p className="mt-1.5 text-sm text-pretty">{d.description}</p>}
                   <SkillLine skills={d.skills} />
                   <MediaStrip media={d.media} />
-                </ReviewFrame>
-              </div>
+              </EntryRow>
             </li>
           ))}
         </ul>
@@ -713,12 +734,14 @@ function ProjectsSection({ profile: p, onChange }: { profile: Profile; onChange:
       ) : (
         <ul className="space-y-5">
           {p.projects.map((x) => (
-            <li key={x.id} className="group flex gap-3">
-              <Mark>
-                <FolderGitIcon className="size-4" />
-              </Mark>
-              <div className="min-w-0 flex-1">
-                <ReviewFrame note={x.review} onConfirm={() => save({ ...x, review: null })} onEdit={() => ed.edit(x)}>
+            <li key={x.id} className="group">
+              <EntryRow
+                mark={
+                  <Mark>
+                    <FolderGitIcon className="size-4" />
+                  </Mark>
+                }
+                note={x.review} onConfirm={() => save({ ...x, review: null })} onEdit={() => ed.edit(x)}>
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{x.name}</p>
@@ -744,8 +767,7 @@ function ProjectsSection({ profile: p, onChange }: { profile: Profile; onChange:
                 )}
                 <SkillLine skills={x.skills} />
                 <MediaStrip media={x.media} />
-                </ReviewFrame>
-              </div>
+              </EntryRow>
             </li>
           ))}
         </ul>
@@ -780,10 +802,10 @@ function Certifications({ profile: p, onChange }: { profile: Profile; onChange: 
       ) : (
         <ul className="space-y-5">
           {p.certifications.map((c) => (
-            <li key={c.id} className="group flex gap-3">
-              <Mark>{initials(c.issuer)}</Mark>
-              <div className="min-w-0 flex-1">
-                <ReviewFrame note={c.review} onConfirm={() => save({ ...c, review: null })} onEdit={() => ed.edit(c)}>
+            <li key={c.id} className="group">
+              <EntryRow
+                mark={<Mark>{initials(c.issuer)}</Mark>}
+                note={c.review} onConfirm={() => save({ ...c, review: null })} onEdit={() => ed.edit(c)}>
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{c.name}</p>
@@ -810,8 +832,7 @@ function Certifications({ profile: p, onChange }: { profile: Profile; onChange: 
                 )}
                 <SkillLine skills={c.skills} />
                 <MediaStrip media={c.media} />
-                </ReviewFrame>
-              </div>
+              </EntryRow>
             </li>
           ))}
         </ul>
