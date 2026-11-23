@@ -12,7 +12,7 @@ import type { Scope, WorkMode } from "@/lib/api"
 import { commitDraft, removeLast, suggest, type DraftKind, type Panel, type Patch, type Suggestion } from "@/lib/compose"
 import { CLEARED, SITES, activeCount, useFilters, type FilterState } from "@/lib/filters"
 import { DEFAULT_CURRENCY, formatAmount } from "@/lib/currencies"
-import { JOB_TYPE_LABEL } from "@/lib/job-types"
+import { useT, type Messages } from "@/lib/i18n"
 import { splitModes } from "@/lib/modes"
 import { usePlaces } from "@/lib/queries"
 import { cn } from "@/lib/utils"
@@ -65,32 +65,17 @@ function Word({ children, op }: { children: ReactNode; op?: boolean }) {
   )
 }
 
-/** How each mode reads inside the sentence ("a Milano in sede o ibrido"). */
-const MODE_PHRASE: Record<WorkMode, string> = {
-  onsite: "in sede",
-  hybrid: "ibrido",
-  remote: "da remoto",
-  unknown: "modalità non indicata",
-}
-
 /** "in sede o ibrido (o non indicata)": the same "(o non indicato/a)" as the salary piece. */
-function modesPhrase(modes: WorkMode[]): ReactNode {
+function modesPhrase(modes: WorkMode[], t: Messages): ReactNode {
+  const phrase = t.composer.modePhrase // how each mode reads inside the sentence
   const { known, includeUnknown } = splitModes(modes)
-  if (!known.length) return MODE_PHRASE.unknown // legacy: only "unknown" selected
+  if (!known.length) return phrase.unknown // legacy: only "unknown" selected
   return (
     <>
-      {known.map((m) => MODE_PHRASE[m]).join(" o ")}
-      {includeUnknown && <span className="text-muted-foreground">(o non indicata)</span>}
+      {known.map((m) => phrase[m]).join(` ${t.common.or} `)}
+      {includeUnknown && <span className="text-muted-foreground">{t.composer.orUnknownMode}</span>}
     </>
   )
-}
-
-const POSTED_PHRASE: Record<number, string> = {
-  24: "nelle ultime 24 ore",
-  72: "negli ultimi 3 giorni",
-  168: "nell'ultima settimana",
-  336: "nelle ultime 2 settimane",
-  720: "nell'ultimo mese",
 }
 
 /** Edit one phrase, keeping the list free of duplicates (the server dedupes too). */
@@ -121,6 +106,8 @@ function Sentence({
   draft: DraftKind | null
   slot: ReactNode
 }) {
+  const t = useT()
+  const c = t.composer
   const parts: ReactNode[] = []
   const hasTitle = f.title.length > 0 || draft === "title"
   const replaceScope = (i: number, s: Scope | null) =>
@@ -129,30 +116,30 @@ function Sentence({
   if (hasTitle)
     parts.push(
       <Fragment key="title">
-        <Word>Lavori come</Word>
+        <Word>{c.jobsAs}</Word>
         {join(
-          f.title.map((t, i) => (
+          f.title.map((title, i) => (
             <Piece
-              key={t}
+              key={title}
               editor={(close) => (
                 <PhraseEditor
-                  title="Titolo contiene"
-                  hint="Ogni parola deve comparire nel titolo. È anche il termine cercato sui portali."
-                  initial={t}
+                  title={c.titleEditor}
+                  hint={c.titleHint}
+                  initial={title}
                   onCancel={close}
                   onRemove={() => set({ title: f.title.filter((_, j) => j !== i) })}
                   onSave={(v) => (set({ title: replaceAt(f.title, i, v) }), close())}
                 />
               )}
             >
-              {t}
+              {title}
             </Piece>
           )),
-          <Word op>oppure</Word>,
+          <Word op>{c.orWord}</Word>,
         )}
         {draft === "title" && (
           <>
-            {f.title.length > 0 && <Word op>oppure</Word>}
+            {f.title.length > 0 && <Word op>{c.orWord}</Word>}
             {slot}
           </>
         )}
@@ -162,7 +149,7 @@ function Sentence({
   if (f.where.length || newGroup)
     parts.push(
       <Fragment key="where">
-        {!hasTitle && <Word>Lavori</Word>}
+        {!hasTitle && <Word>{c.jobs}</Word>}
         {join(
           [
             ...f.where.map((s, i) => (
@@ -187,11 +174,11 @@ function Sentence({
                       />
                     )}
                   >
-                    ovunque
+                    {c.anywhere}
                   </Piece>
                 ) : (
                   <>
-                    <Word>a</Word>
+                    <Word>{c.in}</Word>
                     {join(
                       s.places.map((p, k) => (
                         <Piece
@@ -215,7 +202,7 @@ function Sentence({
                           )}
                         </Piece>
                       )),
-                      <Word>o</Word>,
+                      <Word>{t.common.or}</Word>,
                     )}
                   </>
                 )}
@@ -230,7 +217,7 @@ function Sentence({
                       />
                     )}
                   >
-                    {modesPhrase(s.modes)}
+                    {modesPhrase(s.modes, t)}
                   </Piece>
                 )}
               </span>
@@ -238,12 +225,12 @@ function Sentence({
             ...(newGroup
               ? [
                   <span key="pending" className="inline-flex h-8 items-center rounded-lg border border-dashed px-2.5 text-sm text-muted-foreground">
-                    dove o come…
+                    {c.pendingGroup}
                   </span>,
                 ]
               : []),
           ],
-          <Word op>oppure</Word>,
+          <Word op>{c.orWord}</Word>,
         )}
       </Fragment>,
     )
@@ -251,7 +238,7 @@ function Sentence({
   if (f.jt.length)
     parts.push(
       <Fragment key="jt">
-        <Word>di tipo</Word>
+        <Word>{c.ofType}</Word>
         <Piece
           editor={(close) => (
             <JobTypeEditor
@@ -263,8 +250,8 @@ function Sentence({
             />
           )}
         >
-          {f.jt.map((t) => JOB_TYPE_LABEL[t].toLowerCase()).join(" o ")}
-          {f.jtnull && <span className="text-muted-foreground">(o non indicato)</span>}
+          {f.jt.map((jt) => c.typePhrase[jt]).join(` ${t.common.or} `)}
+          {f.jtnull && <span className="text-muted-foreground">{c.orUnknownType}</span>}
         </Piece>
       </Fragment>,
     )
@@ -272,7 +259,7 @@ function Sentence({
   if (f.salary !== null)
     parts.push(
       <Fragment key="salary">
-        <Word>con stipendio di almeno</Word>
+        <Word>{c.salaryAtLeast}</Word>
         <Piece
           editor={(close) => (
             <SalaryEditor
@@ -287,7 +274,10 @@ function Sentence({
         >
           <span className="font-mono">{formatAmount(f.salary * 1000)}</span>
           <span className="font-mono text-xs text-muted-foreground">{f.cur}</span>
-          <span className="text-muted-foreground">l'anno{f.nosalary && " (o non indicato)"}</span>
+          <span className="text-muted-foreground">
+            {c.perYear}
+            {f.nosalary && c.orUnknownSalary}
+          </span>
         </Piece>
       </Fragment>,
     )
@@ -295,9 +285,9 @@ function Sentence({
   if (f.posted !== null)
     parts.push(
       <Fragment key="posted">
-        <Word>pubblicati</Word>
+        <Word>{c.published}</Word>
         <Piece editor={(close) => <PostedEditor initial={f.posted} onCancel={close} onApply={(h) => (set({ posted: h }), close())} />}>
-          {POSTED_PHRASE[f.posted] ?? `nelle ultime ${f.posted} ore`}
+          {c.postedPhrase[f.posted] ?? c.postedHours(f.posted)}
         </Piece>
       </Fragment>,
     )
@@ -305,7 +295,7 @@ function Sentence({
   if (f.sites.length)
     parts.push(
       <Fragment key="sites">
-        <Word>su</Word>
+        <Word>{c.on}</Word>
         <Piece
           editor={(close) => (
             <SitesEditor
@@ -324,15 +314,15 @@ function Sentence({
   if (f.q || draft === "q")
     parts.push(
       <Fragment key="q">
-        <Word>{parts.length ? "che citano" : "Lavori che citano"}</Word>
+        <Word>{parts.length ? c.mentioning : c.jobsMentioning}</Word>
         {draft === "q" ? (
           slot
         ) : (
         <Piece
           editor={(close) => (
             <PhraseEditor
-              title="Testo libero"
-              hint="Cercato in titolo, azienda e descrizione. Filtra solo la lista."
+              title={c.textEditor}
+              hint={c.textHint}
               initial={f.q}
               onCancel={close}
               onRemove={() => set({ q: null })}
@@ -347,7 +337,7 @@ function Sentence({
     )
 
   // Different filters are AND-ed: say it, as "oppure" says OR.
-  return <>{join(parts, <Word op>e</Word>)}</>
+  return <>{join(parts, <Word op>{c.andWord}</Word>)}</>
 }
 
 /* ------------------------------------------------------------------ composer */
@@ -360,6 +350,8 @@ export function Composer({
   onSubmit: () => void
   autoFocus?: boolean
 }) {
+  const t = useT()
+  const c = t.composer
   const [f, setFilters] = useFilters()
   const [text, setText] = useState("")
   const [focused, setFocused] = useState(false)
@@ -377,7 +369,7 @@ export function Composer({
   const set = (p: Patch) => setFilters(p)
   // Only look up cities for text that could be one (skip "-senior", "100k", "ultimi…").
   const placeText =
-    draft || /^[\d>≥€$£]|^(stipendio|ral|salary|ultim)/i.test(text.trim()) ? "" : text
+    draft || /^[\d>≥€$£]|^(stipendio|ral|salary|gehalt|lohn|ultim|last|letzt)/i.test(text.trim()) ? "" : text
   const { places } = usePlaces(placeText)
   // No suggestions while typing a drafted value: Enter turns it into a piece.
   const items = useMemo(
@@ -490,10 +482,10 @@ export function Composer({
         draft
           ? ""
           : empty
-              ? "Cerca lavori… es. python developer, Zurigo, ibrido, 100.000"
+              ? c.placeholder
               : newGroup
-                ? "città o modalità dell'alternativa…"
-                : "aggiungi…"
+                ? c.placeholderGroup
+                : c.placeholderMore
       }
       className={cn(
         "h-7 bg-transparent text-sm outline-none placeholder:text-muted-foreground/70",
@@ -503,7 +495,7 @@ export function Composer({
   )
 
   return (
-    <Command shouldFilter={false} loop label="Componi la ricerca" className="relative size-auto overflow-visible rounded-none! bg-transparent p-0">
+    <Command shouldFilter={false} loop label={c.label} className="relative size-auto overflow-visible rounded-none! bg-transparent p-0">
       <Popover open={panel !== null} onOpenChange={(o) => !o && setPanel(null)}>
         <PopoverAnchor asChild>
           <div
@@ -523,20 +515,20 @@ export function Composer({
 
             <div className="flex items-center gap-1 px-2.5 pb-2.5">
               <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setPanel("scope")}>
-                + Gruppo luoghi
+                {c.addGroup}
               </Button>
               <span className="mx-1 h-4 w-px bg-border" />
               <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setPanel("jobtype")}>
                 <BriefcaseBusinessIcon />
-                Impiego
+                {c.jobType}
               </Button>
               <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setPanel("salary")}>
                 <CoinsIcon />
-                Stipendio
+                {c.salary}
               </Button>
               <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setPanel("posted")}>
                 <CalendarIcon />
-                Data
+                {c.date}
               </Button>
               <div className="ml-auto flex items-center gap-1.5">
                 {!empty && (
@@ -544,7 +536,7 @@ export function Composer({
                     variant="ghost"
                     size="icon-sm"
                     className="text-muted-foreground"
-                    aria-label="Svuota la query"
+                    aria-label={c.clear}
                     onClick={() => {
                       set({ ...CLEARED, q: null })
                       setNewGroup(false)
@@ -558,7 +550,7 @@ export function Composer({
                   size="icon-sm"
                   className="rounded-full"
                   disabled={empty}
-                  aria-label="Esegui la query"
+                  aria-label={c.run}
                   onClick={onSubmit}
                 >
                   <ArrowUpIcon />
@@ -618,7 +610,7 @@ export function Composer({
       {menuOpen && (
         <div className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg">
           <CommandList className="max-h-80 p-1">
-            <CommandGroup heading={text.trim() ? "Aggiungi alla query" : "Suggerimenti"} className="p-0">
+            <CommandGroup heading={text.trim() ? c.addToQuery : c.suggestions} className="p-0">
               {items.map((s) => (
                 <CommandItem
                   key={s.id}
@@ -638,23 +630,23 @@ export function Composer({
           <div className="flex items-center gap-3 border-t bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1">
               <Kbd>↑</Kbd>
-              <Kbd>↓</Kbd> scegli
+              <Kbd>↓</Kbd> {c.keyChoose}
             </span>
             <span className="flex items-center gap-1">
               <Kbd>
                 <CornerDownLeftIcon className="size-3" />
               </Kbd>{" "}
-              aggiungi
+              {c.keyAdd}
             </span>
             <span className="flex items-center gap-1">
-              <Kbd>⌫</Kbd> togli l'ultimo pezzo
+              <Kbd>⌫</Kbd> {c.keyBack}
             </span>
             <span className="ml-auto flex items-center gap-1">
               <Kbd>⌘</Kbd>
               <Kbd>
                 <CornerDownLeftIcon className="size-3" />
               </Kbd>{" "}
-              esegui
+              {c.keyRun}
             </span>
           </div>
         </div>

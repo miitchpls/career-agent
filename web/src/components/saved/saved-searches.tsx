@@ -18,11 +18,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { api, type Query, type SavedSearch } from "@/lib/api"
 import { sameQuery } from "@/lib/filters"
 import { querySummary, relativeDay } from "@/lib/format"
+import { useT } from "@/lib/i18n"
 import { useSaved } from "@/lib/queries"
 
 /* ------------------------------------------------------------------ save */
 
 export function SaveSearchButton({ query, disabled }: { query: Query; disabled: boolean }) {
+  const all = useT()
+  const t = all.saved
   const { data: saved = [] } = useSaved()
   const current = saved.find((s) => sameQuery(s.query, query))
   const [open, setOpen] = useState(false)
@@ -35,7 +38,7 @@ export function SaveSearchButton({ query, disabled }: { query: Query; disabled: 
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["saved"] })
       setOpen(false)
-      toast(r.created ? "Ricerca salvata" : "Ricerca aggiornata", { description: r.name })
+      toast(r.created ? t.saved : t.updated, { description: r.name })
     },
     onError: (e) => toast.error(e.message),
   })
@@ -53,10 +56,10 @@ export function SaveSearchButton({ query, disabled }: { query: Query; disabled: 
           variant="outline"
           size="sm"
           disabled={disabled}
-          title={current ? `Salvata come «${current.name}»: clicca per rinominarla o aggiornarla` : undefined}
+          title={current ? t.savedAs(current.name) : undefined}
         >
           {current ? <BookmarkIcon className="fill-current" /> : <BookmarkPlusIcon />}
-          {current ? "Salvata" : "Salva ricerca"}
+          {current ? t.isSaved : t.save}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0" onKeyDown={(e) => e.stopPropagation()}>
@@ -67,18 +70,18 @@ export function SaveSearchButton({ query, disabled }: { query: Query; disabled: 
           }}
         >
           <div className="space-y-2 p-3">
-            <p className="text-sm font-medium">Salva ricerca</p>
-            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome" />
+            <p className="text-sm font-medium">{t.save}</p>
+            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t.name} />
             <p className="text-xs text-muted-foreground">
-              {clash ? `Esiste già: «${clash.name}» verrà aggiornata con questa query.` : "Salva i filtri attuali per ritrovarli ed eseguirli con un clic."}
+              {clash ? t.clash(clash.name) : t.saveHint}
             </p>
           </div>
           <div className="flex justify-end gap-2 border-t bg-muted/40 px-3 py-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
-              Annulla
+              {all.common.cancel}
             </Button>
             <Button type="submit" size="sm" disabled={!name.trim() || save.isPending}>
-              {clash ? "Aggiorna" : "Salva"}
+              {clash ? t.update : all.common.save}
             </Button>
           </div>
         </form>
@@ -103,6 +106,8 @@ export function SavedSearchesMenu({
   /** Custom trigger; defaults to the toolbar button. */
   children?: React.ReactNode
 }) {
+  const all = useT()
+  const t = all.saved
   const { data: saved = [] } = useSaved()
   const [open, setOpen] = useState(false)
   const qc = useQueryClient()
@@ -111,7 +116,7 @@ export function SavedSearchesMenu({
     mutationFn: (s: SavedSearch) => api.saved.remove(s.id),
     onSuccess: (_, s) => {
       qc.invalidateQueries({ queryKey: ["saved"] })
-      toast("Ricerca eliminata", { description: s.name })
+      toast(t.deleted, { description: s.name })
     },
     onError: (e) => toast.error(e.message),
   })
@@ -128,20 +133,20 @@ export function SavedSearchesMenu({
         {children ?? (
           <Button variant="outline" size="sm" disabled={saved.length === 0}>
             <BookmarkIcon />
-            Salvate
+            {t.menu}
             {saved.length > 0 && <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{saved.length}</span>}
           </Button>
         )}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[26rem] p-0">
         <Command>
-          <CommandInput placeholder="Cerca tra le ricerche salvate…" />
+          <CommandInput placeholder={t.filter} />
           <CommandList className="max-h-96">
             <CommandEmpty className="px-4 text-muted-foreground">
-              {saved.length ? "Nessuna corrispondenza." : "Nessuna ricerca salvata. Componi una query e premi il segnalibro."}
+              {saved.length ? t.noMatch : t.none}
             </CommandEmpty>
             {saved.length > 0 && (
-              <CommandGroup heading="Ricerche salvate">
+              <CommandGroup heading={t.heading}>
                 {saved.map((s) => {
                   const active = sameQuery(s.query, current)
                   return (
@@ -158,11 +163,11 @@ export function SavedSearchesMenu({
                       <div className="min-w-0 flex-1 space-y-0.5">
                         <div className="flex items-center gap-2">
                           <span className="truncate font-medium">{s.name}</span>
-                          {active && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-muted-foreground">attiva</span>}
+                          {active && <span className="shrink-0 rounded-full border px-1.5 text-[10px] text-muted-foreground">{t.active}</span>}
                         </div>
                         <div className="truncate text-xs text-muted-foreground">{querySummary(s.query)}</div>
                         <div className="text-[11px] text-muted-foreground/70">
-                          {s.last_run_at ? `Eseguita ${relativeDay(s.last_run_at)}` : "Mai eseguita"}
+                          {s.last_run_at ? t.ran(relativeDay(s.last_run_at)) : t.neverRan}
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-0.5 self-center">
@@ -171,22 +176,22 @@ export function SavedSearchesMenu({
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              aria-label={`Elimina ${s.name}`}
+                              aria-label={t.deleteNamed(s.name)}
                               className="text-muted-foreground opacity-0 group-hover/saved:opacity-100 group-data-[selected=true]/saved:opacity-100 hover:text-destructive"
                               onPointerDown={act(() => {})}
-                              onClick={act(() => confirm(`Eliminare «${s.name}»?`) && remove.mutate(s))}
+                              onClick={act(() => confirm(t.confirmDelete(s.name)) && remove.mutate(s))}
                             >
                               <Trash2Icon />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Elimina</TooltipContent>
+                          <TooltipContent>{all.common.delete}</TooltipContent>
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               variant="outline"
                               size="sm"
-                              aria-label={`Esegui ${s.name}`}
+                              aria-label={t.runNamed(s.name)}
                               disabled={running}
                               onPointerDown={act(() => {})}
                               onClick={act(() => {
@@ -195,10 +200,10 @@ export function SavedSearchesMenu({
                               })}
                             >
                               <PlayIcon />
-                              Esegui
+                              {t.run}
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Avvia subito la ricerca sui portali</TooltipContent>
+                          <TooltipContent>{t.runHint}</TooltipContent>
                         </Tooltip>
                       </div>
                     </CommandItem>
@@ -232,6 +237,7 @@ export function SavedSearchShelf({
   onRun: (s: SavedSearch) => void
   running: boolean
 }) {
+  const t = useT().saved
   const { data: saved = [] } = useSaved()
   if (saved.length === 0) return null
   const recent = [...saved]
@@ -241,11 +247,11 @@ export function SavedSearchShelf({
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between px-1">
-        <p className="text-xs font-medium text-muted-foreground">Ricerche salvate</p>
+        <p className="text-xs font-medium text-muted-foreground">{t.heading}</p>
         {saved.length > SHELF && (
           <SavedSearchesMenu current={current} onLoad={onLoad} onRun={onRun} running={running}>
             <Button variant="link" size="xs" className="h-auto px-0 text-xs text-muted-foreground">
-              Tutte ({saved.length})
+              {t.all(saved.length)}
             </Button>
           </SavedSearchesMenu>
         )}
@@ -266,7 +272,7 @@ export function SavedSearchShelf({
                 {s.name}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                {s.last_run_at ? `Eseguita ${relativeDay(s.last_run_at)}` : "Mai eseguita"}
+                {s.last_run_at ? t.ran(relativeDay(s.last_run_at)) : t.neverRan}
               </p>
             </div>
             <Tooltip>
@@ -274,7 +280,7 @@ export function SavedSearchShelf({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`Esegui ${s.name}`}
+                  aria-label={t.runNamed(s.name)}
                   disabled={running}
                   className="opacity-0 transition-opacity group-hover/shelf:opacity-100 group-focus-visible/shelf:opacity-100"
                   onClick={(e) => {
@@ -285,7 +291,7 @@ export function SavedSearchShelf({
                   <PlayIcon />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Avvia subito la ricerca sui portali</TooltipContent>
+              <TooltipContent>{t.runHint}</TooltipContent>
             </Tooltip>
           </div>
         ))}

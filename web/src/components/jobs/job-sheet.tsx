@@ -11,14 +11,17 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { Job } from "@/lib/api"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
-import { JOB_TYPE_LABEL, parseStoredJobTypes } from "@/lib/job-types"
-import { hasProfile, useProfile } from "@/lib/profile-mock"
+import { msgs, useT } from "@/lib/i18n"
+import { parseStoredJobTypes } from "@/lib/job-types"
+import { ANYWHERE } from "@/lib/run-messages"
+import { useGenerated } from "@/lib/cv-mock"
+import { hasProfile, useProfile } from "@/lib/profile"
 
 /** Older hits have no label; their legacy key is "city|cc". */
 function hitPlace(h: Job["hits"][number]): string {
+  if (h.label === ANYWHERE || h.place === "*") return msgs().common.anywhere
   if (h.label) return h.label
-  if (h.place === "*") return "Ovunque"
-  return h.place.startsWith("geo:") ? "luogo" : h.place.split("|")[0]
+  return h.place.startsWith("geo:") ? msgs().jobs.place : h.place.split("|")[0]
 }
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
@@ -56,8 +59,9 @@ export function JobSheet({
 }
 
 function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => void }) {
+  const t = useT().jobs
   const state = useProfile()
-  const already = state.generated.has(job.url)
+  const already = useGenerated().has(job.url)
   const [tab, setTab] = useState<"job" | "cv">("job")
   const [phase, setPhase] = useState<CvPhase>(already ? "done" : "idle")
   const generate = () => {
@@ -72,13 +76,13 @@ function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => voi
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <SiteMark site={job.site} />
           <span aria-hidden>·</span>
-          <span title={fullDate(job.date_posted)}>pubblicata {relativeDay(job.date_posted)}</span>
+          <span title={fullDate(job.date_posted)}>{t.posted(relativeDay(job.date_posted))}</span>
         </div>
         <SheetTitle className="text-xl leading-tight font-semibold tracking-tight text-balance">{job.title}</SheetTitle>
         <SheetDescription className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="inline-flex items-center gap-1.5">
             <Building2Icon className="size-3.5" />
-            {job.company ?? "Azienda non indicata"}
+            {job.company ?? t.noCompany}
           </span>
           {job.location && (
             <span className="inline-flex items-center gap-1.5">
@@ -90,14 +94,14 @@ function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => voi
         <div className="flex items-center gap-2 pt-1">
           <Button asChild size="sm">
             <a href={job.url} target="_blank" rel="noreferrer">
-              Apri annuncio
+              {t.openPosting}
               <ArrowUpRightIcon />
             </a>
           </Button>
           {phase === "idle" && (
             <Button variant="outline" size="sm" onClick={generate}>
               <SparklesIcon />
-              Genera CV
+              {t.generateCv}
             </Button>
           )}
         </div>
@@ -106,11 +110,11 @@ function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => voi
       <Tabs value={tab} onValueChange={(v) => setTab(v as "job" | "cv")} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-10 w-full justify-start gap-4 border-b px-6">
           <TabsTrigger value="job" className="flex-none px-0">
-            Annuncio
+            {t.tabPosting}
           </TabsTrigger>
           <TabsTrigger value="cv" className="flex-none px-0">
             <FileUserIcon />
-            CV per questa offerta
+            {t.tabCv}
             {already && <span className="size-1.5 rounded-full bg-emerald-500" />}
           </TabsTrigger>
         </TabsList>
@@ -135,13 +139,15 @@ function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => voi
 }
 
 function JobBody({ job }: { job: Job }) {
+  const all = useT()
+  const t = all.jobs
   return (
     <>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-b px-6 py-5 sm:grid-cols-4">
-        <Meta label="Modalità">
+        <Meta label={t.mode}>
           <WorkModeBadge mode={job.work_mode} />
         </Meta>
-        <Meta label="Stipendio">
+        <Meta label={t.salary}>
           <span className="font-mono">{salaryLabel(job) ?? "—"}</span>
           {convertedLabel(job.salary_converted) && (
             <span className="ml-1.5 font-mono text-xs text-muted-foreground">
@@ -149,15 +155,15 @@ function JobBody({ job }: { job: Job }) {
             </span>
           )}
         </Meta>
-        <Meta label="Impiego">
-          {parseStoredJobTypes(job.job_type).map((t) => JOB_TYPE_LABEL[t]).join(", ") || "—"}
+        <Meta label={t.jobType}>
+          {parseStoredJobTypes(job.job_type).map((jt) => all.jobTypes[jt]).join(", ") || "—"}
         </Meta>
-        <Meta label="Pubblicata">{fullDate(job.date_posted)}</Meta>
+        <Meta label={t.postedOn}>{fullDate(job.date_posted)}</Meta>
       </dl>
 
       {job.hits.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 border-b px-6 py-3">
-          <span className="mr-1 text-xs text-muted-foreground">Trovata con</span>
+          <span className="mr-1 text-xs text-muted-foreground">{t.foundWith}</span>
           {job.hits.map((h) => (
             <span key={`${h.place}:${h.keyword}`} className="rounded-md border bg-muted/40 px-2 py-0.5 text-xs">
               «{h.keyword}» · {hitPlace(h)}
@@ -167,7 +173,7 @@ function JobBody({ job }: { job: Job }) {
       )}
 
       <article className="prose-job max-w-prose px-6 py-6">
-        {job.description ? <Markdown>{job.description}</Markdown> : <p>Descrizione non disponibile.</p>}
+        {job.description ? <Markdown>{job.description}</Markdown> : <p>{t.noDescription}</p>}
       </article>
     </>
   )

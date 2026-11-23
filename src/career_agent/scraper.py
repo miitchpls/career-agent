@@ -12,6 +12,7 @@ Guards against blocks:
   - an identical search that succeeded in the last hours isn't repeated.
 """
 
+import contextvars
 import logging
 import random
 import re
@@ -22,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from . import boards, db
+from .i18n import t
 from .query import PlannedQuery, Query, Site, plan, title_matches
 
 log = logging.getLogger(__name__)
@@ -156,7 +158,7 @@ def _local_time(t: datetime) -> str:
 
 
 def _paused_message(site: Site, until: datetime) -> str:
-    return f"{SITE_NAME[site]} ha limitato le richieste: in pausa fino alle {_local_time(until)}"
+    return t("paused", site=SITE_NAME[site], time=_local_time(until))
 
 
 def _requests_left(site: Site) -> int | None:
@@ -169,12 +171,12 @@ def _requests_left(site: Site) -> int | None:
 
 
 def _hold_reason(site: Site) -> str | None:
-    """Why `site` must be left alone right now (Italian, for the UI); None if it may be asked."""
+    """Why `site` must be left alone right now (for the UI); None if it may be asked."""
     until = db.board_paused_until(site)
     if until:
         return _paused_message(site, until)
     if _requests_left(site) == 0:
-        return f"raggiunto il limite di {DAILY_REQUESTS[site]} richieste a {SITE_NAME[site]} nelle ultime 24 ore: riprova più tardi"
+        return t("budget", n=DAILY_REQUESTS[site], site=SITE_NAME[site])
     return None
 
 
@@ -199,7 +201,9 @@ class Step:
     abroad: int = 0  # discarded: outside the searched country
     off_title: int = 0  # discarded: the title can't match the query
     missed: int = 0  # matching, but their page wasn't read (budget, block, cancel)
-    error: str | None = None  # user-facing, in Italian: why it failed or was skipped
+    error: str | None = (
+        None  # user-facing, in the UI's language: why it failed or was skipped
+    )
     note: str | None = None  # user-facing caveat on a "done" step
     ran_at: str | None = None  # for "recent": when the identical search last ran
 
@@ -231,10 +235,10 @@ class RunState:
 def _friendly_error(message: str) -> str:
     m = message.lower()
     if "429" in m or "too many" in m or "blocked" in m or "rate" in m:
-        return "il portale ha limitato le richieste: riprova più tardi"
+        return t("throttled")
     if "timed out" in m or "timeout" in m:
-        return "il portale non ha risposto in tempo"
-    return "il portale ha restituito un errore"
+        return t("timeout")
+    return t("board_error")
 
 
 class Runner:
@@ -243,15 +247,19 @@ class Runner:
         self._cancel = threading.Event()
         self._lock = threading.Lock()
 
-    def start(self, q: Query) -> dict:
-        """Plan and start a run in the background. Returns a summary for the UI."""
+    def start(self, q: Query, *, force: bool = False) -> dict:
+        """Plan and start a run in the background. Returns a summary for the UI.
+
+        `force` reruns identical searches made in the last RECENT_HOURS too; the request
+        budget and the pauses still apply.
+        """
         if self.state.running:  # fail fast, before plan() possibly hits the geocoder
-            raise RuntimeError("Una ricerca è già in corso")
+            raise RuntimeError(t("busy"))
         queries, skipped, errors = plan(q)
         if errors:
             raise ValueError(" ".join(errors))
         if not queries:
-            raise ValueError("Nessuna ricerca da eseguire con questi filtri.")
+            raise ValueError(t("nothing_to_run"))
 
         now = datetime.now(UTC)
         holds = {site: _hold_reason(site) for site in {pq.site for pq in queries}}
@@ -259,7 +267,7 @@ class Runner:
         for pq in queries:
             step = Step(pq.site, pq.keyword, pq.place_display)
             ran = db.last_board_search(pq.fingerprint(q.posted_within))
-            if ran and now - ran < timedelta(hours=RECENT_HOURS):
+            if not force and ran and now - ran < timedelta(hours=RECENT_HOURS):
                 step.status, step.ran_at = "recent", ran.isoformat()
             elif holds[pq.site]:
                 step.status, step.error = "skipped", holds[pq.site]
@@ -282,7 +290,7 @@ class Runner:
 
         with self._lock:
             if self.state.running:
-                raise RuntimeError("Una ricerca è già in corso")
+                raise RuntimeError(t("busy"))
             self._cancel.clear()
             self.state = RunState(
                 running=True,
@@ -290,7 +298,9 @@ class Runner:
                 phase="searching",
                 steps=steps,
             )
-        threading.Thread(target=self._run, args=(todo, q), daemon=True).start()
+        # The thread keeps this request's context, so its messages stay in the user's language.
+        ctx = contextvars.copy_context()
+        threading.Thread(target=ctx.run, args=(self._run, todo, q), daemon=True).start()
         summary["eta_seconds"] = round(
             sum(SECONDS_PER_SEARCH[pq.site] for _, pq in todo)
             + (len(todo) - 1) * sum(PAUSE_SECONDS) / 2
@@ -395,14 +405,12 @@ class Runner:
         else:
             step.status = "done"
             if step.missed and not self._cancel.is_set():
-                why = (
-                    "limite giornaliero di richieste raggiunto"
+                why = t(
+                    "missed_budget"
                     if budget is not None and result.requests >= budget
-                    else "pagina dell'annuncio non leggibile"
+                    else "missed_page"
                 )
-                step.note = (
-                    f"{step.missed} non lette ({why}): riprovo alla prossima ricerca"
-                )
+                step.note = t("missed", n=step.missed, why=why)
             if not step.missed:  # complete: an identical search can wait a few hours
                 db.record_board_search(pq.fingerprint(q.posted_within))
         log.info(

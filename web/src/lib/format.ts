@@ -1,10 +1,10 @@
 import type { Job, Query, Scope } from "@/lib/api"
-import { MODE_LABEL } from "@/lib/filters"
+import { intlTag, msgs } from "@/lib/i18n"
 
 function scopeLabel(s: Scope): { where: string; modes: string | null } {
   return {
-    where: s.anywhere ? "Ovunque" : s.places.map((p) => p.city).join(", "),
-    modes: s.modes.length ? s.modes.map((m) => MODE_LABEL[m]).join(" / ") : null,
+    where: s.anywhere ? msgs().common.anywhere : s.places.map((p) => p.city).join(", "),
+    modes: s.modes.length ? s.modes.map((m) => msgs().modes[m]).join(" / ") : null,
   }
 }
 
@@ -18,13 +18,12 @@ export function salaryLabel(job: Pick<Job, "min_amount" | "max_amount" | "curren
   return `${cur} ${compact((hi ?? lo)!)}`.trim()
 }
 
-const rtf = new Intl.RelativeTimeFormat("it", { numeric: "auto" })
-
 export function relativeDay(iso: string | null): string {
   if (!iso) return "—"
   const then = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
+  const rtf = new Intl.RelativeTimeFormat(intlTag(), { numeric: "auto" })
   const days = Math.round((then.getTime() - today.getTime()) / 86_400_000)
   if (days >= -6) return rtf.format(days, "day")
   if (days >= -30) return rtf.format(Math.round(days / 7), "week")
@@ -32,8 +31,8 @@ export function relativeDay(iso: string | null): string {
 }
 
 export function fullDate(iso: string | null): string {
-  if (!iso) return "Data non disponibile"
-  return new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString("it-IT", {
+  if (!iso) return msgs().format.noDate
+  return new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString(intlTag(), {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -51,18 +50,17 @@ export function querySummary(q: Query): string {
           const { where, modes } = scopeLabel(s)
           return modes ? `${where} (${modes.toLowerCase()})` : where
         })
-        .join(" o "),
+        .join(msgs().format.scopeOr),
     )
   if (q.salary_min !== null) parts.push(`≥ ${q.salary_min}K`)
-  return parts.join(" · ") || "Ricerca"
+  return parts.join(" · ") || msgs().format.searchFallback
 }
-
-const rtfShort = new Intl.RelativeTimeFormat("it", { numeric: "auto", style: "long" })
 
 /** "5 minuti fa", "2 ore fa": for things that happened today. */
 export function ago(iso: string): string {
   const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000)
-  if (minutes < 1) return "poco fa"
+  if (minutes < 1) return msgs().format.justNow
+  const rtfShort = new Intl.RelativeTimeFormat(intlTag(), { numeric: "auto", style: "long" })
   if (minutes < 60) return rtfShort.format(-minutes, "minute")
   return rtfShort.format(-Math.round(minutes / 60), "hour")
 }

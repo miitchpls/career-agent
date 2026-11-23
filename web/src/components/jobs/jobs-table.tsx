@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { Direction, Job, Sort } from "@/lib/api"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
+import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 const MotionBody = motion.create(TableBody)
@@ -116,6 +117,7 @@ export function JobsTable({
   /** A portal search is running: an empty list means "not yet", not "nothing found". */
   searching?: boolean
 }) {
+  const t = useT().jobs
   if (loading)
     return (
       <div className="space-y-2 p-4">
@@ -132,7 +134,7 @@ export function JobsTable({
           <Skeleton key={o} className="h-10 w-full" style={{ opacity: o }} />
         ))}
         <p className="pt-3 pb-2 text-center text-sm text-muted-foreground">
-          Le offerte che corrispondono alla ricerca compariranno qui man mano che arrivano.
+          {t.arriving}
         </p>
       </div>
     )
@@ -141,20 +143,20 @@ export function JobsTable({
     return overall === 0 ? (
       <EmptyState
         icon={SparklesIcon}
-        title="Nessuna offerta salvata"
-        description="Non hai ancora offerte. Cercale su LinkedIn e Indeed con questa ricerca: arrivano in un paio di minuti."
+        title={t.noneSaved}
+        description={t.noneSavedHint}
         action={searchAction}
       />
     ) : (
       <EmptyState
         icon={SearchXIcon}
-        title="Nessuna offerta corrisponde"
-        description={`Hai ${overall} offerte salvate, ma nessuna corrisponde a questa ricerca. Cercane di nuove sui portali.`}
+        title={t.noMatch}
+        description={t.noMatchHint(overall)}
         action={
           <div className="flex items-center gap-2">
             {searchAction}
             <Button variant="outline" size="sm" onClick={onClearFilters}>
-              Rimuovi filtri
+              {t.clearFilters}
             </Button>
           </div>
         }
@@ -165,15 +167,15 @@ export function JobsTable({
     <Table>
       <TableHeader>
         <TableRow className="hover:bg-transparent">
-          <TableHead className="w-[42%] pl-4">Posizione</TableHead>
-          <TableHead>Luogo</TableHead>
-          <TableHead>Modalità</TableHead>
+          <TableHead className="w-[42%] pl-4">{t.position}</TableHead>
+          <TableHead>{t.location}</TableHead>
+          <TableHead>{t.mode}</TableHead>
           <SortableHead field="salary" sort={sort} direction={direction} onSort={onSort}>
-            Stipendio
+            {t.salary}
           </SortableHead>
-          <TableHead>Portale</TableHead>
+          <TableHead>{t.site}</TableHead>
           <SortableHead field="posted" sort={sort} direction={direction} onSort={onSort} className="pr-4">
-            Pubblicata
+            {t.postedOn}
           </SortableHead>
         </TableRow>
       </TableHeader>

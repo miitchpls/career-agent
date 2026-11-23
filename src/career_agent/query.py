@@ -14,6 +14,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from . import fx, geo
+from .i18n import t
 
 WorkMode = Literal["onsite", "hybrid", "remote", "unknown"]
 # Employment type, normalised from JobSpy's (temporary/per diem count as contract).
@@ -351,11 +352,9 @@ def plan(q: Query) -> tuple[list[PlannedQuery], list[dict], list[str]]:
     """Expand the query into board searches. Returns (queries, skipped, errors)."""
     errors = []
     if not q.scopes:
-        errors.append("Aggiungi almeno un filtro «Dove» per sapere dove cercare.")
+        errors.append(t("need_where"))
     if not q.title_any:
-        errors.append(
-            "Aggiungi almeno una keyword in «Titolo contiene»: è il termine di ricerca sui portali."
-        )
+        errors.append(t("need_title"))
     if errors:
         return [], [], errors
 
@@ -392,7 +391,7 @@ def plan(q: Query) -> tuple[list[PlannedQuery], list[dict], list[str]]:
                         skipped.append(
                             {
                                 **pq.to_dict(),
-                                "reason": "Indeed cerca solo dentro un paese",
+                                "reason": t("indeed_country"),
                             }
                         )
                         continue
@@ -404,13 +403,13 @@ def plan(q: Query) -> tuple[list[PlannedQuery], list[dict], list[str]]:
                         skipped.append(
                             {
                                 **pq.to_dict(),
-                                "reason": f"Indeed non copre {place.country.upper()}",
+                                "reason": t(
+                                    "indeed_uncovered", country=place.country.upper()
+                                ),
                             }
                         )
                         continue
                     queries.append(pq)
     if len(queries) > MAX_QUERIES:
-        errors.append(
-            f"La query genera {len(queries)} ricerche: il massimo nella POC è {MAX_QUERIES}."
-        )
+        errors.append(t("too_many", n=len(queries), max=MAX_QUERIES))
     return queries, skipped, errors
