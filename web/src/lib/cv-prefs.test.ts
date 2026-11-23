@@ -8,6 +8,8 @@ describe("cv preferences", () => {
     expect(jobCountry("Zürich, ZH, CH")).toBe("ch")
     expect(jobCountry("New York, NY, United States")).toBe("us")
     expect(jobCountry("Toronto, ON, Canada")).toBe("ca")
+    expect(jobCountry("Seoul, South Korea")).toBe("kr")
+    expect(jobCountry("서울특별시, 대한민국")).toBe("kr")
     expect(jobCountry("Remote")).toBeNull()
     expect(jobCountry(null)).toBeNull()
   })
@@ -16,6 +18,9 @@ describe("cv preferences", () => {
     expect(postingLanguage("Wir suchen eine Person mit Erfahrung und Freude an der Arbeit für das Team")).toBe("de")
     expect(postingLanguage("Cerchiamo una persona con esperienza per il team della piattaforma")).toBe("it")
     expect(postingLanguage("You will join the team and work with our engineers")).toBe("en")
+    expect(postingLanguage("백엔드 개발자를 모집합니다. Python 및 FastAPI 경험이 있는 분을 찾습니다.")).toBe("ko")
+    // An English posting with a Korean company name stays English.
+    expect(postingLanguage("You will join 네이버 and work with our engineers on the team")).toBe("en")
     expect(postingLanguage(null)).toBe("en")
   })
 

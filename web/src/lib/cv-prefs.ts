@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { api, type CvPrefs, type Job } from "@/lib/api"
+import { api, type CvLanguage, type CvPrefs, type Job } from "@/lib/api"
 import { msgs } from "@/lib/i18n"
 
 export const DEFAULT_CV_PREFS: CvPrefs = { language: "job", format: "auto", style: "standard", photo: "auto" }
@@ -44,6 +44,7 @@ const COUNTRIES: [string, RegExp][] = [
   ["fr", /\b(france|francia|fr)$/],
   ["es", /\b(spain|españa|spagna|es)$/],
   ["nl", /\b(netherlands|nederland|paesi bassi|nl)$/],
+  ["kr", /(\b(south korea|korea|republic of korea|kr)|대한민국|한국)$/],
 ]
 
 /** ISO code of the posting's country, from the end of its location ("Zurich, ZH, Switzerland"). */
@@ -57,14 +58,21 @@ export function jobCountry(location: string | null): string | null {
 const LETTER = new Set(["us", "ca"])
 const NO_PHOTO = new Set(["us", "ca", "gb", "ie"])
 
-const STOPWORDS: Record<"it" | "en" | "de", string[]> = {
+const STOPWORDS: Record<Exclude<CvLanguage, "ko">, string[]> = {
   it: ["il", "della", "per", "che", "con", "sono", "nel", "delle", "una", "esperienza"],
   en: ["the", "and", "with", "you", "our", "for", "will", "are", "experience", "team"],
   de: ["und", "der", "die", "mit", "für", "wir", "sie", "ist", "das", "erfahrung"],
 }
 
-/** The posting's language, by its most frequent common words; English when unclear. */
-export function postingLanguage(text: string | null): "it" | "en" | "de" {
+/**
+ * The posting's language: Korean when most of its letters are Hangul (Korean postings mix in
+ * English tool names, and attach particles to words, so stopwords don't work there); otherwise
+ * by its most frequent common words; English when unclear.
+ */
+export function postingLanguage(text: string | null): CvLanguage {
+  const letters = (text ?? "").match(/\p{L}/gu) ?? []
+  const hangul = letters.filter((c) => /\p{Script=Hangul}/u.test(c)).length
+  if (hangul && hangul >= letters.length * 0.3) return "ko"
   const words = (text ?? "").toLowerCase().match(/\p{L}+/gu) ?? []
   const counts = { it: 0, en: 0, de: 0 }
   for (const w of words)
@@ -74,7 +82,7 @@ export function postingLanguage(text: string | null): "it" | "en" | "de" {
 }
 
 export interface ResolvedCv {
-  language: "it" | "en" | "de"
+  language: CvLanguage
   format: "a4" | "letter"
   style: CvPrefs["style"]
   photo: boolean

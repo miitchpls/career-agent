@@ -3,22 +3,24 @@ import { useSyncExternalStore } from "react"
 import { de } from "@/locales/de"
 import { en } from "@/locales/en"
 import { it, type Messages } from "@/locales/it"
+import { ko } from "@/locales/ko"
 
-export type Locale = "it" | "en" | "de"
+export type Locale = "it" | "en" | "de" | "ko"
 
 /** Each language named in itself, so it can be found whatever the current one is. */
 export const LOCALES: { value: Locale; label: string }[] = [
   { value: "it", label: "Italiano" },
   { value: "en", label: "English" },
   { value: "de", label: "Deutsch" },
+  { value: "ko", label: "한국어" },
 ]
 
-const DICTS: Record<Locale, Messages> = { it, en, de }
+const DICTS: Record<Locale, Messages> = { it, en, de, ko }
 /** BCP 47 tags for Intl (dates, numbers, relative times). */
-const TAGS: Record<Locale, string> = { it: "it-IT", en: "en-GB", de: "de-DE" }
+const TAGS: Record<Locale, string> = { it: "it-IT", en: "en-GB", de: "de-DE", ko: "ko-KR" }
 const KEY = "locale"
 
-const isLocale = (v: unknown): v is Locale => v === "it" || v === "en" || v === "de"
+const isLocale = (v: unknown): v is Locale => LOCALES.some((l) => l.value === v)
 
 /** Saved choice, else the browser's language when we have it, else Italian. */
 function initial(): Locale {
@@ -53,7 +55,7 @@ export function setLocale(l: Locale) {
 }
 
 export const getLocale = () => current
-/** "it-IT", "en-GB", "de-DE": for Intl and toLocaleString. */
+/** "it-IT", "en-GB", "de-DE", "ko-KR": for Intl and toLocaleString. */
 export const intlTag = () => TAGS[current]
 /** Current messages, for plain functions; components use `useT` so they re-render on a change. */
 export const msgs = (): Messages => DICTS[current]

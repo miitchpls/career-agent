@@ -57,6 +57,8 @@ import {
   completeness,
   fmtMonthYear,
   fmtRange,
+  groupByCompany,
+  groupSpan,
   isCefr,
   levelLabel,
   profileStore,
@@ -66,6 +68,7 @@ import {
   upsert,
   useProfile,
   withSkills,
+  withoutLegalForm,
   type Certification,
   type Education,
   type Experience,
@@ -456,11 +459,65 @@ function Summary({ profile: p, onChange }: { profile: Profile; onChange: Change 
 
 // --- Entries ---------------------------------------------------------------------------------
 
+// The experience timeline: a rail from each entry's mark (or, inside a company, each role's
+// dot) to the next one. Offsets in px; a review frame's padding moves its mark or dot 12px down.
+interface RailNode {
+  top: number
+  height: number
+  /** Space left between the rail and the node, below and above it. */
+  below: number
+  above: number
+}
+const FRAME_PAD = 12
+const markNode = (flagged: boolean): RailNode => ({ top: flagged ? FRAME_PAD : 0, height: 40, below: 4, above: 0 })
+const dotNode = (flagged: boolean): RailNode => ({ top: (flagged ? FRAME_PAD : 0) + 6, height: 8, below: 4, above: 4 })
+/** Gaps between the elements the rail crosses: entries, a company's header and its roles, roles. */
+const GAP = { entry: 20, header: 12, role: 16 }
+
+/** Rail from `from`, in the element that holds it, to `to`, at the top of the element `gap` below. */
+function Rail({ from, to, gap }: { from: RailNode; to: RailNode; gap: number }) {
+  return (
+    <span
+      aria-hidden
+      className="absolute left-[1.1875rem] w-px bg-border"
+      style={{ top: from.top + from.height + from.below, bottom: -(gap + to.top - to.above) }}
+    />
+  )
+}
+
 function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
   const all = useT()
   const t = all.profileView
   const ed = useEditing<Experience>()
   const save = (e: Experience) => onChange(withSkills({ ...p, experiences: upsert(p.experiences, e) }, e.skills))
+  const groups = groupByCompany(p.experiences)
+  // The first node of a group: a lone entry's mark, or a company header's (never framed).
+  const head = (g: Experience[]) => markNode(g.length === 1 && !!g[0].review)
+
+  const role = (e: Experience, inCompany: { employment: boolean; location: boolean } | null) => (
+    <EntryRow
+      mark={
+        inCompany ? (
+          <div className="flex w-10 shrink-0 justify-center">
+            <span className="mt-1.5 size-2 rounded-full bg-muted-foreground/40" />
+          </div>
+        ) : (
+          <Mark>{initials(withoutLegalForm(e.company))}</Mark>
+        )
+      }
+      note={e.review}
+      onConfirm={() => save({ ...e, review: null })}
+      onEdit={() => ed.edit(e)}
+    >
+      <ExperienceBody
+        e={e}
+        company={!inCompany}
+        employment={!inCompany?.employment}
+        location={!inCompany?.location}
+        onEdit={() => ed.edit(e)}
+      />
+    </EntryRow>
+  )
 
   return (
     <Section icon={BriefcaseIcon} title={t.experiences} count={p.experiences.length} action={<AddButton label={t.addExperience} onClick={ed.add} />}>
@@ -468,54 +525,55 @@ function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Cha
         <EmptyHint onClick={ed.add}>{t.firstExperience}</EmptyHint>
       ) : (
         <ol className="space-y-5">
-          {p.experiences.map((e, i) => (
-            <li key={e.id} className="group relative">
-              {i < p.experiences.length - 1 && (
-                // From under this entry's mark to the top of the next one; a review frame's
-                // padding moves the mark 0.75rem down.
-                <span
-                  className={cn(
-                    "absolute left-[1.1875rem] w-px bg-border",
-                    e.review ? "top-14" : "top-11",
-                    p.experiences[i + 1].review ? "-bottom-8" : "bottom-[-1.25rem]",
-                  )}
-                  aria-hidden
-                />
-              )}
-              <EntryRow
-                mark={<Mark>{initials(e.company)}</Mark>}
-                note={e.review}
-                onConfirm={() => save({ ...e, review: null })}
-                onEdit={() => ed.edit(e)}
-              >
-                <div className="flex items-start gap-2">
+          {groups.map((g, gi) => {
+            const next = groups[gi + 1]
+            if (g.length === 1) {
+              const e = g[0]
+              return (
+                <li key={e.id} className="group relative">
+                  {next && <Rail from={markNode(!!e.review)} to={head(next)} gap={GAP.entry} />}
+                  {role(e, null)}
+                </li>
+              )
+            }
+            const span = groupSpan(g)
+            // What every role shares goes in the header, once.
+            const same = (k: "employment" | "location" | "locationType") => g.every((r) => r[k] === g[0][k])
+            const employment = same("employment") ? g[0].employment : null
+            const where =
+              same("location") && same("locationType")
+                ? [g[0].location, g[0].locationType && all.profile.locationType[g[0].locationType]].filter(Boolean)
+                : []
+            return (
+              <li key={g[0].id}>
+                <div className="relative flex gap-3">
+                  <Rail from={markNode(false)} to={dotNode(!!g[0].review)} gap={GAP.header} />
+                  <Mark>{initials(withoutLegalForm(g[0].company))}</Mark>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{e.role}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {[e.company, e.employment && all.profile.employment[e.employment]].filter(Boolean).join(" · ")}
+                    <p className="text-sm font-medium">{g[0].company}</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {[employment && all.profile.employment[employment], fmtRange(span.start, span.end, span.current)]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{fmtRange(e.start, e.end, e.current)}</p>
-                    {(e.location || e.locationType) && (
-                      <p className="text-xs text-muted-foreground">{[e.location, e.locationType && all.profile.locationType[e.locationType]].filter(Boolean).join(" · ")}</p>
-                    )}
+                    {where.length > 0 && <p className="text-xs text-muted-foreground">{where.join(" · ")}</p>}
                   </div>
-                  <EditButton label={t.editExperience} onClick={() => ed.edit(e)} />
                 </div>
-                {e.bullets.length > 0 && (
-                  <ul className="mt-2 space-y-1">
-                    {e.bullets.map((b) => (
-                      <li key={b} className="flex gap-2 text-sm text-pretty">
-                        <span className="mt-2 size-1 shrink-0 rounded-full bg-muted-foreground/60" />
-                        {b}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <SkillLine skills={e.skills} />
-                <MediaStrip media={e.media} />
-              </EntryRow>
-            </li>
-          ))}
+                <ol className="mt-3 space-y-4">
+                  {g.map((e, ri) => (
+                    <li key={e.id} className="group relative">
+                      {ri < g.length - 1 ? (
+                        <Rail from={dotNode(!!e.review)} to={dotNode(!!g[ri + 1].review)} gap={GAP.role} />
+                      ) : (
+                        next && <Rail from={dotNode(!!e.review)} to={head(next)} gap={GAP.entry} />
+                      )}
+                      {role(e, { employment: !!employment, location: where.length > 0 })}
+                    </li>
+                  ))}
+                </ol>
+              </li>
+            )
+          })}
         </ol>
       )}
       <ExperienceDialog
@@ -527,6 +585,51 @@ function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Cha
         onDelete={(e) => onChange({ ...p, experiences: p.experiences.filter((x) => x.id !== e.id) })}
       />
     </Section>
+  )
+}
+
+/** A role's text. Inside a company group the company, and what all its roles share, is shown once above. */
+function ExperienceBody({
+  e,
+  company,
+  employment,
+  location,
+  onEdit,
+}: {
+  e: Experience
+  company: boolean
+  employment: boolean
+  location: boolean
+  onEdit: () => void
+}) {
+  const all = useT()
+  const t = all.profileView
+  const sub = [company && e.company, employment && e.employment && all.profile.employment[e.employment]].filter(Boolean)
+  const where = location ? [e.location, e.locationType && all.profile.locationType[e.locationType]].filter(Boolean) : []
+  return (
+    <>
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">{e.role}</p>
+          {sub.length > 0 && <p className="text-sm text-muted-foreground">{sub.join(" · ")}</p>}
+          <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{fmtRange(e.start, e.end, e.current)}</p>
+          {where.length > 0 && <p className="text-xs text-muted-foreground">{where.join(" · ")}</p>}
+        </div>
+        <EditButton label={t.editExperience} onClick={onEdit} />
+      </div>
+      {e.bullets.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {e.bullets.map((b) => (
+            <li key={b} className="flex gap-2 text-sm text-pretty">
+              <span className="mt-2 size-1 shrink-0 rounded-full bg-muted-foreground/60" />
+              {b}
+            </li>
+          ))}
+        </ul>
+      )}
+      <SkillLine skills={e.skills} />
+      <MediaStrip media={e.media} />
+    </>
   )
 }
 
@@ -812,7 +915,7 @@ function Certifications({ profile: p, onChange }: { profile: Profile; onChange: 
           {p.certifications.map((c) => (
             <li key={c.id} className="group">
               <EntryRow
-                mark={<Mark>{initials(c.issuer)}</Mark>}
+                mark={<Mark>{initials(withoutLegalForm(c.issuer))}</Mark>}
                 note={c.review}
                 onConfirm={() => save({ ...c, review: null })}
                 onEdit={() => ed.edit(c)}
@@ -952,7 +1055,7 @@ function CvPrefsCard() {
         label={t.language}
         value={prefs.language}
         onChange={set("language")}
-        options={[["job", t.languageJob], ["it", t.languageIt], ["en", t.languageEn], ["de", t.languageDe]]}
+        options={[["job", t.languageJob], ["it", t.languageIt], ["en", t.languageEn], ["de", t.languageDe], ["ko", t.languageKo]]}
       />
       <Pref
         label={t.format}

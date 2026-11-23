@@ -9,7 +9,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import type { JobType, Place, Scope, Site } from "@/lib/api"
-import { type Currency, CURRENCIES, formatAmount, parseSalary } from "@/lib/currencies"
+import { type Currency, CURRENCIES, formatAmount, parseSalary, salaryRangeK } from "@/lib/currencies"
 import { POSTED, SITES } from "@/lib/filters"
 import { JOB_TYPES } from "@/lib/job-types"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -161,9 +161,6 @@ export function ScopeEditor({
 
 /* ------------------------------------------------------------------ salary */
 
-/** Mirrors the server's limit on `Query.salary_min` (thousands per year). */
-const SALARY_MAX_K = 10_000
-
 export function SalaryEditor({
   initial,
   includeUnknown,
@@ -184,10 +181,11 @@ export function SalaryEditor({
   const [value, setValue] = useState(initial !== null ? formatAmount(initial * 1000) : "")
   const [unknown, setUnknown] = useState(includeUnknown)
   const [currency, setCurrency] = useState<Currency>(initialCurrency)
-  const amount = parseSalary(value)
-  const valid = amount !== null && amount >= 1000 && amount / 1000 <= SALARY_MAX_K
-  // "100" is read as 100.000: say so, so it's never a surprise.
-  const readAsThousands = valid && Number(value.replace(/\D/g, "")) < 1000
+  const amount = parseSalary(value, currency)
+  const [lo, hi] = salaryRangeK(currency)
+  const valid = amount !== null && amount / 1000 >= lo && amount / 1000 <= hi
+  // "100" is read as 100.000, and "6000" won as 6000만: say so, so it's never a surprise.
+  const reread = valid && amount !== Number(value.replace(/\D/g, ""))
   const apply = () => valid && onApply(Math.round(amount / 1000), unknown, currency)
 
   return (
@@ -209,7 +207,7 @@ export function SalaryEditor({
           placeholder="100.000"
           value={value}
           onChange={(e) => {
-            const digits = e.target.value.replace(/\D/g, "").slice(0, 8)
+            const digits = e.target.value.replace(/\D/g, "").slice(0, 11) // up to billions: won
             setValue(digits ? formatAmount(Number(digits)) : "")
           }}
           onKeyDown={(e) => e.key === "Enter" && apply()}
@@ -230,9 +228,9 @@ export function SalaryEditor({
           </Select>
         </InputGroupAddon>
       </InputGroup>
-      {readAsThousands && (
+      {reread && (
         <p className="-mt-1 text-xs text-muted-foreground">
-          {t.readAs} <span className="font-mono">{formatAmount(amount)}</span> {currency}
+          {t.readAs} <span className="font-mono">{formatAmount(amount, currency)}</span> {currency}
         </p>
       )}
       <IncludeUnknown label={t.unknownSalary} checked={unknown} onCheckedChange={setUnknown} />

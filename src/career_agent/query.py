@@ -119,7 +119,8 @@ class Query(BaseModel):
     scopes: list[Scope] = Field(default_factory=list, max_length=6)
     title_any: list[str] = Field(default_factory=list, max_length=10)
     title_none: list[str] = Field(default_factory=list, max_length=20)
-    salary_min: int | None = Field(None, ge=0, le=10_000)  # thousands per year
+    # Thousands per year; the top fits won (web/src/lib/currencies.ts salaryRangeK).
+    salary_min: int | None = Field(None, ge=0, le=10_000_000)
     salary_currency: str = Field(
         "CHF", pattern=r"^[A-Z]{3}$"
     )  # salaries are converted to this

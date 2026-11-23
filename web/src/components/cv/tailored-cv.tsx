@@ -158,7 +158,12 @@ function Result({ job, onRegenerate, onOpenProfile }: { job: Job; onRegenerate: 
   const prefs = useCvPrefs()
   const [marks, setMarks] = useState(true)
   const look = resolveCv(prefs, job, !!profile.photo)
-  const languageName = { it: all.profileView.languageIt, en: all.profileView.languageEn, de: all.profileView.languageDe }
+  const languageName = {
+    it: all.profileView.languageIt,
+    en: all.profileView.languageEn,
+    de: all.profileView.languageDe,
+    ko: all.profileView.languageKo,
+  }
   const gaps = cv.matches.filter((m) => m.kind === "gap")
   const have = cv.matches.filter((m) => m.kind === "have").length
 

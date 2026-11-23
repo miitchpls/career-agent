@@ -191,13 +191,17 @@ export interface ProfileState {
   draft: ProfileDraft | null
 }
 
+/** Languages a CV can be written in (`career_agent.cv_render.CvLanguage`). */
+export const CV_LANGUAGES = ["it", "en", "de", "ko"] as const
+export type CvLanguage = (typeof CV_LANGUAGES)[number]
+
 /** career-ops' CV templates, rendered by `career_agent.cv_render`. */
 export const CV_TEMPLATES = ["standard", "modern", "compact", "executive", "leadership", "jake", "ats"] as const
 export type CvTemplate = (typeof CV_TEMPLATES)[number]
 
 export interface CvPreviewRequest {
   templates: CvTemplate[]
-  language: "it" | "en" | "de"
+  language: CvLanguage
   format: "a4" | "letter"
   photo: boolean
   /** Shown exactly as given; null: the sample profile. */
@@ -209,7 +213,7 @@ export interface CvPreviewRequest {
 /** How tailored CVs are written: `/api/cv/preferences`. */
 export interface CvPrefs {
   /** "job": the posting's language. */
-  language: "job" | "it" | "en" | "de"
+  language: "job" | CvLanguage
   /** "auto": Letter for the US and Canada, A4 elsewhere. */
   format: "auto" | "a4" | "letter"
   /** One of career-ops' CV templates. */

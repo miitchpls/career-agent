@@ -1,5 +1,5 @@
 import type { Job, Query, Scope } from "@/lib/api"
-import { intlTag, msgs } from "@/lib/i18n"
+import { getLocale, intlTag, msgs } from "@/lib/i18n"
 
 function scopeLabel(s: Scope): { where: string; modes: string | null } {
   return {
@@ -8,7 +8,14 @@ function scopeLabel(s: Scope): { where: string; modes: string | null } {
   }
 }
 
-const compact = (n: number) => `${Math.round(n / 1000)}K`
+/**
+ * Short salary figures: "85K"; from a million up, the language's own short form ("45M",
+ * "45 Mln", "45 Mio."), which covers won and yen. A Korean UI uses 만 and 억 ("4500만").
+ */
+const compact = (n: number) =>
+  getLocale() === "ko" || n >= 1e6
+    ? new Intl.NumberFormat(intlTag(), { notation: "compact", maximumFractionDigits: 1 }).format(n)
+    : `${Math.round(n / 1000)}K`
 
 export function salaryLabel(job: Pick<Job, "min_amount" | "max_amount" | "currency">): string | null {
   const { min_amount: lo, max_amount: hi, currency } = job

@@ -9,12 +9,13 @@ renders the same here.
 
 import html
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Literal
 
-from .profile import MonthYear, Profile
+from .profile import Experience, MonthYear, Profile
 
 ROOT = Path(__file__).parent / "cv_templates"
 
@@ -30,7 +31,7 @@ TEMPLATES: dict[str, Path] = {
     "jake": ROOT / "cv-template.jake.html",
     "ats": ROOT / "ats" / "cv-template.ats.html",
 }
-CvLanguage = Literal["it", "en", "de"]
+CvLanguage = Literal["it", "en", "de", "ko"]
 PageFormat = Literal["a4", "letter"]
 PAGE_WIDTHS = {"a4": "210mm", "letter": "8.5in"}
 PAGE_HEIGHTS = {"a4": "297mm", "letter": "11in"}
@@ -79,6 +80,20 @@ WORDS: dict[str, dict[str, str]] = {
         "technical": "Fachlich",
         "languages": "Sprachen",
         "present": "heute",
+    },
+    "ko": {
+        "summary": "자기소개",
+        "competencies": "핵심 역량",
+        "experience": "경력",
+        "projects": "프로젝트",
+        "education": "학력",
+        "certifications": "자격증",
+        "awards": "수상",
+        "interests": "관심 분야",
+        "skills": "기술",
+        "technical": "기술 스택",
+        "languages": "외국어",
+        "present": "현재",
     },
 }
 MONTHS = {
@@ -132,6 +147,8 @@ LEVELS = {
            "full": "professionale completa", "native": "madrelingua"},
     "de": {"elementary": "Grundkenntnisse", "limited": "eingeschränkt", "professional": "verhandlungssicher",
            "full": "fließend", "native": "Muttersprache"},
+    "ko": {"elementary": "초급", "limited": "제한적 업무 가능", "professional": "업무 가능",
+           "full": "비즈니스 능통", "native": "원어민"},
 }  # fmt: skip
 
 
@@ -267,6 +284,8 @@ def strip_empty(source: str, filled: dict[str, bool]) -> str:
 def _date(d: MonthYear | None, lang: str) -> str:
     if not d:
         return ""
+    if lang == "ko":  # Korean CVs write dates as 2020.03
+        return f"{d.year}.{d.month + 1:02d}" if d.month is not None else str(d.year)
     return f"{MONTHS[lang][d.month]} {d.year}" if d.month is not None else str(d.year)
 
 
@@ -316,30 +335,122 @@ def _contact_row(p: Profile) -> str:
     return '<div class="contact-row">\n      ' + "\n      ".join(items) + "\n    </div>"
 
 
-def _experience(p: Profile, part: Partial, lang: str, mark) -> str:
+# Legal-form words dropped when comparing employers, as in the UI (web/src/lib/profile.ts).
+_LEGAL_FORMS = frozenset(
+    [
+        "ag",
+        "bv",
+        "co",
+        "corp",
+        "corporation",
+        "gmbh",
+        "inc",
+        "kg",
+        "llc",
+        "llp",
+        "ltd",
+        "limited",
+        "plc",
+        "sa",
+        "sagl",
+        "sarl",
+        "sas",
+        "snc",
+        "spa",
+        "srl",
+        "srls",
+    ]
+)
+
+
+def company_key(name: str) -> str:
+    """Comparable employer name: "Acme S.p.A." and "ACME" are one company."""
+    text = unicodedata.normalize("NFKD", name)
+    text = "".join(c for c in text if not unicodedata.combining(c)).lower()
+    text = re.sub(r"([^\W\d_])\.(?=[^\W\d_]\b|\s|$)", r"\1", text)  # "s.p.a." -> "spa"
+    words = [w for w in re.split(r"[\W_]+", text) if w]
+    while len(words) > 1 and words[-1] in _LEGAL_FORMS:
+        words.pop()
+    return " ".join(words)
+
+
+def _company_groups(experiences: list[Experience]) -> list[list[Experience]]:
+    """Consecutive roles at one employer; leaving and coming back makes two groups."""
+    groups: list[list[Experience]] = []
+    for e in experiences:
+        key = company_key(e.company)
+        if groups and key and company_key(groups[-1][0].company) == key:
+            groups[-1].append(e)
+        else:
+            groups.append([e])
+    return groups
+
+
+def _span(roles: list[Experience]) -> tuple[MonthYear | None, MonthYear | None, bool]:
+    """A group's earliest start, latest end (None if a role is ongoing) and whether it is."""
+
+    def n(d: MonthYear) -> int:
+        return d.year * 12 + (d.month or 0)
+
+    starts = [r.start for r in roles if r.start]
+    ends = [r.end for r in roles if r.end]
+    current = any(r.current for r in roles)
+    return (
+        min(starts, key=n) if starts else None,
+        None if current or not ends else max(ends, key=n),
+        current,
+    )
+
+
+def _with_class(entry: str, cls: str) -> str:
+    """Add `cls` to the entry's root element (the first class attribute)."""
+    return entry.replace('class="', f'class="{cls} ', 1)
+
+
+def _experience(p: Profile, part: Partial, lang: str, mark, group: bool = True) -> str:
+    """Roles as the template lays them out. With `group`, consecutive roles at one employer
+    show the company once, with its whole span, and each role with its own dates; the later
+    roles' headers are hidden by the sheet's CSS (`.ca-role`), so their text stays in order."""
     out = []
-    for e in p.experiences:
-        if not (e.role or e.company):
-            continue
-        where = " · ".join(
-            x
-            for x in (e.location, e.location_type and _MODES[lang][e.location_type])
-            if x
-        )
-        bullets = "\n    ".join(f"<li>{mark(b)}</li>" for b in e.bullets if b)
-        fields = {
-            "COMPANY": esc(e.company),
-            "PERIOD": esc(_period(e.start, e.end, e.current, lang)),
-            "ROLE": esc(e.role),
-            "LOCATION": esc(where),
-            "CONTEXT": "",
-            "BULLETS": bullets,
-        }
-        out.append(
-            fill_entry(
+    roles = [e for e in p.experiences if e.role or e.company]
+    for g in _company_groups(roles) if group else [[e] for e in roles]:
+        grouped = len(g) > 1
+        places = {(e.location, e.location_type) for e in g}
+        for i, e in enumerate(g):
+            # A place every role in the company shares is written once, on the first role.
+            where = (
+                ""
+                if grouped and i > 0 and len(places) == 1
+                else " · ".join(
+                    x
+                    for x in (
+                        e.location,
+                        e.location_type and _MODES[lang][e.location_type],
+                    )
+                    if x
+                )
+            )
+            period = esc(_period(e.start, e.end, e.current, lang))
+            bullets = "\n    ".join(f"<li>{mark(b)}</li>" for b in e.bullets if b)
+            role = esc(e.role)
+            if grouped and period:
+                role += f' <span class="ca-role-period">· {period}</span>'
+            fields = {
+                "COMPANY": esc(e.company),
+                "PERIOD": esc(_period(*_span(g), lang))
+                if grouped and i == 0
+                else period,
+                "ROLE": role,
+                "LOCATION": esc(where),
+                "CONTEXT": "",
+                "BULLETS": bullets,
+            }
+            entry = fill_entry(
                 part, fields, {"LOCATION_BLOCK": esc(where), "CONTEXT_BLOCK": None}
             )
-        )
+            if grouped:
+                entry = _with_class(entry, "ca-company" if i == 0 else "ca-role")
+            out.append(entry)
     return "\n  ".join(out)
 
 
@@ -347,6 +458,7 @@ _MODES = {
     "en": {"onsite": "On-site", "hybrid": "Hybrid", "remote": "Remote"},
     "it": {"onsite": "In sede", "hybrid": "Ibrido", "remote": "Da remoto"},
     "de": {"onsite": "Vor Ort", "hybrid": "Hybrid", "remote": "Remote"},
+    "ko": {"onsite": "사무실 근무", "hybrid": "하이브리드", "remote": "원격 근무"},
 }
 
 
@@ -450,7 +562,11 @@ def _page_css(page: PageFormat, marks: bool = False) -> str:
         "  html, body { margin: 0; }\n"
         f"  .page {{ box-sizing: border-box; width: {PAGE_WIDTHS[page]}; max-width: none;"
         f" min-height: {PAGE_HEIGHTS[page]}; padding: var(--page-margin, 0.6in); }}\n"
-        "}\n"
+        "}\n" + "  .ca-role .job-header { display: none; }\n"
+        # Roles grouped under one company: later roles drop the repeated header, and sit
+        # closer to the role above; each role's own dates follow its title.
+        "  .job:has(+ .ca-role) { margin-bottom: 6px; }\n"
+        "  .ca-role-period { font-weight: 400; font-size: 0.9em; opacity: 0.7; white-space: nowrap; }\n"
         + (
             "mark.ca-changed { background: #fde68a; color: inherit; border-radius: 2px;"
             " padding: 0 1px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }\n"
@@ -487,7 +603,9 @@ def render(
     photo_src = p.photo if photo and p.photo and _PHOTO_SRC.match(p.photo) else ""
 
     sections = {
-        "EXPERIENCE": _experience(p, parts["experience"], lang, mark),
+        "EXPERIENCE": _experience(
+            p, parts["experience"], lang, mark, group=template != "ats"
+        ),
         "PROJECTS": _projects(p, parts["projects"]),
         "EDUCATION": _education(p, parts["education"], lang),
         "CERTIFICATIONS": _certifications(p, parts["certifications"]),

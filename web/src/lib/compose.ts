@@ -15,7 +15,7 @@ import {
 import type { JobType, Place, PlaceOption, Scope, Site } from "@/lib/api"
 import { POSTED, SITES, type FilterState } from "@/lib/filters"
 import { msgs } from "@/lib/i18n"
-import { DEFAULT_CURRENCY, formatAmount, parseCurrency, parseSalary } from "@/lib/currencies"
+import { DEFAULT_CURRENCY, formatAmount, parseCurrency, parseSalary, salaryRangeK, type Currency } from "@/lib/currencies"
 import { JOB_TYPES } from "@/lib/job-types"
 import { joinModes, splitModes, type KnownMode } from "@/lib/modes"
 import { samePlace, toPlace } from "@/lib/places"
@@ -80,22 +80,22 @@ export function removeLast(f: FilterState): Patch | null {
 
 // What users may type, in any of the UI languages (the parser doesn't depend on the locale).
 const MODE_WORDS: [KnownMode, string[]][] = [
-  ["onsite", ["in sede", "sede", "onsite", "on-site", "on site", "ufficio", "in presenza", "presenza", "office", "in office", "vor ort", "büro"]],
-  ["hybrid", ["ibrido", "ibrida", "hybrid", "smart working"]],
-  ["remote", ["remoto", "remota", "da remoto", "remote", "full remote", "telelavoro", "homeoffice", "home office"]],
+  ["onsite", ["in sede", "sede", "onsite", "on-site", "on site", "ufficio", "in presenza", "presenza", "office", "in office", "vor ort", "büro", "사무실", "사무실 근무", "출근", "상주"]],
+  ["hybrid", ["ibrido", "ibrida", "hybrid", "smart working", "하이브리드", "혼합 근무"]],
+  ["remote", ["remoto", "remota", "da remoto", "remote", "full remote", "telelavoro", "homeoffice", "home office", "원격", "원격 근무", "재택", "재택근무", "리모트"]],
 ]
-const OR_WORDS = ["o", "or", "oppure", "oder", "|"]
-const ANYWHERE_WORDS = ["ovunque", "everywhere", "anywhere", "worldwide", "tutto il mondo", "überall", "weltweit"]
+const OR_WORDS = ["o", "or", "oppure", "oder", "또는", "|"]
+const ANYWHERE_WORDS = ["ovunque", "everywhere", "anywhere", "worldwide", "tutto il mondo", "überall", "weltweit", "어디서나", "전 세계", "전세계"]
 const POSTED_WORDS: [number, string[]][] = [
-  [24, ["oggi", "24h", "24 ore", "ultime 24 ore", "1g", "1 giorno", "today", "last 24 hours", "heute", "letzte 24 stunden"]],
-  [72, ["3g", "3 giorni", "ultimi 3 giorni", "3 days", "last 3 days", "3 tage", "letzte 3 tage"]],
-  [168, ["settimana", "7g", "7 giorni", "1 settimana", "ultimi 7 giorni", "ultima settimana", "week", "last week", "last 7 days", "woche", "letzte woche", "letzte 7 tage"]],
-  [336, ["2 settimane", "14g", "14 giorni", "ultime 2 settimane", "2 weeks", "last 2 weeks", "2 wochen", "letzte 2 wochen"]],
-  [720, ["mese", "30g", "30 giorni", "1 mese", "ultimo mese", "ultimi 30 giorni", "month", "last month", "last 30 days", "monat", "letzter monat", "letzte 30 tage"]],
+  [24, ["oggi", "24h", "24 ore", "ultime 24 ore", "1g", "1 giorno", "today", "last 24 hours", "heute", "letzte 24 stunden", "오늘", "24시간", "최근 24시간"]],
+  [72, ["3g", "3 giorni", "ultimi 3 giorni", "3 days", "last 3 days", "3 tage", "letzte 3 tage", "3일", "최근 3일"]],
+  [168, ["settimana", "7g", "7 giorni", "1 settimana", "ultimi 7 giorni", "ultima settimana", "week", "last week", "last 7 days", "woche", "letzte woche", "letzte 7 tage", "1주", "일주일", "최근 1주", "최근 7일"]],
+  [336, ["2 settimane", "14g", "14 giorni", "ultime 2 settimane", "2 weeks", "last 2 weeks", "2 wochen", "letzte 2 wochen", "2주", "최근 2주"]],
+  [720, ["mese", "30g", "30 giorni", "1 mese", "ultimo mese", "ultimi 30 giorni", "month", "last month", "last 30 days", "monat", "letzter monat", "letzte 30 tage", "1개월", "한 달", "최근 1개월", "최근 30일"]],
 ]
-/** Starts of "ultimi…", "last…", "letzte…": typing one lists every date choice. */
-const LAST = /^(ultim|last|letzt)/
-const SALARY_WORDS = ["stipendio", "ral", "salary", "gehalt", "lohn"]
+/** Starts of "ultimi…", "last…", "letzte…", "최근…": typing one lists every date choice. */
+const LAST = /^(ultim|last|letzt|최근)/
+const SALARY_WORDS = ["stipendio", "ral", "salary", "gehalt", "lohn", "연봉", "급여"]
 
 const prefixOf = (t: string, words: string[]) => t.length >= 2 && words.some((w) => w.startsWith(t))
 
@@ -161,17 +161,24 @@ export function suggest(
 
   // "100.000", "100'000 chf", "80k", "stipendio 90", "€ 80k", "120000 dollari", "80k l'anno"
   const sal =
-    /^(?:stipendio|ral|salary|gehalt|lohn|>=?|≥|da|from|ab)?\s*([€$£])?\s*(\d{1,3}(?:[.,'’ ]\d{3})+|\d{2,7})\s*(k|mila|tsd)?\s*([a-z€$£]{1,8})?\s*(?:\/\s*(?:anno|year|jahr)|annui|l'anno|a year|per year|pro jahr)?$/i.exec(t)
-  const salCur = sal?.[4] ? parseCurrency(sal[4]) : sal?.[1] ? parseCurrency(sal[1]) : null
-  const amount = sal && (!sal[4] || salCur) ? parseSalary(`${sal[2]}${sal[3] ?? ""}`) : null
+    /^(?:stipendio|ral|salary|gehalt|lohn|연봉|급여|>=?|≥|da|from|ab)?\s*([€$£])?\s*(\d{1,3}(?:[.,'’ ]\d{3})+|\d{2,11})\s*(k(?![a-z])|mila|tsd)?\s*([a-z€$£]{1,8})?\s*(?:\/\s*(?:anno|year|jahr)|annui|l'anno|a year|per year|pro jahr)?$/i.exec(t)
+  let salCur: Currency | null = sal?.[4] ? parseCurrency(sal[4]) : sal?.[1] ? parseCurrency(sal[1]) : null
+  let amount = sal && (!sal[4] || salCur) ? parseSalary(`${sal[2]}${sal[3] ?? ""}`, salCur ?? f.cur) : null
+  // Won, as Koreans write it: "연봉 6000만", "6천만원", "1억 2천만", "₩60,000,000", "60,000,000원".
+  const won = /^(?:연봉|급여)?\s*(₩)?\s*([\d.,\s]+(?:천)?[만억]?[\d.,\s천만]*)\s*(원)?$/.exec(t)
+  if (amount === null && won && (won[1] || won[3] || /[만억]/.test(won[2]))) {
+    amount = parseSalary(won[2].trim(), "KRW")
+    salCur = "KRW"
+  }
   if (amount !== null) {
     const n = Math.round(amount / 1000)
     const cur = salCur ?? f.cur
-    if (n >= 10 && n <= 10_000)
+    const [lo, hi] = salaryRangeK(cur)
+    if (n >= lo && n <= hi)
       out.push({
         id: `salary:${n}:${cur}`,
         icon: CoinsIcon,
-        label: tr.salary(formatAmount(n * 1000), cur),
+        label: tr.salary(formatAmount(n * 1000, cur), cur),
         hint: tr.salaryHint,
         patch: { salary: n, cur: cur === DEFAULT_CURRENCY ? null : cur },
       })

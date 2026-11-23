@@ -273,7 +273,7 @@ function Sentence({
             />
           )}
         >
-          <span className="font-mono">{formatAmount(f.salary * 1000)}</span>
+          <span className="font-mono">{formatAmount(f.salary * 1000, f.cur)}</span>
           <span className="font-mono text-xs text-muted-foreground">{f.cur}</span>
           <span className="text-muted-foreground">
             {c.perYear}

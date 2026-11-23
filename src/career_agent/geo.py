@@ -38,10 +38,26 @@ COUNTRIES: dict[str, tuple[str, str, str]] = {
     "ie": ("Irlanda", "Ireland", "ireland"),
     "pt": ("Portogallo", "Portugal", "portugal"),
     "us": ("Stati Uniti", "United States", "usa"),
+    "kr": ("Corea del Sud", "South Korea", "south korea"),
 }
 
-# German country names, for the offline catalogue in a German UI (it has no German city names:
-# those come out in English, which the boards understand anyway).
+# Country names for the offline catalogue in a German or Korean UI (it has no city names in
+# those languages: cities come out in English, which the boards understand anyway).
+COUNTRIES_KO: dict[str, str] = {
+    "it": "이탈리아",
+    "ch": "스위스",
+    "de": "독일",
+    "fr": "프랑스",
+    "es": "스페인",
+    "gb": "영국",
+    "nl": "네덜란드",
+    "at": "오스트리아",
+    "be": "벨기에",
+    "ie": "아일랜드",
+    "pt": "포르투갈",
+    "us": "미국",
+    "kr": "대한민국",
+}
 COUNTRIES_DE: dict[str, str] = {
     "it": "Italien",
     "ch": "Schweiz",
@@ -55,6 +71,7 @@ COUNTRIES_DE: dict[str, str] = {
     "ie": "Irland",
     "pt": "Portugal",
     "us": "Vereinigte Staaten",
+    "kr": "Südkorea",
 }
 
 # (Italian name, English name, country)
@@ -113,6 +130,9 @@ OFFLINE_CITIES: list[tuple[str, str, str]] = [
     ("Siviglia", "Seville", "es"),
     ("New York", "New York", "us"),
     ("San Francisco", "San Francisco", "us"),
+    ("Seul", "Seoul", "kr"),
+    ("Busan", "Busan", "kr"),
+    ("Incheon", "Incheon", "kr"),
 ]
 
 EXONYMS: dict[str, str] = {it.lower(): en for it, en, _ in OFFLINE_CITIES}
@@ -182,6 +202,14 @@ def _search_online(text: str, limit: int, lang: Locale = "it") -> tuple[dict, ..
     return tuple(out)
 
 
+def _country_name(cc: str, lang: Locale) -> str:
+    if lang == "de":
+        return COUNTRIES_DE[cc]
+    if lang == "ko":
+        return COUNTRIES_KO[cc]
+    return COUNTRIES[cc][0 if lang == "it" else 1]
+
+
 def _search_offline(text: str, limit: int, lang: Locale = "it") -> list[dict]:
     t = _norm(text)
     scored = []
@@ -205,9 +233,7 @@ def _search_offline(text: str, limit: int, lang: Locale = "it") -> list[dict]:
                         "city": it if lang == "it" else en,
                         "region": None,
                         "country": cc,
-                        "country_name": COUNTRIES_DE[cc]
-                        if lang == "de"
-                        else COUNTRIES[cc][0 if lang == "it" else 1],
+                        "country_name": _country_name(cc, lang),
                     },
                 )
             )
