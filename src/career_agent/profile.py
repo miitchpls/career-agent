@@ -163,6 +163,35 @@ class Profile(_Model):
         return self.model_dump(by_alias=True, mode="json")
 
 
+class CvPrefs(_Model):
+    """How tailored CVs are written. Settings, not profile data: no revision per change."""
+
+    language: Literal["job", "it", "en", "de"] = "job"  # job: the posting's language
+    format: Literal["auto", "a4", "letter"] = (
+        "auto"  # auto: Letter in the US and Canada
+    )
+    style: Literal["modern", "classic", "compact"] = "modern"
+    photo: Literal["auto", "always", "never"] = (
+        "auto"  # auto: where CVs usually have one
+    )
+
+
+_CV_PREFS_KEY = "cv_prefs"
+
+
+def cv_prefs() -> CvPrefs:
+    raw = db.get_setting(_CV_PREFS_KEY)
+    try:
+        return CvPrefs.model_validate_json(raw) if raw else CvPrefs()
+    except ValidationError:  # written by an older version: start from the defaults
+        return CvPrefs()
+
+
+def save_cv_prefs(prefs: CvPrefs) -> CvPrefs:
+    db.set_setting(_CV_PREFS_KEY, prefs.model_dump_json())
+    return prefs
+
+
 # --- What the AI fills in ------------------------------------------------------------------
 # Written by hand rather than generated: both CLIs validate against it, and OpenAI's strict
 # mode wants every property required (optional = nullable) and no extra keywords.

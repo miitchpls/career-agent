@@ -466,7 +466,7 @@ export const de: Messages = {
     languageDe: "Deutsch",
     format: "Format",
     formatAuto: "Automatisch",
-    template: "Vorlage",
+    style: "Stil",
     modern: "Modern",
     classic: "Klassisch",
     compact: "Kompakt",
@@ -556,7 +556,6 @@ export const de: Messages = {
     yourName: "Dein Name",
     mark: "Lebenslauf für diese Stelle erstellt",
     mock: {
-      language: "Englisch",
       now: "gerade eben",
       germanB2: "Deutsch B2",
       why: {
