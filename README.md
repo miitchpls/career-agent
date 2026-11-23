@@ -110,6 +110,24 @@ the company once, with its whole span, and its roles underneath. Leaving and com
 makes two groups. The import is told to keep each role, including promotions, as its own
 entry, and to keep projects or clients within a role in its bullets.
 
+### Profile review
+
+**Review with AI**, on the profile page, runs the same AI CLI as the import over bullets, descriptions,
+summary and headline. It proposes, one by one, each with the reason:
+
+- a **rewrite** with the same facts (active verb, no filler), shown as a word diff;
+- a **question** where a figure only you know would help: the improved text with blanks you fill in;
+- a **skill** an entry's own text names but its skills list lacks.
+
+Nothing changes until you press **Apply**, which is an ordinary edit (a new revision). The server drops any
+suggestion that points at text that isn't there, or that brings in a fact the profile doesn't hold: a number, or
+a name such as a tool, product or employer that appears nowhere in the profile. A suggestion whose text you've
+edited since the review is marked as no longer applying. Suggestions are stored with the review, so they survive a
+restart; if a later review fails or is interrupted, the last finished one's open suggestions stay on screen
+until a new one finishes.
+
+The edit dialogs refuse an end date before the start date (and an expiry before the issue date).
+
 ### CV preferences
 
 Set on the profile page and saved on the server. They decide how a tailored CV is laid out:
@@ -200,8 +218,9 @@ Profile tables:
 | `profile_drafts` | Imports: running, waiting for review, failed, confirmed or discarded |
 | `documents` | Uploaded CVs and their extracted text |
 | `profile_files` | Photos and attachments. Files the profile no longer uses are deleted after the next save |
+| `profile_reviews` | AI reviews and their suggestions, with whether each was applied or dismissed |
 
-**Start over** on the profile page deletes the profile, drafts, CVs and attachments. Postings and saved searches
+**Start over** on the profile page deletes the profile, drafts, reviews, CVs and attachments. Postings and saved searches
 are unaffected.
 
 ## Development
@@ -233,6 +252,8 @@ src/career_agent/
   geo.py       City autocomplete and English names for the boards
   fx.py        ECB exchange rates
   profile.py   Profile model, CV reading, import pipeline, CV preferences
+  review.py    AI review of the profile: prompt, schema, checks against new facts
+  runs.py      One background AI run at a time (import, review), cancellable
   cv_render.py career-ops CV templates filled with the profile
   cv_templates/ the templates, copied from career-ops
   ai.py        AI CLI detection, settings and isolated runs
@@ -257,6 +278,7 @@ tests/
 | `POST /api/profile/import` | Start an import (multipart: `file` or `text`) |
 | `PUT/DELETE /api/profile/draft` · `POST /api/profile/draft/confirm` · `POST /api/profile/draft/retry` | Review an import |
 | `POST /api/profile/files` · `GET /api/profile/files/{id}` | Photos and attachments |
+| `GET/POST/DELETE /api/profile/review` · `PATCH /api/profile/review/suggestions/{id}` | Latest AI review · start · cancel · mark a suggestion applied or dismissed |
 
 ## Known limitations
 

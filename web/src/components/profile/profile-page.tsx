@@ -44,17 +44,12 @@ export function ProfilePage() {
   return (
     <div className="mx-auto w-full max-w-6xl px-6 pb-16">
       {hasProfile(state) && (
-        <div className="flex flex-wrap items-end gap-3 pt-10 pb-6">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">{t.pageTitle}</h1>
-            <p className="text-sm text-muted-foreground">
-              {t.pageText}
-              {state.savedAt && state.stage === "ready" && (
-                <span className="ml-1.5 text-xs">· {t.savedAt(savedTime(state.savedAt))}</span>
-              )}
-            </p>
-          </div>
+        <div className="flex flex-wrap items-center gap-3 pt-10 pb-6">
+          <h1 className="text-2xl font-semibold tracking-tight">{t.pageTitle}</h1>
           <div className="ml-auto flex items-center gap-1.5">
+            {state.savedAt && state.stage === "ready" && (
+              <span className="mr-1.5 text-xs text-muted-foreground tabular-nums">{t.savedAt(savedTime(state.savedAt))}</span>
+            )}
             {state.stage === "review" ? (
               // A new import would replace the draft under review: finish that one first.
               <Tooltip>

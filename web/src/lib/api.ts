@@ -261,6 +261,44 @@ function form(fields: Record<string, string | Blob>): FormData {
   return f
 }
 
+/** One suggestion of an AI profile review (`career_agent.review.Suggestion`). */
+export interface ReviewSuggestion {
+  id: string
+  /** rewrite: new text; question: new text with [[label]] blanks to fill in; add_skill: a skill. */
+  kind: "rewrite" | "question" | "add_skill"
+  section: "profile" | "experience" | "education" | "project" | "certification"
+  /** null for the summary and the headline. */
+  entryId: string | null
+  field: "bullet" | "description" | "summary" | "headline" | "skill"
+  index: number | null
+  /** The text it replaces, as it was when reviewed ("" for add_skill). */
+  before: string
+  after: string
+  reason: string
+  state: "open" | "applied" | "dismissed"
+}
+
+export interface ProfileReview {
+  id: number
+  status: "running" | "ready" | "failed"
+  provider: string
+  model: string | null
+  suggestions: ReviewSuggestion[]
+  /** The AI's suggestions that failed the server's checks (new facts, stale text). */
+  dropped: number
+  error: string | null
+  created_at: string
+}
+
+/**
+ * The latest review, and while it runs or after it fails the last finished one, whose open
+ * suggestions stay on screen until a newer review finishes.
+ */
+export interface ReviewState {
+  review: ProfileReview | null
+  earlier: ProfileReview | null
+}
+
 export const api = {
   places: (q: string) =>
     request<{ places: PlaceOption[]; offline: boolean }>(`/api/places?q=${encodeURIComponent(q)}`),
@@ -297,5 +335,13 @@ export const api = {
     confirm: (profile: unknown) => post<ProfileState>("/api/profile/draft/confirm", { profile }),
     discard: () => del<ProfileState>("/api/profile/draft"),
     upload: (file: File) => request<UploadedFile>("/api/profile/files", { method: "POST", body: form({ file }) }),
+    review: () => request<ReviewState>("/api/profile/review"),
+    startReview: () => post<ReviewState>("/api/profile/review", {}),
+    cancelReview: () => del<ReviewState>("/api/profile/review"),
+    setSuggestion: (id: string, state: ReviewSuggestion["state"]) =>
+      request<ReviewState>(`/api/profile/review/suggestions/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ state }),
+      }),
   },
 }

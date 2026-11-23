@@ -122,10 +122,10 @@ MESSAGES: dict[str, dict[Locale, str]] = {
     },
     # AI engines (ai.py)
     "ai_none": {
-        "it": "Nessun motore AI collegato: installa Claude Code o Codex ed esegui l'accesso.",
-        "en": "No AI engine connected: install Claude Code or Codex and sign in.",
-        "de": "Keine KI verbunden: installiere Claude Code oder Codex und melde dich an.",
-        "ko": "연결된 AI 엔진이 없습니다: Claude Code 또는 Codex를 설치하고 로그인하세요.",
+        "it": "Nessun motore AI collegato: in Preferenze → Motore AI trovi quelli supportati e come collegarli.",
+        "en": "No AI engine connected: Preferences → AI engine lists the supported ones and how to connect them.",
+        "de": "Keine KI verbunden: unter Einstellungen → KI findest du die unterstützten und wie du sie verbindest.",
+        "ko": "연결된 AI 엔진이 없습니다: 환경설정 → AI 엔진에서 지원되는 엔진과 연결 방법을 확인하세요.",
     },
     "ai_unknown": {
         "it": "Motore AI sconosciuto",
@@ -146,10 +146,10 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "ko": "{name}에서 사용할 수 없는 모델",
     },
     "ai_failed": {
-        "it": "{name} non ha completato l'estrazione: {why}",
-        "en": "{name} didn't finish the extraction: {why}",
-        "de": "{name} hat die Extraktion nicht abgeschlossen: {why}",
-        "ko": "{name}이(가) 추출을 완료하지 못했습니다: {why}",
+        "it": "{name} si è interrotto con un errore: {why}",
+        "en": "{name} stopped with an error: {why}",
+        "de": "{name} wurde mit einem Fehler beendet: {why}",
+        "ko": "{name}이(가) 오류로 중단되었습니다: {why}",
     },
     "ai_timeout": {
         "it": "{name} non ha risposto entro {minutes} minuti.",
@@ -241,6 +241,37 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "en": "This style can't be filled in: pick another one.",
         "de": "Dieser Stil lässt sich nicht ausfüllen: wähle einen anderen.",
         "ko": "이 스타일은 채울 수 없습니다: 다른 스타일을 선택하세요.",
+    },
+    # Profile review (review.py)
+    "review_busy": {
+        "it": "Una revisione del profilo è già in corso",
+        "en": "A profile review is already running",
+        "de": "Es läuft bereits eine Profilprüfung",
+        "ko": "이미 프로필 검토가 진행 중입니다",
+    },
+    "review_nothing": {
+        "it": "Non c'è ancora niente da rivedere: aggiungi un riepilogo o i punti di un'esperienza e salva.",
+        "en": "Nothing to review yet: add a summary or an experience's bullets first.",
+        "de": "Noch nichts zu prüfen: füge zuerst eine Zusammenfassung oder Punkte zu einer Erfahrung hinzu.",
+        "ko": "아직 검토할 내용이 없습니다: 먼저 자기소개나 경력 항목을 추가하세요.",
+    },
+    "review_draft_pending": {
+        "it": "Conferma o scarta prima la bozza importata dal CV.",
+        "en": "Confirm or discard the draft imported from your CV first.",
+        "de": "Bestätige oder verwirf zuerst den aus dem Lebenslauf importierten Entwurf.",
+        "ko": "먼저 이력서에서 가져온 초안을 확인하거나 버리세요.",
+    },
+    "review_interrupted": {
+        "it": "Revisione interrotta: il server è stato riavviato.",
+        "en": "Review interrupted: the server was restarted.",
+        "de": "Prüfung unterbrochen: der Server wurde neu gestartet.",
+        "ko": "검토가 중단되었습니다: 서버가 다시 시작되었습니다.",
+    },
+    "suggestion_not_found": {
+        "it": "Suggerimento non trovato: forse c'è una revisione più recente.",
+        "en": "Suggestion not found: there may be a newer review.",
+        "de": "Vorschlag nicht gefunden: vielleicht gibt es eine neuere Prüfung.",
+        "ko": "제안을 찾을 수 없습니다: 더 최근의 검토가 있을 수 있습니다.",
     },
     "file_not_found": {
         "it": "File non trovato",

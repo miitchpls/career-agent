@@ -15,7 +15,7 @@ def wait_for_imports():
     """A test's background import must end before the next test swaps the database."""
     yield
     for _ in range(500):
-        if not importer._runs:
+        if importer.idle():
             return
         time.sleep(0.01)
     raise AssertionError("an import thread outlived its test")
