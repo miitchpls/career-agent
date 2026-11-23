@@ -1,7 +1,7 @@
 """User-facing server messages in the UI's languages.
 
-The UI sends its language as `Accept-Language` ("it", "en", "de"); a middleware puts it in
-`LOCALE` for the request. A search runs in a background thread, which keeps the language
+The UI sends its language as `Accept-Language` ("it", "en", "de"); an app-wide dependency
+puts it in `LOCALE` for the request. A search runs in a background thread, which keeps the language
 of the request that started it.
 """
 

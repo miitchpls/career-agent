@@ -1,7 +1,7 @@
 [project]
 name = "career-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "Local job search over LinkedIn and Indeed, with a CV-based profile"
 readme = "README.md"
 authors = [
     { name = "miitchpls", email = "51779074+miitchpls@users.noreply.github.com" }
