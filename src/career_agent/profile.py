@@ -166,7 +166,9 @@ class Profile(_Model):
 class CvPrefs(_Model):
     """How tailored CVs are written. Settings, not profile data: no revision per change."""
 
-    language: Literal["job", "it", "en", "de"] = "job"  # job: the posting's language
+    language: Literal["job", "it", "en", "de", "ko"] = (
+        "job"  # job: the posting's language
+    )
     format: Literal["auto", "a4", "letter"] = (
         "auto"  # auto: Letter in the US and Canada
     )
@@ -325,7 +327,7 @@ EXTRACTION_SCHEMA = _obj(
     }
 )
 
-_LANGUAGE_NAMES = {"it": "Italian", "en": "English", "de": "German"}
+_LANGUAGE_NAMES = {"it": "Italian", "en": "English", "de": "German", "ko": "Korean"}
 
 
 def system_prompt(locale: str) -> str:
@@ -344,6 +346,10 @@ capitalisation, removing bullet symbols) is fine.
 has "end": null and "current": true.
 - employment and location_type: only when the CV states them or they are unambiguous \
 (e.g. "Internship", "Remote"); otherwise null.
+- experiences: one entry per role, as the CV lists them. Several roles at one employer \
+(a promotion, a new team or position) are separate entries, each with its own title, \
+dates and bullets and the same company name; never merge them into one. Projects or \
+clients described within a role stay in that role's bullets.
 - bullets: one per achievement or responsibility, as written.
 - skills inside an entry: the tools and skills that entry names. The top-level skills \
 list holds every skill in the CV, each once; set inferred=true only for a skill the CV \

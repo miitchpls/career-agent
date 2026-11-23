@@ -462,6 +462,7 @@ export const en: Messages = {
     languageIt: "Italian",
     languageEn: "English",
     languageDe: "German",
+    languageKo: "Korean",
     format: "Format",
     formatAuto: "Automatic",
     style: "Style",

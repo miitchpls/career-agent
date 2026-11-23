@@ -1,7 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { ProfileState } from "@/lib/api"
-import { EMPTY_PROFILE, profileStore, reviewCount, withoutReview, type Profile } from "@/lib/profile"
+import {
+  EMPTY_PROFILE,
+  companyKey,
+  groupByCompany,
+  groupSpan,
+  profileStore,
+  reviewCount,
+  withoutLegalForm,
+  withoutReview,
+  type Experience,
+  type Profile,
+} from "@/lib/profile"
 import { toMarkdown } from "@/lib/profile-md"
 
 const draftProfile: Profile = {
@@ -118,5 +129,55 @@ describe("markdown export", () => {
     expect(md).toContain("### Data Engineer — Lumen")
     expect(md).toContain("- Pipeline Kafka per 50 milioni di eventi al giorno.")
     expect(md).toContain("Kafka, AWS")
+  })
+})
+
+describe("company groups", () => {
+  const exp = (id: string, company: string, extra: Partial<Experience> = {}): Experience => ({
+    id,
+    role: id,
+    employment: null,
+    company,
+    location: "",
+    locationType: null,
+    start: null,
+    end: null,
+    current: false,
+    bullets: [],
+    skills: [],
+    media: [],
+    ...extra,
+  })
+
+  it("compares employers ignoring case, accents, punctuation and legal form", () => {
+    expect(companyKey("Acme S.p.A.")).toBe(companyKey("ACME"))
+    expect(companyKey("Société Générale SA")).toBe(companyKey("societe generale"))
+    expect(companyKey("Glutz AG")).toBe("glutz")
+    expect(companyKey("J.P. Morgan")).toBe("jp morgan")
+    expect(companyKey("Inc")).toBe("inc")
+    expect(companyKey("Acme")).not.toBe(companyKey("Acme Labs"))
+  })
+
+  it("drops the legal form from a displayed name", () => {
+    expect(withoutLegalForm("Acme S.p.A.")).toBe("Acme")
+    expect(withoutLegalForm("Gamma Srl")).toBe("Gamma")
+    expect(withoutLegalForm("Initech, Inc.")).toBe("Initech")
+    expect(withoutLegalForm("Glutz AG")).toBe("Glutz")
+    expect(withoutLegalForm("Co")).toBe("Co")
+    expect(withoutLegalForm("Acme Labs")).toBe("Acme Labs")
+  })
+
+  it("groups consecutive roles at one employer only", () => {
+    const groups = groupByCompany([exp("a", "Acme"), exp("b", "ACME S.r.l."), exp("c", "Beta"), exp("d", "Acme"), exp("e", ""), exp("f", "")])
+    expect(groups.map((g) => g.map((e) => e.id))).toEqual([["a", "b"], ["c"], ["d"], ["e"], ["f"]])
+  })
+
+  it("spans a group from its earliest start to its latest end", () => {
+    const g = [
+      exp("a", "Acme", { start: { month: 5, year: 2023 }, end: { month: 1, year: 2025 } }),
+      exp("b", "Acme", { start: { month: 0, year: 2020 }, end: { month: 4, year: 2023 } }),
+    ]
+    expect(groupSpan(g)).toEqual({ start: { month: 0, year: 2020 }, end: { month: 1, year: 2025 }, current: false })
+    expect(groupSpan([{ ...g[0], current: true, end: null }, g[1]])).toEqual({ start: { month: 0, year: 2020 }, end: null, current: true })
   })
 })

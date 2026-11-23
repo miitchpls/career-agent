@@ -466,6 +466,7 @@ export const it = {
     languageIt: "Italiano",
     languageEn: "Inglese",
     languageDe: "Tedesco",
+    languageKo: "Coreano",
     format: "Formato",
     formatAuto: "Automatico",
     style: "Stile",

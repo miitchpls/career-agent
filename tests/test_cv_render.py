@@ -11,7 +11,7 @@ client = TestClient(app)
 
 
 @pytest.mark.parametrize("template", list(cv_render.TEMPLATES))
-@pytest.mark.parametrize("lang", ["it", "en", "de"])
+@pytest.mark.parametrize("lang", ["it", "en", "de", "ko"])
 def test_every_template_renders_the_profile(template, lang):
     out = cv_render.render(
         template, cv_render.sample_profile(), lang, "a4", photo=False
@@ -185,3 +185,83 @@ def test_marked_texts_are_highlighted():
     assert out.count('<mark class="ca-changed">') == 2
     assert "mark.ca-changed" in out
     assert "ca-changed" not in cv_render.render("modern", p, "en")
+
+
+def test_company_key_matches_the_ui():
+    assert cv_render.company_key("Acme S.p.A.") == cv_render.company_key("ACME")
+    assert cv_render.company_key("Société Générale SA") == "societe generale"
+    assert cv_render.company_key("Glutz AG") == "glutz"
+    assert cv_render.company_key("J.P. Morgan") == "jp morgan"
+    assert cv_render.company_key("Inc") == "inc"
+    assert cv_render.company_key("Acme") != cv_render.company_key("Acme Labs")
+
+
+def _roles_profile() -> Profile:
+    def role(title, company, start, end=None, current=False):
+        return {
+            "id": title,
+            "role": title,
+            "company": company,
+            "start": {"month": 0, "year": start},
+            "end": end and {"month": 11, "year": end},
+            "current": current,
+            "bullets": [f"{title} work"],
+        }
+
+    return Profile.model_validate(
+        {
+            "name": "Ada",
+            "experiences": [
+                role("Lead", "Acme S.p.A.", 2023, current=True),
+                role("Engineer", "ACME", 2020, 2022),
+                role("Intern", "Beta", 2019, 2019),
+                role("Contractor", "Acme", 2018, 2018),
+            ],
+        }
+    )
+
+
+def test_roles_at_one_company_are_grouped():
+    out = cv_render.render("standard", _roles_profile(), "en")
+    jobs = re.findall(r'<div class="((?:ca-\w+ )?job)">', out)
+    # Lead and Engineer grouped; Beta breaks the run, so the later Acme role stands alone.
+    assert jobs == ["ca-company job", "ca-role job", "job", "job"]
+    # The group's header spans both roles; each role keeps its own dates after its title.
+    assert "Jan 2020 – Present" in out
+    assert 'Lead <span class="ca-role-period">· Jan 2023 – Present</span>' in out
+    assert 'Engineer <span class="ca-role-period">· Jan 2020 – Dec 2022</span>' in out
+    assert '"ca-role-period"' not in out.split("Intern")[1].split("</div>")[0]
+    # Lead and Engineer share no place here, so nothing is written for either.
+    assert "job-location" not in out.split("</head>")[1]
+    # Every role's bullets stay in order.
+    assert [b for b in re.findall(r"<li>(\w+) work</li>", out)] == [
+        "Lead",
+        "Engineer",
+        "Intern",
+        "Contractor",
+    ]
+
+
+def test_ats_keeps_one_line_per_role():
+    out = cv_render.render("ats", _roles_profile(), "en")
+    assert "ca-company" not in out.split("</head>")[1]
+    assert "ca-role-period" not in out.split("</head>")[1]
+    assert out.count('<div class="job-company">') == 4
+
+
+def test_a_shared_place_is_written_once_per_company():
+    p = _roles_profile()
+    for e in p.experiences:
+        e.location = "Milano"
+    out = cv_render.render("standard", p, "en").split("</head>")[1]
+    # Lead (written), Engineer (shared, skipped), Intern, Contractor.
+    assert out.count('<div class="job-location">Milano</div>') == 3
+
+
+def test_korean_cv_words_and_dates():
+    out = cv_render.render("standard", _roles_profile(), "ko")
+    assert '<html lang="ko"' in out
+    assert ">경력<" in out
+    # Korean CVs write dates as year.month.
+    assert "2020.01 – 현재" in out
+    assert "2020.01 – 2022.12" in out

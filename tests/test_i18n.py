@@ -11,12 +11,13 @@ client = TestClient(app)
 
 def test_every_message_exists_in_every_language():
     for key, by_locale in MESSAGES.items():
-        assert set(by_locale) == {"it", "en", "de"}, key
+        assert set(by_locale) == {"it", "en", "de", "ko"}, key
 
 
 def test_accept_language_picks_the_first_supported_language():
     assert parse_accept_language("en-GB,en;q=0.9") == "en"
     assert parse_accept_language("fr-FR, de;q=0.8") == "de"
+    assert parse_accept_language("ko-KR,ko;q=0.9") == "ko"
     assert parse_accept_language("fr") == "it"
     assert parse_accept_language(None) == "it"
 
@@ -26,6 +27,7 @@ def test_api_errors_follow_the_request_language():
         ("it", "Ricerca salvata non trovata"),
         ("en", "Saved search not found"),
         ("de", "Gespeicherte Suche nicht gefunden"),
+        ("ko", "저장된 검색을 찾을 수 없습니다"),
     ]:
         r = client.post("/api/saved/999/run", headers={"Accept-Language": lang})
         assert r.status_code == 404 and r.json()["detail"] == text
@@ -53,6 +55,13 @@ def test_place_names_follow_the_request_language():
         "country_name": "Germany",
     }
     assert first("de")["country_name"] == "Deutschland"
+    assert first("ko") | {"geo_id": None} == {
+        "geo_id": None,
+        "city": "Stuttgart",
+        "region": None,
+        "country": "de",
+        "country_name": "독일",
+    }
     assert geo.search("Stoccarda")[0][0]["city"] == "Stoccarda"  # default: Italian
 
 

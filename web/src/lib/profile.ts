@@ -170,8 +170,13 @@ export function monthNames(width: "short" | "long"): string[] {
   return Array.from({ length: 12 }, (_, i) => f.format(new Date(2000, i, 1)))
 }
 
+/** "mar 2022", "Mar 2022", "2022년 3월": Intl puts month and year in the language's order. */
 export const fmtMonthYear = (d: MonthYear | null) =>
-  d ? (d.month === null ? `${d.year}` : `${monthNames("short")[d.month]} ${d.year}`) : ""
+  d
+    ? new Intl.DateTimeFormat(intlTag(), d.month === null ? { year: "numeric" } : { month: "short", year: "numeric" }).format(
+        new Date(d.year, d.month ?? 0, 1),
+      )
+    : ""
 
 /** "mar 2022 – oggi · 4 anni 9 mesi", LinkedIn style. */
 export function fmtRange(start: MonthYear | null, end: MonthYear | null, current: boolean): string {
@@ -456,3 +461,63 @@ export function useProfile(): State {
 }
 
 export const hasProfile = (s: State) => s.stage === "ready" || s.stage === "review"
+
+// Legal-form words dropped when comparing employers: "Acme S.p.A." and "ACME" are one company.
+const LEGAL_FORMS = new Set([
+  "ag", "bv", "co", "corp", "corporation", "gmbh", "inc", "kg", "llc", "llp", "ltd", "limited",
+  "plc", "sa", "sagl", "sarl", "sas", "snc", "spa", "srl", "srls",
+])
+
+const isLegalForm = (word: string) =>
+  LEGAL_FORMS.has(word.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}]/gu, ""))
+
+/** The company's name without a trailing legal form: "Acme S.p.A." → "Acme". */
+export function withoutLegalForm(name: string): string {
+  const words = name.trim().split(/[\s,]+/).filter(Boolean)
+  while (words.length > 1 && isLegalForm(words[words.length - 1])) words.pop()
+  return words.join(" ")
+}
+
+/** Comparable employer name: case, accents, punctuation and legal form ignored. */
+export function companyKey(name: string): string {
+  const words = name
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/(\p{L})\.(?=\p{L}\b|\s|$)/gu, "$1") // "s.p.a." → "spa"
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+  while (words.length > 1 && LEGAL_FORMS.has(words[words.length - 1])) words.pop()
+  return words.join(" ")
+}
+
+/**
+ * Consecutive experiences at the same employer, as LinkedIn shows them: one company, its
+ * roles underneath. Only consecutive entries join, so leaving and coming back makes two groups.
+ */
+export function groupByCompany(experiences: Experience[]): Experience[][] {
+  const groups: Experience[][] = []
+  for (const e of experiences) {
+    const last = groups.at(-1)
+    const key = companyKey(e.company)
+    if (last && key && companyKey(last[0].company) === key) last.push(e)
+    else groups.push([e])
+  }
+  return groups
+}
+
+/** A group's span: its earliest start to its latest end, or ongoing if any role is. */
+export function groupSpan(roles: Experience[]): { start: MonthYear | null; end: MonthYear | null; current: boolean } {
+  const n = (d: MonthYear | null) => (d ? d.year * 12 + (d.month ?? 0) : null)
+  const pick = (ds: (MonthYear | null)[], better: (a: number, b: number) => boolean) =>
+    ds.reduce<MonthYear | null>((best, d) => {
+      const v = n(d)
+      return v !== null && (best === null || better(v, n(best)!)) ? d : best
+    }, null)
+  const current = roles.some((r) => r.current)
+  return {
+    start: pick(roles.map((r) => r.start), (a, b) => a < b),
+    end: current ? null : pick(roles.map((r) => r.end), (a, b) => a > b),
+    current,
+  }
+}

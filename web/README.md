@@ -30,11 +30,11 @@ src/
   lib/
     api.ts            Typed client for the backend; sends Accept-Language
     filters.ts        Filter state in the URL (nuqs) and its conversion to the API query
-    compose.ts        Parses typed text into filter suggestions (it/en/de words)
+    compose.ts        Parses typed text into filter suggestions (it/en/de/ko words)
     queries.ts        React Query hooks: jobs, run status, saved searches, places
     profile.ts        Profile types, helpers and store (see below)
     i18n.ts           Locale store and `useT()`
-  locales/            it.ts (reference), en.ts, de.ts
+  locales/            it.ts (reference), en.ts, de.ts, ko.ts
 ```
 
 ## Conventions
@@ -48,7 +48,7 @@ the posting sheet share it and its saves need ordering:
 - a running import is polled every 1.5 s.
 
 **Copy.** No user-facing string in components: they come from `useT()` (or `msgs()` outside React).
-`locales/it.ts` is the reference: `en.ts` and `de.ts` are typed against it, so a missing or extra key fails the
+`locales/it.ts` is the reference: the other locales are typed against it, so a missing or extra key fails the
 build, and `i18n.test.ts` checks it too. Values are strings, or functions for plurals and interpolation. Data is
 stored as keys (`"hybrid"`, `"fulltime"`) and labelled at render time. Dates and numbers are formatted with `Intl`
 in the UI's locale.

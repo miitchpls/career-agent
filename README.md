@@ -51,6 +51,11 @@ ignores its own work-type filter.
 Salaries in other currencies are converted with the day's ECB reference rates, or a bundled table when the ECB
 is unreachable. A salary in a currency the ECB doesn't publish counts as "not stated".
 
+What counts as a plausible salary depends on the currency (10 thousand to 10 million for most; more where one unit
+is worth little, such as yen or won), so a typed year or phone number isn't read as one. Won can be typed as
+Korean job sites write them: `연봉 6000만`, `6천만원`, `1억 2천만`, or a bare number in 만 once KRW is chosen; a
+Korean UI shows them the same way.
+
 ### Running a search
 
 A query becomes one board search per board × place × title phrase, capped at **16 per run**. The searches run one
@@ -99,13 +104,19 @@ You can fill it in by hand (every save is kept) or import a CV:
 
 A confirmed import replaces the current profile; earlier versions remain in the database.
 
+An experience is one role. Consecutive roles at the same employer (compared ignoring case,
+accents and the legal form, so "Acme S.p.A." and "ACME" match) are shown as LinkedIn does:
+the company once, with its whole span, and its roles underneath. Leaving and coming back
+makes two groups. The import is told to keep each role, including promotions, as its own
+entry, and to keep projects or clients within a role in its bullets.
+
 ### CV preferences
 
 Set on the profile page and saved on the server. They decide how a tailored CV is laid out:
 
 | Preference | Choices | Automatic value |
 |---|---|---|
-| Language | posting's language, Italian, English, German | Guessed from the posting's description; English when unclear |
+| Language | posting's language, Italian, English, German, Korean | Korean when most of the description is Hangul, else guessed from its common words; English when unclear |
 | Format | automatic, A4, Letter | Letter for jobs in the US and Canada, A4 elsewhere |
 | Style | one of the career-ops templates below | — |
 | Photo | where usual, always, never | No photo for the US, Canada, the UK and Ireland, where CVs normally don't have one |
@@ -133,6 +144,10 @@ All are single-column, so applicant tracking systems read them in order. **Compa
 shows every template filled with your profile (or a sample) side by side; one opens large with its description
 and can be set as the default. Previews are rendered by the server in one request and shown in sandboxed iframes,
 scaled from the real page size. Profile data never reaches the template's `<head>`, so it can't end up in its CSS.
+
+Roles at one employer are grouped the same way: the company and its span once, then each
+role with its own dates; a place all the roles share is written once. The `ats` template
+keeps one block per role, company included, for parsers.
 
 Not filled from the profile, because it has no such data: core competencies, awards, interests, phone. Those
 sections are left out.
@@ -163,7 +178,7 @@ data. Their output is validated against the schema before it becomes a draft.
 
 ## Languages
 
-The UI is in Italian, English and German (**Preferences**, ⌘/Ctrl+,). The choice is stored in the browser; the
+The UI is in Italian, English, German and Korean (**Preferences**, ⌘/Ctrl+,). The choice is stored in the browser; the
 first visit uses the browser's language when supported, Italian otherwise. The server phrases its errors and
 progress messages in the language the UI sends as `Accept-Language`; an import keeps the language it started with.
 
@@ -221,7 +236,7 @@ src/career_agent/
   cv_render.py career-ops CV templates filled with the profile
   cv_templates/ the templates, copied from career-ops
   ai.py        AI CLI detection, settings and isolated runs
-  i18n.py      Server messages in it/en/de
+  i18n.py      Server messages in it/en/de/ko
 web/           React UI, see web/README.md
 tests/
 ```
