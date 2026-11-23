@@ -661,3 +661,21 @@ def test_choosing_an_engine_checks_the_clis_once(monkeypatch):
     monkeypatch.setattr(ai, "detect", lambda: calls.append(1) or _providers())
     assert client.put("/api/ai", json={"provider": "codex"}).status_code == 200
     assert len(calls) == 1
+
+
+def test_cv_preferences_are_saved():
+    assert client.get("/api/cv/preferences").json() == {
+        "language": "job",
+        "format": "auto",
+        "style": "modern",
+        "photo": "auto",
+    }
+    prefs = {"language": "de", "format": "a4", "style": "compact", "photo": "never"}
+    assert client.put("/api/cv/preferences", json=prefs).json() == prefs
+    assert client.get("/api/cv/preferences").json() == prefs
+    assert (
+        client.put("/api/cv/preferences", json={**prefs, "style": "fancy"}).status_code
+        == 422
+    )
+    db.set_setting("cv_prefs", '{"style": "removed-style"}')  # unreadable: defaults
+    assert client.get("/api/cv/preferences").json()["style"] == "modern"

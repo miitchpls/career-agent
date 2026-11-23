@@ -468,7 +468,7 @@ export const it = {
     languageDe: "Tedesco",
     format: "Formato",
     formatAuto: "Automatico",
-    template: "Modello",
+    style: "Stile",
     modern: "Moderno",
     classic: "Classico",
     compact: "Compatto",
@@ -559,7 +559,6 @@ export const it = {
     yourName: "Il tuo nome",
     mark: "CV generato per questa offerta",
     mock: {
-      language: "Inglese",
       now: "adesso",
       germanB2: "Tedesco B2",
       why: {

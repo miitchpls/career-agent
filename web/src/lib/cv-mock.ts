@@ -10,8 +10,6 @@ import { msgs } from "@/lib/i18n"
 export type MatchKind = "have" | "partial" | "gap"
 
 export interface Tailored {
-  language: string
-  format: string
   version: number
   generatedAt: string
   matches: { skill: string; kind: MatchKind; why: string }[]
@@ -25,8 +23,6 @@ export interface Tailored {
 export function tailoredFor(title: string, company: string | null): Tailored {
   const t = msgs().cv.mock
   return {
-    language: t.language,
-    format: "A4",
     version: 1,
     generatedAt: t.now,
     matches: [
@@ -64,6 +60,13 @@ export function tailoredFor(title: string, company: string | null): Tailored {
     skills: ["Python", "FastAPI", "PostgreSQL", "Event-driven systems", "Redis", "Docker", "AWS", "OpenTelemetry"],
   }
 }
+
+/** Section titles on the CV page: in the CV's language, not the UI's. */
+export const CV_HEADINGS = {
+  en: { profile: "Profile", experience: "Experience", skills: "Skills", education: "Education", languages: "Languages" },
+  it: { profile: "Profilo", experience: "Esperienza", skills: "Competenze", education: "Formazione", languages: "Lingue" },
+  de: { profile: "Profil", experience: "Berufserfahrung", skills: "Kenntnisse", education: "Ausbildung", languages: "Sprachen" },
+} as const
 
 // --- Which postings have a (mock) CV -----------------------------------------------------------
 

@@ -99,6 +99,20 @@ You can fill it in by hand (every save is kept) or import a CV:
 
 A confirmed import replaces the current profile; earlier versions remain in the database.
 
+### CV preferences
+
+Set on the profile page and saved on the server. They decide how a tailored CV is laid out:
+
+| Preference | Choices | Automatic value |
+|---|---|---|
+| Language | posting's language, Italian, English, German | Guessed from the posting's description; English when unclear |
+| Format | automatic, A4, Letter | Letter for jobs in the US and Canada, A4 elsewhere |
+| Style | modern, classic, compact | — |
+| Photo | where usual, always, never | No photo for the US, Canada, the UK and Ireland, where CVs normally don't have one |
+
+The country comes from the end of the posting's location. The CV preview already follows these preferences
+(page size, style, photo, section titles); its content is still sample text.
+
 ### AI engines
 
 The import doesn't use an API key. It runs an AI CLI that is installed and signed in on the computer, so the
@@ -196,6 +210,7 @@ tests/
 | `GET/POST /api/saved` · `DELETE /api/saved/{id}` · `POST /api/saved/{id}/run` | Saved searches |
 | `GET /api/places?q=` | City suggestions |
 | `GET/PUT /api/ai` | AI engines found, saved choice |
+| `GET/PUT /api/cv/preferences` | CV language, format, style and photo |
 | `GET/PUT/DELETE /api/profile` | Profile and open draft · save · delete everything |
 | `POST /api/profile/import` | Start an import (multipart: `file` or `text`) |
 | `PUT/DELETE /api/profile/draft` · `POST /api/profile/draft/confirm` · `POST /api/profile/draft/retry` | Review an import |
@@ -207,4 +222,4 @@ tests/
 - Importing a CV replaces the profile on confirm; it doesn't merge with what's there.
 - Only Claude Code and Codex are supported as AI engines.
 - Errors reported by the AI CLIs are shown in the CLI's language, usually English.
-- The tailored CV for a posting is a UI mock.
+- The tailored CV for a posting is a UI mock: its preview applies the CV preferences, but the text is a sample.

@@ -191,6 +191,17 @@ export interface ProfileState {
   draft: ProfileDraft | null
 }
 
+/** How tailored CVs are written: `/api/cv/preferences`. */
+export interface CvPrefs {
+  /** "job": the posting's language. */
+  language: "job" | "it" | "en" | "de"
+  /** "auto": Letter for the US and Canada, A4 elsewhere. */
+  format: "auto" | "a4" | "letter"
+  style: "modern" | "classic" | "compact"
+  /** "auto": only where CVs usually carry a photo. */
+  photo: "auto" | "always" | "never"
+}
+
 export interface UploadedFile {
   id: string
   url: string
@@ -247,6 +258,10 @@ export const api = {
   ai: {
     get: () => request<AiEngines>("/api/ai"),
     choose: (provider: string, model: string | null) => put<AiEngines>("/api/ai", { provider, model }),
+  },
+  cv: {
+    prefs: () => request<CvPrefs>("/api/cv/preferences"),
+    savePrefs: (prefs: CvPrefs) => put<CvPrefs>("/api/cv/preferences", prefs),
   },
   profile: {
     get: () => request<ProfileState>("/api/profile"),

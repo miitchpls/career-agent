@@ -71,7 +71,9 @@ import {
   type Profile,
   type Project,
 } from "@/lib/profile"
+import type { CvPrefs } from "@/lib/api"
 import { useGenerated } from "@/lib/cv-mock"
+import { useCvPrefs, useSaveCvPrefs } from "@/lib/cv-prefs"
 import { useT } from "@/lib/i18n"
 import { openPreferences } from "@/lib/preferences"
 import { activeEngine, useAiEngines } from "@/lib/use-ai"
@@ -856,13 +858,7 @@ function Aside({ profile }: { profile: Profile }) {
         )}
       </Card>
 
-      <Card className="gap-3 px-5 py-4">
-        <h2 className="text-sm font-medium">{t.cvPrefs}</h2>
-        <Pref label={t.language} defaultValue="job" options={[["job", t.languageJob], ["it", t.languageIt], ["en", t.languageEn], ["de", t.languageDe]]} />
-        <Pref label={t.format} defaultValue="auto" options={[["auto", t.formatAuto], ["a4", "A4"], ["letter", "Letter"]]} />
-        <Pref label={t.template} defaultValue="modern" options={[["modern", t.modern], ["classic", t.classic], ["compact", t.compact]]} />
-        <Pref label={t.photo} defaultValue="auto" options={[["auto", t.photoAuto], ["always", t.photoAlways], ["never", t.photoNever]]} />
-      </Card>
+      <CvPrefsCard />
 
       <EngineCard generated={generated.size} />
     </aside>
@@ -907,12 +903,59 @@ function EngineCard({ generated }: { generated: number }) {
   )
 }
 
-function Pref({ label, defaultValue, options }: { label: string; defaultValue: string; options: [string, string][] }) {
+/** How tailored CVs are written; saved as soon as a value changes. */
+function CvPrefsCard() {
+  const t = useT().profileView
+  const prefs = useCvPrefs()
+  const save = useSaveCvPrefs()
+  const set = <K extends keyof CvPrefs>(key: K) => (value: string) => save.mutate({ ...prefs, [key]: value as CvPrefs[K] })
+  return (
+    <Card className="gap-3 px-5 py-4">
+      <h2 className="text-sm font-medium">{t.cvPrefs}</h2>
+      <Pref
+        label={t.language}
+        value={prefs.language}
+        onChange={set("language")}
+        options={[["job", t.languageJob], ["it", t.languageIt], ["en", t.languageEn], ["de", t.languageDe]]}
+      />
+      <Pref
+        label={t.format}
+        value={prefs.format}
+        onChange={set("format")}
+        options={[["auto", t.formatAuto], ["a4", "A4"], ["letter", "Letter"]]}
+      />
+      <Pref
+        label={t.style}
+        value={prefs.style}
+        onChange={set("style")}
+        options={[["modern", t.modern], ["classic", t.classic], ["compact", t.compact]]}
+      />
+      <Pref
+        label={t.photo}
+        value={prefs.photo}
+        onChange={set("photo")}
+        options={[["auto", t.photoAuto], ["always", t.photoAlways], ["never", t.photoNever]]}
+      />
+    </Card>
+  )
+}
+
+function Pref({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: [string, string][]
+}) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
-      <Select defaultValue={defaultValue}>
-        <SelectTrigger size="sm" className="h-7 w-40 text-xs">
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger size="sm" className="h-7 w-40 text-xs" aria-label={label}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent align="end">

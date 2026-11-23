@@ -15,7 +15,15 @@ from pydantic import BaseModel, Field
 
 from . import ai, db, geo
 from .i18n import LOCALE, parse_accept_language, t
-from .profile import MAX_UPLOAD_MB, Importer, Profile, store_upload
+from .profile import (
+    MAX_UPLOAD_MB,
+    CvPrefs,
+    Importer,
+    Profile,
+    cv_prefs,
+    save_cv_prefs,
+    store_upload,
+)
 from .query import Query
 from .scraper import Runner
 
@@ -287,6 +295,17 @@ def draft_delete():
     if draft:
         db.update_draft(draft["id"], status="discarded")
     return _profile_state()
+
+
+@app.get("/api/cv/preferences")
+def cv_preferences():
+    """Language, page format, style and photo for tailored CVs."""
+    return cv_prefs().model_dump()
+
+
+@app.put("/api/cv/preferences")
+def cv_preferences_put(prefs: CvPrefs):
+    return save_cv_prefs(prefs).model_dump()
 
 
 # Browsers may display these; anything else is downloaded, so an uploaded HTML page can

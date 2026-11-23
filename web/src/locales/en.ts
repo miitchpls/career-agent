@@ -464,7 +464,7 @@ export const en: Messages = {
     languageDe: "German",
     format: "Format",
     formatAuto: "Automatic",
-    template: "Template",
+    style: "Style",
     modern: "Modern",
     classic: "Classic",
     compact: "Compact",
@@ -554,7 +554,6 @@ export const en: Messages = {
     yourName: "Your name",
     mark: "CV generated for this job",
     mock: {
-      language: "English",
       now: "just now",
       germanB2: "German B2",
       why: {
