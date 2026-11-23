@@ -266,8 +266,9 @@ function EmptyHint({ children, onClick }: { children: React.ReactNode; onClick: 
 
 /**
  * An entry's row: its mark, then its content. Imported data the user hasn't confirmed yet gets
- * an amber frame around the whole row; the negative margin cancels the padding, so the mark and
- * the text stay aligned with the other entries.
+ * an amber frame around the whole row. The frame grows sideways only (`-mx-3 px-3`), so the
+ * mark and text stay in line with the other entries, and inwards vertically, so it never
+ * reaches into the list's spacing or the section header.
  */
 function EntryRow({
   mark,
@@ -284,18 +285,8 @@ function EntryRow({
 }) {
   const all = useT()
   const t = all.profileView
-  // flow-root keeps the negative margin from collapsing into the list's spacing, which would
-  // pull the next entry 12px closer.
   return (
-    <div className="flow-root">
-    <div
-      className={cn(
-        "flex gap-3",
-        // Opaque, so it also covers the experience timeline running behind it.
-        note &&
-          "relative -m-3 rounded-lg bg-[color-mix(in_oklab,var(--color-amber-500)_5%,var(--card))] p-3 ring-1 ring-amber-500/25",
-      )}
-    >
+    <div className={cn("flex gap-3", note && "-mx-3 rounded-lg bg-amber-500/5 p-3 ring-1 ring-amber-500/25")}>
       {mark}
       <div className="min-w-0 flex-1">
         {children}
@@ -313,7 +304,6 @@ function EntryRow({
           </div>
         )}
       </div>
-    </div>
     </div>
   )
 }
@@ -481,36 +471,48 @@ function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Cha
           {p.experiences.map((e, i) => (
             <li key={e.id} className="group relative">
               {i < p.experiences.length - 1 && (
-                <span className="absolute top-11 bottom-[-1.25rem] left-[1.1875rem] w-px bg-border" aria-hidden />
+                // From under this entry's mark to the top of the next one; a review frame's
+                // padding moves the mark 0.75rem down.
+                <span
+                  className={cn(
+                    "absolute left-[1.1875rem] w-px bg-border",
+                    e.review ? "top-14" : "top-11",
+                    p.experiences[i + 1].review ? "-bottom-8" : "bottom-[-1.25rem]",
+                  )}
+                  aria-hidden
+                />
               )}
               <EntryRow
                 mark={<Mark>{initials(e.company)}</Mark>}
-                note={e.review} onConfirm={() => save({ ...e, review: null })} onEdit={() => ed.edit(e)}>
-                  <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{e.role}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {[e.company, e.employment && all.profile.employment[e.employment]].filter(Boolean).join(" · ")}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{fmtRange(e.start, e.end, e.current)}</p>
-                      {(e.location || e.locationType) && (
-                        <p className="text-xs text-muted-foreground">{[e.location, e.locationType && all.profile.locationType[e.locationType]].filter(Boolean).join(" · ")}</p>
-                      )}
-                    </div>
-                    <EditButton label={t.editExperience} onClick={() => ed.edit(e)} />
+                note={e.review}
+                onConfirm={() => save({ ...e, review: null })}
+                onEdit={() => ed.edit(e)}
+              >
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{e.role}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {[e.company, e.employment && all.profile.employment[e.employment]].filter(Boolean).join(" · ")}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{fmtRange(e.start, e.end, e.current)}</p>
+                    {(e.location || e.locationType) && (
+                      <p className="text-xs text-muted-foreground">{[e.location, e.locationType && all.profile.locationType[e.locationType]].filter(Boolean).join(" · ")}</p>
+                    )}
                   </div>
-                  {e.bullets.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {e.bullets.map((b) => (
-                        <li key={b} className="flex gap-2 text-sm text-pretty">
-                          <span className="mt-2 size-1 shrink-0 rounded-full bg-muted-foreground/60" />
-                          {b}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <SkillLine skills={e.skills} />
-                  <MediaStrip media={e.media} />
+                  <EditButton label={t.editExperience} onClick={() => ed.edit(e)} />
+                </div>
+                {e.bullets.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {e.bullets.map((b) => (
+                      <li key={b} className="flex gap-2 text-sm text-pretty">
+                        <span className="mt-2 size-1 shrink-0 rounded-full bg-muted-foreground/60" />
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <SkillLine skills={e.skills} />
+                <MediaStrip media={e.media} />
               </EntryRow>
             </li>
           ))}
@@ -548,27 +550,30 @@ function EducationSection({ profile: p, onChange }: { profile: Profile; onChange
                     <GraduationCapIcon className="size-4" />
                   </Mark>
                 }
-                note={d.review} onEdit={() => ed.edit(d)} onConfirm={() => save({ ...d, review: null })}>
-                  <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{d.school}</p>
-                      <p className="text-sm text-muted-foreground">{[d.degree, d.field].filter(Boolean).join(", ")}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                        {[fmtMonthYear(d.start), fmtMonthYear(d.end)].filter(Boolean).join(" – ")}
-                      </p>
-                      {d.grade && <p className="text-xs text-muted-foreground">{t.grade(d.grade)}</p>}
-                    </div>
-                    <EditButton label={t.editEducation} onClick={() => ed.edit(d)} />
-                  </div>
-                  {d.activities && (
-                    <p className="mt-2 text-sm text-pretty">
-                      <span className="text-muted-foreground">{t.activities}</span>
-                      {d.activities}
+                note={d.review}
+                onEdit={() => ed.edit(d)}
+                onConfirm={() => save({ ...d, review: null })}
+              >
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{d.school}</p>
+                    <p className="text-sm text-muted-foreground">{[d.degree, d.field].filter(Boolean).join(", ")}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                      {[fmtMonthYear(d.start), fmtMonthYear(d.end)].filter(Boolean).join(" – ")}
                     </p>
-                  )}
-                  {d.description && <p className="mt-1.5 text-sm text-pretty">{d.description}</p>}
-                  <SkillLine skills={d.skills} />
-                  <MediaStrip media={d.media} />
+                    {d.grade && <p className="text-xs text-muted-foreground">{t.grade(d.grade)}</p>}
+                  </div>
+                  <EditButton label={t.editEducation} onClick={() => ed.edit(d)} />
+                </div>
+                {d.activities && (
+                  <p className="mt-2 text-sm text-pretty">
+                    <span className="text-muted-foreground">{t.activities}</span>
+                    {d.activities}
+                  </p>
+                )}
+                {d.description && <p className="mt-1.5 text-sm text-pretty">{d.description}</p>}
+                <SkillLine skills={d.skills} />
+                <MediaStrip media={d.media} />
               </EntryRow>
             </li>
           ))}
@@ -741,7 +746,10 @@ function ProjectsSection({ profile: p, onChange }: { profile: Profile; onChange:
                     <FolderGitIcon className="size-4" />
                   </Mark>
                 }
-                note={x.review} onConfirm={() => save({ ...x, review: null })} onEdit={() => ed.edit(x)}>
+                note={x.review}
+                onConfirm={() => save({ ...x, review: null })}
+                onEdit={() => ed.edit(x)}
+              >
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{x.name}</p>
@@ -805,7 +813,10 @@ function Certifications({ profile: p, onChange }: { profile: Profile; onChange: 
             <li key={c.id} className="group">
               <EntryRow
                 mark={<Mark>{initials(c.issuer)}</Mark>}
-                note={c.review} onConfirm={() => save({ ...c, review: null })} onEdit={() => ed.edit(c)}>
+                note={c.review}
+                onConfirm={() => save({ ...c, review: null })}
+                onEdit={() => ed.edit(c)}
+              >
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{c.name}</p>

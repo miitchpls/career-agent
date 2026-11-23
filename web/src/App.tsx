@@ -213,9 +213,10 @@ export default function App() {
                 <DropdownMenuItem onSelect={openPreferences}>
                   <Settings2Icon />
                   {t.preferences}
-                  <KbdGroup className="ml-auto">
-                    <Kbd className="group-focus/dropdown-menu-item:bg-foreground/10">{MOD_KEY}</Kbd>
-                    <Kbd className="group-focus/dropdown-menu-item:bg-foreground/10">,</Kbd>
+                  {/* On the highlighted item the caps' muted fill matches the item's own: tint them. */}
+                  <KbdGroup className="ml-auto *:group-focus/dropdown-menu-item:bg-foreground/10">
+                    <Kbd>{MOD_KEY}</Kbd>
+                    <Kbd>,</Kbd>
                   </KbdGroup>
                 </DropdownMenuItem>
               </DropdownMenuContent>
