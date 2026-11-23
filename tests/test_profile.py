@@ -667,10 +667,10 @@ def test_cv_preferences_are_saved():
     assert client.get("/api/cv/preferences").json() == {
         "language": "job",
         "format": "auto",
-        "style": "modern",
+        "style": "standard",
         "photo": "auto",
     }
-    prefs = {"language": "de", "format": "a4", "style": "compact", "photo": "never"}
+    prefs = {"language": "de", "format": "a4", "style": "jake", "photo": "never"}
     assert client.put("/api/cv/preferences", json=prefs).json() == prefs
     assert client.get("/api/cv/preferences").json() == prefs
     assert (
@@ -678,4 +678,15 @@ def test_cv_preferences_are_saved():
         == 422
     )
     db.set_setting("cv_prefs", '{"style": "removed-style"}')  # unreadable: defaults
-    assert client.get("/api/cv/preferences").json()["style"] == "modern"
+    assert client.get("/api/cv/preferences").json()["style"] == "standard"
+
+
+def test_pdf_internal_value_error_is_the_readable_message(monkeypatch):
+    import pypdf
+
+    def boom(*_a, **_k):
+        raise ValueError("invalid literal for int() with base 10: b'x'")
+
+    monkeypatch.setattr(pypdf, "PdfReader", boom)
+    with pytest.raises(ValueError, match="Non riesco a leggere"):
+        profile.read_upload("cv.pdf", _pdf("x"))

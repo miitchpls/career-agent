@@ -191,13 +191,18 @@ export interface ProfileState {
   draft: ProfileDraft | null
 }
 
+/** career-ops' CV templates, rendered by `career_agent.cv_render`. */
+export const CV_TEMPLATES = ["standard", "modern", "compact", "executive", "leadership", "jake", "ats"] as const
+export type CvTemplate = (typeof CV_TEMPLATES)[number]
+
 /** How tailored CVs are written: `/api/cv/preferences`. */
 export interface CvPrefs {
   /** "job": the posting's language. */
   language: "job" | "it" | "en" | "de"
   /** "auto": Letter for the US and Canada, A4 elsewhere. */
   format: "auto" | "a4" | "letter"
-  style: "modern" | "classic" | "compact"
+  /** One of career-ops' CV templates. */
+  style: CvTemplate
   /** "auto": only where CVs usually carry a photo. */
   photo: "auto" | "always" | "never"
 }
@@ -262,6 +267,9 @@ export const api = {
   cv: {
     prefs: () => request<CvPrefs>("/api/cv/preferences"),
     savePrefs: (prefs: CvPrefs) => put<CvPrefs>("/api/cv/preferences", prefs),
+    /** `profile` null: the sample profile. */
+    preview: (body: { template: CvTemplate; language: "it" | "en" | "de"; format: "a4" | "letter"; photo: boolean; profile: unknown | null }) =>
+      post<{ html: string; sample: boolean }>("/api/cv/preview", body),
   },
   profile: {
     get: () => request<ProfileState>("/api/profile"),

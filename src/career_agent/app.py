@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import ai, db, geo
+from . import ai, cv_render, db, geo
 from .i18n import LOCALE, parse_accept_language, t
 from .profile import (
     MAX_UPLOAD_MB,
@@ -306,6 +306,30 @@ def cv_preferences():
 @app.put("/api/cv/preferences")
 def cv_preferences_put(prefs: CvPrefs):
     return save_cv_prefs(prefs).model_dump()
+
+
+class PreviewRequest(BaseModel):
+    template: cv_render.TemplateId
+    language: cv_render.CvLanguage = "en"
+    format: cv_render.PageFormat = "a4"
+    photo: bool = False
+    # The profile to show, as on screen (the draft while reviewing); None: the sample.
+    profile: Profile | None = None
+
+
+@app.post("/api/cv/preview")
+def cv_preview(req: PreviewRequest):
+    """A CV template filled with the profile, as an HTML document for the preview."""
+    p = req.profile
+    empty = p is None or not (p.name or p.experiences or p.education)
+    html = cv_render.render(
+        req.template,
+        cv_render.sample_profile() if empty else p,
+        req.language,
+        req.format,
+        req.photo,
+    )
+    return {"html": html, "sample": empty}
 
 
 # Browsers may display these; anything else is downloaded, so an uploaded HTML page can
