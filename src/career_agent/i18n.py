@@ -190,6 +190,11 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "en": "I couldn't find this in the CV: check that it's right.",
         "de": "Das habe ich im Lebenslauf nicht gefunden: prüfe, ob es stimmt.",
     },
+    "draft_pending": {
+        "it": "C'è una bozza del profilo da rivedere: confermala o scartala prima di importare un altro CV.",
+        "en": "There's a profile draft to review: confirm or discard it before importing another CV.",
+        "de": "Es gibt einen Profilentwurf zu prüfen: bestätige oder verwirf ihn, bevor du einen weiteren Lebenslauf importierst.",
+    },
     "draft_not_found": {
         "it": "Nessuna bozza del profilo da confermare",
         "en": "No profile draft to confirm",

@@ -4,9 +4,9 @@ The app never asks for an API key. Like career-ops, it runs the user's own CLI h
 (`claude -p`, `codex exec`), so the user's subscription pays for the call and the login
 stays the CLI's business. Only used to turn a CV into a profile draft.
 
-Each run is locked down: no tools for Claude (the CV can't make it do anything), a
-read-only sandbox in an empty temporary directory for Codex, no session left behind,
-and the user's hooks, plugins and MCP servers left out.
+Each run is locked down: no tools at all (so a CV can't make the model run commands or
+read files), an empty temporary directory, no session left behind, and the user's hooks,
+plugins and MCP servers left out.
 """
 
 import json
@@ -77,7 +77,7 @@ def _quick(args: list[str]) -> subprocess.CompletedProcess | None:
             check=False,
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=10,
             stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError):
@@ -185,6 +185,21 @@ def _run_claude(
 # --- Codex --------------------------------------------------------------------------------
 
 
+# Every Codex feature that runs commands or code, or reaches outside the prompt.
+_CODEX_NO_TOOLS = (
+    "shell_tool",
+    "unified_exec",
+    "code_mode_host",
+    "apps",
+    "plugins",
+    "browser_use",
+    "in_app_browser",
+    "computer_use",
+    "image_generation",
+    "view_image",
+)
+
+
 def _codex_home() -> Path:
     return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
 
@@ -229,6 +244,11 @@ def _run_codex(
             "--ephemeral",
             "--ignore-user-config",  # no user MCP servers or profiles; auth still applies
             "--ignore-rules",
+            # The sandbox stops writes, not reads: without these the CV could ask Codex to
+            # read ~/.ssh and copy it into the answer. With them it has no tools at all.
+            *(f"--disable={f}" for f in _CODEX_NO_TOOLS),
+            "-c",
+            'web_search="disabled"',
             "-s",
             "read-only",
             "--color",
@@ -313,11 +333,11 @@ def saved_choice() -> dict:
     return {"provider": value.get("provider"), "model": value.get("model")}
 
 
-def choose(provider: str, model: str | None) -> None:
+def choose(provider: str, model: str | None, providers: list[Provider]) -> None:
     """Save the default engine. Raises ValueError (user message) for unknown ids."""
-    if provider not in _SPECS:
+    p = next((x for x in providers if x.id == provider), None)
+    if p is None:
         raise ValueError(t("ai_unknown"))
-    p = next(x for x in detect() if x.id == provider)
     if model and p.models and model not in {m.id for m in p.models}:
         raise ValueError(t("ai_model_unknown", name=p.name))
     db.set_setting(_SETTINGS_KEY, json.dumps({"provider": provider, "model": model}))

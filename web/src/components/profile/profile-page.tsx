@@ -22,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { intlTag, useT } from "@/lib/i18n"
 import { hasProfile, profileStore, useProfile } from "@/lib/profile"
 import { downloadMarkdown } from "@/lib/profile-md"
@@ -54,10 +55,25 @@ export function ProfilePage() {
             </p>
           </div>
           <div className="ml-auto flex items-center gap-1.5">
-            <Button variant="outline" size="sm" disabled={upload.busy} onClick={() => file.current?.click()}>
-              {upload.busy ? <LoaderCircleIcon className="animate-spin" /> : <UploadIcon />}
-              {t.importCv}
-            </Button>
+            {state.stage === "review" ? (
+              // A new import would replace the draft under review: finish that one first.
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0}>
+                    <Button variant="outline" size="sm" disabled>
+                      <UploadIcon />
+                      {t.importCv}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{t.importBlocked}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button variant="outline" size="sm" disabled={upload.busy} onClick={() => file.current?.click()}>
+                {upload.busy ? <LoaderCircleIcon className="animate-spin" /> : <UploadIcon />}
+                {t.importCv}
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon-sm" aria-label={t.more}>

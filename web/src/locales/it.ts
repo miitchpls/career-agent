@@ -519,6 +519,7 @@ export const it = {
     pageTitle: "Profilo",
     pageText: "La base da cui scriviamo ogni CV su misura. Resta sul tuo computer.",
     importCv: "Importa CV",
+    importBlocked: "Conferma o scarta prima la bozza in revisione",
     more: "Altre azioni sul profilo",
     savedAt: (time: string) => `Salvato alle ${time}`,
     exportMd: "Esporta in Markdown",
