@@ -592,6 +592,67 @@ export const de: Messages = {
     },
   },
 
+  review: {
+    card: "Prüfung",
+    cardText: "Prüfungen, die immer laufen, und auf Wunsch Vorschläge der KI zu Punkten, Beschreibungen und Zusammenfassung.",
+    counts: (checks, open) =>
+      [checks && (checks === 1 ? "1 Hinweis" : `${checks} Hinweise`), open && (open === 1 ? "1 Vorschlag" : `${open} Vorschläge`)]
+        .filter(Boolean)
+        .join(" · ") || "Keine Probleme gefunden",
+    start: "Mit KI prüfen",
+    open: "Prüfung öffnen",
+    title: "Profilprüfung",
+    description: "Die KI schlägt vor, du entscheidest: nichts ändert sich ohne deinen Klick.",
+    checks: {
+      title: "Hinweise",
+      hint: "Ohne KI, bei jeder Änderung aktualisiert.",
+      none: "Keine Probleme gefunden.",
+      show: "Zeigen",
+      noHeadline: "Die Überschrift unter deinem Namen fehlt.",
+      endBeforeStart: (label) => `${label}: das Ende liegt vor dem Beginn.`,
+      future: (label) => `${label}: beginnt in der Zukunft.`,
+      noBullets: (label) => `${label}: keine Punkte dazu, was du gemacht hast.`,
+      noNumbers: (label) => `${label}: kein Ergebnis mit einer Zahl.`,
+      longBullet: (label, n) => `${label}: Punkt ${n} ist lang, teile ihn auf.`,
+      duplicate: (label, other) => `${label}: ein Punkt wiederholt einen aus ${other}.`,
+      noDescription: (label) => `${label}: die Beschreibung fehlt.`,
+    },
+    ai: {
+      title: "Vorschläge",
+      intro:
+        "Die KI liest deine Punkte, Beschreibungen, Zusammenfassung und Überschrift und schlägt vor, wie sie klarer werden. Sie erfindet nichts: wo eine Zahl helfen würde, fragt sie dich danach.",
+      engine: (name, model) => `Nutzt ${name}${model ? ` (${model})` : ""}, mit deinem Abo.`,
+      noEngine: "Verbinde in den Einstellungen eine KI, um sie zu nutzen.",
+      blockedDraft: "Bestätige oder verwirf zuerst den aus dem Lebenslauf importierten Entwurf.",
+      nothing: "Füge eine Zusammenfassung oder Punkte zu einer Erfahrung hinzu, um sie zu starten.",
+      start: "Prüfung starten",
+      running: (name) => `${name} liest dein Profil`,
+      runningHint: "Meist unter einer Minute. Du kannst dein Profil weiter bearbeiten.",
+      cancel: "Abbrechen",
+      failed: "Prüfung fehlgeschlagen",
+      again: "Erneut prüfen",
+      done: "Du hast alle Vorschläge durchgesehen.",
+      tally: (applied, dismissed) => `${applied} übernommen · ${dismissed} verworfen`,
+      dropped: (n) =>
+        `${n === 1 ? "1 Vorschlag" : `${n} Vorschläge`} an den Prüfungen gescheitert und verworfen: etwa weil sie Fakten hinzufügten, die nicht in deinem Profil stehen, oder auf Text zeigten, den es nicht gibt.`,
+      none: "Keine Vorschläge: dein Profil liest sich bereits gut.",
+      reviewedAt: (when) => `Prüfung vom ${when}`,
+    },
+    kinds: { rewrite: "Umformulieren", question: "Frage", add_skill: "Kenntnis" },
+    where: {
+      summary: "Zusammenfassung",
+      headline: "Überschrift",
+      description: "Beschreibung",
+      bullet: (n) => `Punkt ${n}`,
+    },
+    fillHint: "Fülle die Lücken mit deinen eigenen Angaben, um ihn zu übernehmen.",
+    stale: "Der Text hat sich nach der Prüfung geändert: dieser Vorschlag gilt nicht mehr.",
+    apply: "Übernehmen",
+    dismiss: "Verwerfen",
+    applied: "Änderung übernommen",
+    saveFailed: "Deine Auswahl konnte nicht gespeichert werden",
+  },
+
   editors: {
     place: "Ort",
     placeNow: (where) => `Aktuell: ${where}`,

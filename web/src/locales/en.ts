@@ -590,6 +590,67 @@ export const en: Messages = {
     },
   },
 
+  review: {
+    card: "Review",
+    cardText: "Checks that always run and, on request, the AI's suggestions on bullets, descriptions and summary.",
+    counts: (checks, open) =>
+      [checks && (checks === 1 ? "1 check" : `${checks} checks`), open && (open === 1 ? "1 suggestion" : `${open} suggestions`)]
+        .filter(Boolean)
+        .join(" · ") || "No issues found",
+    start: "Review with AI",
+    open: "Open the review",
+    title: "Profile review",
+    description: "The AI suggests, you decide: nothing changes without your click.",
+    checks: {
+      title: "Checks",
+      hint: "No AI, updated on every edit.",
+      none: "No issues found.",
+      show: "Show",
+      noHeadline: "The headline under your name is missing.",
+      endBeforeStart: (label) => `${label}: the end is before the start.`,
+      future: (label) => `${label}: it starts in the future.`,
+      noBullets: (label) => `${label}: no bullets on what you did.`,
+      noNumbers: (label) => `${label}: no result with a number.`,
+      longBullet: (label, n) => `${label}: bullet ${n} is long, split it in two.`,
+      duplicate: (label, other) => `${label}: a bullet repeats one from ${other}.`,
+      noDescription: (label) => `${label}: the description is missing.`,
+    },
+    ai: {
+      title: "Suggestions",
+      intro:
+        "The AI rereads your bullets, descriptions, summary and headline and suggests how to make them clearer. It never makes things up: where a number would help, it asks you for it.",
+      engine: (name, model) => `Uses ${name}${model ? ` (${model})` : ""}, with your subscription.`,
+      noEngine: "Connect an AI engine in Preferences to use it.",
+      blockedDraft: "Confirm or discard the draft imported from your CV first.",
+      nothing: "Add a summary or an experience's bullets to start it.",
+      start: "Start the review",
+      running: (name) => `${name} is rereading your profile`,
+      runningHint: "Usually under a minute. You can keep editing your profile.",
+      cancel: "Cancel",
+      failed: "Review failed",
+      again: "Review again",
+      done: "You've gone through every suggestion.",
+      tally: (applied, dismissed) => `${applied} applied · ${dismissed} dismissed`,
+      dropped: (n) =>
+        `${n === 1 ? "1 suggestion" : `${n} suggestions`} failed the checks and ${n === 1 ? "was" : "were"} dropped: for example, adding facts your profile doesn't hold, or pointing at text that isn't there.`,
+      none: "No suggestions: your profile already reads well.",
+      reviewedAt: (when) => `Review from ${when}`,
+    },
+    kinds: { rewrite: "Rewrite", question: "Question", add_skill: "Skill" },
+    where: {
+      summary: "Summary",
+      headline: "Headline",
+      description: "Description",
+      bullet: (n) => `bullet ${n}`,
+    },
+    fillHint: "Fill in the blanks with your own figures to apply it.",
+    stale: "The text changed after the review: this suggestion no longer applies.",
+    apply: "Apply",
+    dismiss: "Dismiss",
+    applied: "Change applied",
+    saveFailed: "Couldn't save your choice",
+  },
+
   editors: {
     place: "Place",
     placeNow: (where) => `Now: ${where}`,

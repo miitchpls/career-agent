@@ -7,13 +7,10 @@ the CV; entries whose quote (or company/school) isn't in the text get a review n
 an invented job shows up as "check this" rather than slipping through.
 """
 
-import contextvars
 import hashlib
 import io
 import json
 import re
-import subprocess
-import threading
 import unicodedata
 import uuid
 from typing import Literal
@@ -21,7 +18,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic.alias_generators import to_camel
 
-from . import ai, db
+from . import ai, db, runs
 from .i18n import LOCALE, t
 
 MAX_UPLOAD_MB = 15
@@ -656,79 +653,39 @@ def store_upload(filename: str | None, data: bytes) -> int:
 # --- Running the import ----------------------------------------------------------------------
 
 
-class _Run:
-    """One import's process, and whether the user cancelled it."""
-
-    def __init__(self) -> None:
-        self.proc: subprocess.Popen | None = None
-        self.cancelled = False
-
-
 class Importer:
-    """One import at a time, in a background thread (an AI CLI takes a minute or two).
-
-    Cancelling frees the slot at once: the cancelled run's process is killed as soon as it
-    exists (even if it starts after the cancel), and its result is thrown away.
-    """
+    """One import at a time, in a background thread (see runs.Slot)."""
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._runs: dict[
-            int, _Run
-        ] = {}  # draft id -> run, cancelled ones until they exit
+        self._slot = runs.Slot()
 
     def running(self) -> bool:
-        with self._lock:
-            return any(not r.cancelled for r in self._runs.values())
+        return self._slot.running()
+
+    def idle(self) -> bool:
+        return self._slot.idle()
 
     def start(self, document_id: int) -> dict:
         provider, model = ai.resolve()  # raises AiError: shown as is
-        with self._lock:
-            if any(not r.cancelled for r in self._runs.values()):
-                raise RuntimeError(t("import_busy"))
-            draft_id = db.create_draft(document_id, provider.id, model)
-            self._runs[draft_id] = _Run()
-        ctx = contextvars.copy_context()  # the run keeps the request's language
-        threading.Thread(
-            target=ctx.run,
-            args=(self._run, draft_id, document_id, provider, model),
-            daemon=True,
-        ).start()
+        draft_id = self._slot.claim(
+            lambda: db.create_draft(document_id, provider.id, model), t("import_busy")
+        )
+        self._slot.spawn(self._run, draft_id, document_id, provider, model)
         return db.get_draft(draft_id)
 
     def cancel(self) -> None:
-        with self._lock:
-            runs = [(d, r) for d, r in self._runs.items() if not r.cancelled]
-            for _, r in runs:
-                r.cancelled = True
-        for draft_id, r in runs:
-            db.update_draft(draft_id, when_status="running", status="discarded")
-            if r.proc and r.proc.poll() is None:
-                r.proc.terminate()
-
-    def _started(self, draft_id: int):
-        def register(proc: subprocess.Popen) -> None:
-            with self._lock:
-                run = self._runs.get(draft_id)
-                if run:
-                    run.proc = proc
-                kill = run is None or run.cancelled
-            if kill:  # cancelled before the process existed
-                proc.terminate()
-
-        return register
-
-    def _cancelled(self, draft_id: int) -> bool:
-        with self._lock:
-            run = self._runs.get(draft_id)
-            return run is None or run.cancelled
+        self._slot.cancel(
+            lambda draft_id: db.update_draft(
+                draft_id, when_status="running", status="discarded"
+            )
+        )
 
     def _run(
         self, draft_id: int, document_id: int, provider: ai.Provider, model
     ) -> None:
         try:
             doc = db.get_document(document_id)
-            if doc is None or self._cancelled(draft_id):
+            if doc is None or self._slot.cancelled(draft_id):
                 return
             text = doc["text"]
             try:
@@ -738,7 +695,7 @@ class Importer:
                     system_prompt(LOCALE.get()),
                     user_prompt(text),
                     EXTRACTION_SCHEMA,
-                    on_start=self._started(draft_id),
+                    on_start=self._slot.started(draft_id),
                 )
             except ai.AiError as e:
                 db.update_draft(
@@ -772,5 +729,4 @@ class Importer:
             )
             raise
         finally:
-            with self._lock:
-                self._runs.pop(draft_id, None)
+            self._slot.done(draft_id)
