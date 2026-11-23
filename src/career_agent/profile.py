@@ -554,14 +554,17 @@ def _decode(data: bytes) -> str:
 
 def _pdf_text(data: bytes) -> str:
     from pypdf import PdfReader
-    from pypdf.errors import PdfReadError
 
     try:
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted and not reader.decrypt(""):
             raise ValueError(t("import_unreadable"))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
-    except (PdfReadError, OSError, KeyError, TypeError) as e:
+    except ValueError:
+        raise
+    except (
+        Exception
+    ) as e:  # pypdf raises many kinds on broken files: all mean "can't read"
         raise ValueError(t("import_unreadable")) from e
 
 
@@ -593,6 +596,10 @@ def store_upload(filename: str | None, data: bytes) -> int:
     """Validate and keep the upload; returns the document id."""
     mime, ext, text = read_upload(filename, data)
     sha = hashlib.sha256(data).hexdigest()
+    known = db.document_by_sha(sha)
+    if known:  # same bytes uploaded again: one file on disk, one row
+        db.touch_document(known["id"], filename)
+        return known["id"]
     rel = f"documents/{sha}{ext}"
     path = db.data_dir() / rel
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -604,25 +611,38 @@ def store_upload(filename: str | None, data: bytes) -> int:
 # --- Running the import ----------------------------------------------------------------------
 
 
+class _Run:
+    """One import's process, and whether the user cancelled it."""
+
+    def __init__(self) -> None:
+        self.proc: subprocess.Popen | None = None
+        self.cancelled = False
+
+
 class Importer:
-    """One import at a time, in a background thread (an AI CLI takes a minute or two)."""
+    """One import at a time, in a background thread (an AI CLI takes a minute or two).
+
+    Cancelling frees the slot at once: the cancelled run's process is killed as soon as it
+    exists (even if it starts after the cancel), and its result is thrown away.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._proc: subprocess.Popen | None = None
-        self._draft: int | None = None
+        self._runs: dict[
+            int, _Run
+        ] = {}  # draft id -> run, cancelled ones until they exit
 
     def running(self) -> bool:
         with self._lock:
-            return self._draft is not None
+            return any(not r.cancelled for r in self._runs.values())
 
     def start(self, document_id: int) -> dict:
         provider, model = ai.resolve()  # raises AiError: shown as is
         with self._lock:
-            if self._draft is not None:
+            if any(not r.cancelled for r in self._runs.values()):
                 raise RuntimeError(t("import_busy"))
             draft_id = db.create_draft(document_id, provider.id, model)
-            self._draft = draft_id
+            self._runs[draft_id] = _Run()
         ctx = contextvars.copy_context()  # the run keeps the request's language
         threading.Thread(
             target=ctx.run,
@@ -633,22 +653,37 @@ class Importer:
 
     def cancel(self) -> None:
         with self._lock:
-            draft, proc = self._draft, self._proc
-        if draft is not None:
-            db.update_draft(draft, when_status="running", status="discarded")
-        if proc and proc.poll() is None:
-            proc.terminate()
+            runs = [(d, r) for d, r in self._runs.items() if not r.cancelled]
+            for _, r in runs:
+                r.cancelled = True
+        for draft_id, r in runs:
+            db.update_draft(draft_id, when_status="running", status="discarded")
+            if r.proc and r.proc.poll() is None:
+                r.proc.terminate()
 
-    def _started(self, proc: subprocess.Popen) -> None:
+    def _started(self, draft_id: int):
+        def register(proc: subprocess.Popen) -> None:
+            with self._lock:
+                run = self._runs.get(draft_id)
+                if run:
+                    run.proc = proc
+                kill = run is None or run.cancelled
+            if kill:  # cancelled before the process existed
+                proc.terminate()
+
+        return register
+
+    def _cancelled(self, draft_id: int) -> bool:
         with self._lock:
-            self._proc = proc
+            run = self._runs.get(draft_id)
+            return run is None or run.cancelled
 
     def _run(
         self, draft_id: int, document_id: int, provider: ai.Provider, model
     ) -> None:
         try:
             doc = db.get_document(document_id)
-            if doc is None:  # the profile was deleted meanwhile
+            if doc is None or self._cancelled(draft_id):
                 return
             text = doc["text"]
             try:
@@ -658,7 +693,7 @@ class Importer:
                     system_prompt(LOCALE.get()),
                     user_prompt(text),
                     EXTRACTION_SCHEMA,
-                    on_start=self._started,
+                    on_start=self._started(draft_id),
                 )
             except ai.AiError as e:
                 db.update_draft(
@@ -693,5 +728,4 @@ class Importer:
             raise
         finally:
             with self._lock:
-                self._draft = None
-                self._proc = None
+                self._runs.pop(draft_id, None)

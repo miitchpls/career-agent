@@ -25,7 +25,7 @@ STATIC = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init()  # here rather than at import, so importing the app never touches the real DB
-    db.fail_running_drafts(t("import_interrupted"))
+    db.fail_running_drafts()
     yield
 
 
@@ -145,11 +145,12 @@ class AiChoice(BaseModel):
 
 @app.put("/api/ai")
 def ai_choose(choice: AiChoice):
+    providers = ai.detect()  # once per request: each check runs every CLI
     try:
-        ai.choose(choice.provider, choice.model or None)
+        ai.choose(choice.provider, choice.model or None, providers)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    return ai.describe(ai.detect())
+    return ai.describe(providers)
 
 
 # --- Profile ----------------------------------------------------------------------------------
@@ -157,11 +158,21 @@ def ai_choose(choice: AiChoice):
 
 def _profile_state() -> dict:
     saved = db.latest_profile()
+    draft = db.open_draft()
+    if draft and draft["error"] == db.INTERRUPTED:
+        draft["error"] = t(db.INTERRUPTED)
     return {
         "profile": saved["data"] if saved else None,
         "saved_at": saved["created_at"] if saved else None,
-        "draft": db.open_draft(),
+        "draft": draft,
     }
+
+
+def _drop_unused_files() -> None:
+    """After a save: forget photos and attachments the profile no longer shows."""
+    for row in db.unused_files():
+        (db.data_dir() / row["path"]).unlink(missing_ok=True)
+        db.delete_file(row["id"])
 
 
 @app.get("/api/profile")
@@ -178,6 +189,7 @@ class ProfileBody(BaseModel):
 def profile_put(body: ProfileBody):
     """Save the profile as edited by hand: every save is a new revision."""
     db.save_profile(body.profile.dump(), "manual")
+    _drop_unused_files()
     return _profile_state()
 
 
@@ -198,6 +210,9 @@ def profile_import(
     """Draft a profile from a CV (file, or pasted text) with the user's AI CLI."""
     if importer.running():
         raise HTTPException(409, t("import_busy"))
+    draft = db.open_draft()
+    if draft and draft["status"] == "ready":  # a new import would silently drop it
+        raise HTTPException(409, t("draft_pending"))
     if file is not None:
         data, name = (
             file.file.read(MAX_UPLOAD_MB * 1024 * 1024 + 1),
@@ -223,10 +238,8 @@ def profile_import(
 def draft_retry():
     """Run the last import again on the same document (after a failure)."""
     draft = db.open_draft()
-    if not draft or draft["status"] == "running":
-        raise HTTPException(
-            409 if draft else 404, t("import_busy" if draft else "draft_not_found")
-        )
+    if not draft or draft["status"] != "failed":  # never restart over a draft in review
+        raise HTTPException(409 if draft else 404, t("draft_not_found"))
     try:
         importer.start(draft["document_id"])
     except RuntimeError as e:
@@ -262,6 +275,7 @@ def draft_confirm(body: ProfileBody):
     profile = body.profile.dump()
     db.save_profile(profile, "import", draft["document_id"])
     db.update_draft(draft["id"], when_status="ready", status="confirmed")
+    _drop_unused_files()
     return _profile_state()
 
 

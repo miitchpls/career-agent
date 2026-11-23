@@ -517,6 +517,7 @@ export const de: Messages = {
     pageTitle: "Profil",
     pageText: "Die Grundlage für jeden passenden Lebenslauf. Bleibt auf deinem Computer.",
     importCv: "Lebenslauf importieren",
+    importBlocked: "Bestätige oder verwirf zuerst den Entwurf in Prüfung",
     more: "Weitere Profilaktionen",
     savedAt: (time) => `Gespeichert um ${time}`,
     exportMd: "Als Markdown exportieren",

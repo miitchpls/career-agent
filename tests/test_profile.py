@@ -9,6 +9,18 @@ from career_agent.app import app, importer
 
 client = TestClient(app)
 
+
+@pytest.fixture(autouse=True)
+def wait_for_imports():
+    """A test's background import must end before the next test swaps the database."""
+    yield
+    for _ in range(500):
+        if not importer._runs:
+            return
+        time.sleep(0.01)
+    raise AssertionError("an import thread outlived its test")
+
+
 CV = """# Giulia Ferri
 Data Engineer · Spark e piattaforme dati
 giulia.ferri@example.com · github.com/gferri-demo
@@ -508,3 +520,144 @@ def test_codex_runner_reads_the_last_message(monkeypatch):
     )
     with pytest.raises(ai.AiError, match="model not supported"):
         ai._run_codex("/x/codex", "sys", "cv", {}, "x", None)
+
+
+# --- Review fixes -------------------------------------------------------------------------
+
+
+class _Proc:
+    def __init__(self):
+        self.terminated = False
+
+    def poll(self):
+        return None
+
+    def terminate(self):
+        self.terminated = True
+
+
+def test_cancel_before_the_process_starts_still_kills_it(monkeypatch):
+    _engine(monkeypatch, answer=RAW)
+    gate, proc = __import__("threading").Event(), _Proc()
+
+    def run(provider, model, system, prompt, schema, on_start=None):
+        gate.wait(2)  # the user cancels before the CLI is spawned
+        on_start(proc)
+        raise ai.AiError("terminated")
+
+    monkeypatch.setattr(ai, "run", run)
+    assert client.post("/api/profile/import", data={"text": CV}).status_code == 202
+    client.delete("/api/profile/draft")
+    assert not importer.running()  # the slot is free at once
+    gate.set()
+    for _ in range(100):
+        if proc.terminated:
+            break
+        time.sleep(0.01)
+    assert proc.terminated
+    assert client.get("/api/profile").json()["draft"] is None
+
+
+def test_encrypted_and_broken_pdfs():
+    from pypdf import PdfReader, PdfWriter
+
+    words = "Giulia Ferri Senior Data Engineer at Lumen Analytics since 2022 in Bologna"
+    writer = PdfWriter(clone_from=PdfReader(__import__("io").BytesIO(_pdf(words))))
+    writer.encrypt(user_password="", owner_password="owner", algorithm="AES-256")
+    out = __import__("io").BytesIO()
+    writer.write(out)
+    assert words in profile.read_upload("locked.pdf", out.getvalue())[2]
+    # Whatever pypdf raises on a broken file is "can't read", never a 500
+    truncated = _pdf(words)[:-60]
+    for data in (truncated, b"%PDF-1.7\n" + b"\x00" * 400):
+        try:
+            profile.read_upload("bad.pdf", data)
+        except ValueError:
+            pass
+
+
+def test_pdf_reader_crash_is_a_readable_error(monkeypatch):
+    import pypdf
+
+    def boom(*_a, **_k):
+        raise RecursionError("deep")
+
+    monkeypatch.setattr(pypdf, "PdfReader", boom)
+    with pytest.raises(ValueError, match="Non riesco a leggere"):
+        profile.read_upload("cv.pdf", _pdf("x"))
+
+
+def test_interrupted_message_follows_the_reader_language():
+    doc = db.add_document("abc", None, "text/plain", "documents/abc.txt", CV)
+    db.create_draft(doc, "claude", None)
+    db.fail_running_drafts()
+    en = client.get("/api/profile", headers={"Accept-Language": "en"}).json()
+    assert en["draft"]["error"] == "Import interrupted: the server was restarted."
+    de = client.get("/api/profile", headers={"Accept-Language": "de"}).json()
+    assert de["draft"]["error"].startswith("Import unterbrochen")
+
+
+def test_a_draft_under_review_is_never_replaced(monkeypatch):
+    _engine(monkeypatch, answer=RAW)
+    client.post("/api/profile/import", data={"text": CV})
+    _settled()
+    edited = {**client.get("/api/profile").json()["draft"]["data"], "headline": "Mine"}
+    client.put("/api/profile/draft", json={"profile": edited})
+    assert client.post("/api/profile/draft/retry").status_code == 409
+    r = client.post("/api/profile/import", data={"text": CV})
+    assert r.status_code == 409 and "bozza" in r.json()["detail"]
+    draft = client.get("/api/profile").json()["draft"]
+    assert draft["status"] == "ready" and draft["data"]["headline"] == "Mine"
+
+
+def test_same_file_twice_is_one_document_on_disk(monkeypatch):
+    first = profile.store_upload("cv.md", CV.encode())
+    second = profile.store_upload("cv.txt", CV.encode())
+    assert first == second
+    assert [p.name for p in (db.data_dir() / "documents").iterdir()] == [
+        db.get_document(first)["path"].split("/")[-1]
+    ]
+    assert db.get_document(first)["filename"] == "cv.txt"
+
+
+def test_replaced_files_are_deleted_after_a_while():
+    def upload(name):
+        return client.post(
+            "/api/profile/files", files={"file": (name, b"\x89PNG....", "image/png")}
+        ).json()
+
+    old, kept, fresh = upload("old.png"), upload("kept.png"), upload("fresh.png")
+    with db.connect() as conn:  # old and kept were uploaded an hour ago
+        conn.execute(
+            "UPDATE profile_files SET created_at = '2000-01-01T00:00:00+00:00' WHERE id IN (?, ?)",
+            (old["id"], kept["id"]),
+        )
+    client.put("/api/profile", json={"profile": {**P, "photo": kept["url"]}})
+    assert client.get(old["url"]).status_code == 404  # replaced: gone
+    assert client.get(kept["url"]).status_code == 200  # in use
+    assert (
+        client.get(fresh["url"]).status_code == 200
+    )  # just uploaded: a dialog may save it
+
+
+def test_codex_runs_without_tools(monkeypatch):
+    seen = {}
+
+    def fake(args, stdin, cwd, on_start, name):
+        seen["args"] = args
+        with open(args[args.index("-o") + 1], "w") as f:
+            f.write("{}")
+        return 0, "", ""
+
+    monkeypatch.setattr(ai, "_communicate", fake)
+    ai._run_codex("/x/codex", "sys", "cv", {}, None, None)
+    for feature in ("shell_tool", "unified_exec", "code_mode_host"):
+        assert f"--disable={feature}" in seen["args"]
+    assert 'web_search="disabled"' in seen["args"]
+
+
+def test_choosing_an_engine_checks_the_clis_once(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ai, "detect", lambda: calls.append(1) or _providers())
+    assert client.put("/api/ai", json={"provider": "codex"}).status_code == 200
+    assert len(calls) == 1

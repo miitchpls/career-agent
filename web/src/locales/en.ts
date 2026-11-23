@@ -515,6 +515,7 @@ export const en: Messages = {
     pageTitle: "Profile",
     pageText: "The base we write every tailored CV from. It stays on your computer.",
     importCv: "Import CV",
+    importBlocked: "Confirm or discard the draft under review first",
     more: "More profile actions",
     savedAt: (time) => `Saved at ${time}`,
     exportMd: "Export as Markdown",

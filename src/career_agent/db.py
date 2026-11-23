@@ -449,23 +449,30 @@ def data_dir() -> Path:
 def add_document(
     sha256: str, filename: str | None, mime: str, path: str, text: str
 ) -> int:
-    """Store an uploaded CV; the same file uploaded twice is one row."""
     with connect() as conn:
-        row = conn.execute(
-            "SELECT id FROM documents WHERE sha256 = ?", (sha256,)
-        ).fetchone()
-        if row:
-            conn.execute(
-                "UPDATE documents SET filename = ?, uploaded_at = ? WHERE id = ?",
-                (filename, _now(), row["id"]),
-            )
-            return row["id"]
         cur = conn.execute(
             "INSERT INTO documents (sha256, filename, mime, path, text, uploaded_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             (sha256, filename, mime, path, text, _now()),
         )
         return cur.lastrowid
+
+
+def document_by_sha(sha256: str) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM documents WHERE sha256 = ?", (sha256,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def touch_document(doc_id: int, filename: str | None) -> None:
+    """The same file uploaded again: remember its latest name."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE documents SET filename = ?, uploaded_at = ? WHERE id = ?",
+            (filename, _now(), doc_id),
+        )
 
 
 def get_document(doc_id: int) -> dict | None:
@@ -544,7 +551,11 @@ def open_draft() -> dict | None:
         )
 
 
-def fail_running_drafts(error: str) -> None:
+# Stored instead of a message when no request (so no language) is around: translated on read.
+INTERRUPTED = "import_interrupted"
+
+
+def fail_running_drafts(error: str = INTERRUPTED) -> None:
     """At startup: no run survives a restart."""
     with connect() as conn:
         conn.execute(
@@ -605,6 +616,31 @@ def get_file(file_id: str) -> dict | None:
             "SELECT * FROM profile_files WHERE id = ?", (file_id,)
         ).fetchone()
     return dict(row) if row else None
+
+
+def unused_files(older_than: timedelta = timedelta(minutes=10)) -> list[dict]:
+    """Uploaded files neither the profile nor the open draft points to any more: a replaced
+    photo, a removed attachment. Recent uploads are spared: a dialog may be about to save them."""
+    cutoff = (datetime.now(UTC) - older_than).isoformat(timespec="seconds")
+    with connect() as conn:
+        used = " ".join(
+            r[0]
+            for r in conn.execute(
+                "SELECT data FROM (SELECT data FROM profile_revisions ORDER BY id DESC LIMIT 1) "
+                "UNION ALL SELECT data FROM profile_drafts "
+                f"WHERE status IN ({', '.join('?' * len(DRAFT_OPEN))}) AND data IS NOT NULL",
+                DRAFT_OPEN,
+            )
+        )
+        rows = conn.execute(
+            "SELECT * FROM profile_files WHERE created_at < ?", (cutoff,)
+        ).fetchall()
+    return [dict(r) for r in rows if f"/api/profile/files/{r['id']}" not in used]
+
+
+def delete_file(file_id: str) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM profile_files WHERE id = ?", (file_id,))
 
 
 def clear_profile() -> list[str]:
