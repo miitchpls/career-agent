@@ -131,8 +131,8 @@ text is HTML-escaped; links keep only `http(s)`/`mailto` schemes; the photo must
 
 All are single-column, so applicant tracking systems read them in order. **Compare styles**, on the profile page,
 shows every template filled with your profile (or a sample) side by side; one opens large with its description
-and can be set as the default. Previews are rendered by the server and shown in sandboxed iframes, scaled from the
-real page size.
+and can be set as the default. Previews are rendered by the server in one request and shown in sandboxed iframes,
+scaled from the real page size. Profile data never reaches the template's `<head>`, so it can't end up in its CSS.
 
 Not filled from the profile, because it has no such data: core competencies, awards, interests, phone. Those
 sections are left out.
@@ -237,7 +237,7 @@ tests/
 | `GET /api/places?q=` | City suggestions |
 | `GET/PUT /api/ai` | AI engines found, saved choice |
 | `GET/PUT /api/cv/preferences` | CV language, format, style and photo |
-| `POST /api/cv/preview` | A CV template filled with a profile (or the sample), as HTML |
+| `POST /api/cv/preview` | CV templates filled with a profile (or the sample) as HTML, several per request; optional highlighted texts |
 | `GET/PUT/DELETE /api/profile` | Profile and open draft · save · delete everything |
 | `POST /api/profile/import` | Start an import (multipart: `file` or `text`) |
 | `PUT/DELETE /api/profile/draft` · `POST /api/profile/draft/confirm` · `POST /api/profile/draft/retry` | Review an import |
@@ -249,5 +249,7 @@ tests/
 - Importing a CV replaces the profile on confirm; it doesn't merge with what's there.
 - Only Claude Code and Codex are supported as AI engines.
 - Errors reported by the AI CLIs are shown in the CLI's language, usually English.
-- The tailored CV for a posting is a mock: the match analysis and the list of changes are sample text, and the
-  preview shows the profile as it is, in the chosen template. There is no PDF export yet.
+- The tailored CV for a posting is a stand-in for AI generation, built from the real profile and posting: it lists
+  the posting's skills you have, have only by inference, or lack (from a fixed vocabulary), moves the bullets and
+  skills the posting names to the top, and highlights the moved bullets in the preview. It never reorders
+  experiences, rewrites or adds text. There is no PDF export yet.

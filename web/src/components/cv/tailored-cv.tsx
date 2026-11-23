@@ -13,11 +13,13 @@ import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { Job } from "@/lib/api"
 import { CvPage } from "@/components/cv/cv-page"
-import { cvStore, tailoredFor, useGenerated, type MatchKind } from "@/lib/cv-mock"
-import { resolveCv, useCvPrefs } from "@/lib/cv-prefs"
+import { cvStore, tailoredFor, useGenerated, type MatchKind, type Tailored } from "@/lib/cv-mock"
+import { useCvPreview } from "@/lib/cv-preview"
+import { resolveCv, useCvPrefs, type ResolvedCv } from "@/lib/cv-prefs"
 import { hasProfile, useProfile } from "@/lib/profile"
 import { useLocale, useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -151,9 +153,10 @@ function Result({ job, onRegenerate, onOpenProfile }: { job: Job; onRegenerate: 
   const t = all.cv
   const locale = useLocale()
   // The analysis is phrased in the UI's language: redo it when that changes.
-  const cv = useMemo(() => (void locale, tailoredFor(job.title, job.company)), [job.title, job.company, locale])
-  const prefs = useCvPrefs()
   const { profile } = useProfile()
+  const cv = useMemo(() => (void locale, tailoredFor(profile, job)), [profile, job, locale])
+  const prefs = useCvPrefs()
+  const [marks, setMarks] = useState(true)
   const look = resolveCv(prefs, job, !!profile.photo)
   const languageName = { it: all.profileView.languageIt, en: all.profileView.languageEn, de: all.profileView.languageDe }
   const gaps = cv.matches.filter((m) => m.kind === "gap")
@@ -226,22 +229,44 @@ function Result({ job, onRegenerate, onOpenProfile }: { job: Job; onRegenerate: 
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium">{t.preview}</h3>
-          <span className="text-xs text-muted-foreground">{all.cv.templates[look.style].name}</span>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-medium">
+            {t.preview} <span className="font-normal text-muted-foreground">· {all.cv.templates[look.style].name}</span>
+          </h3>
+          {cv.marked.length > 0 && (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              {t.highlight}
+              <Switch size="sm" checked={marks} onCheckedChange={setMarks} />
+            </label>
+          )}
         </div>
+        {!(profile.name || profile.experiences.length) && (
+          <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">{t.thinProfile}</p>
+        )}
         <div className="rounded-lg border bg-muted/40 p-4 sm:p-6">
-          <CvPage
-            template={look.style}
-            language={look.language}
-            format={look.format}
-            photo={look.photo}
-            profile={profile}
-            className="mx-auto max-w-xl rounded-sm shadow-[0_1px_2px_rgba(0,0,0,.06),0_8px_24px_-8px_rgba(0,0,0,.18)]"
-          />
+          <TailoredPage cv={cv} look={look} marks={marks} />
         </div>
       </section>
     </div>
+  )
+}
+
+/** The tailored profile in the chosen template, moved texts highlighted. */
+function TailoredPage({ cv, look, marks }: { cv: Tailored; look: ResolvedCv; marks: boolean }) {
+  const preview = useCvPreview({
+    templates: [look.style],
+    language: look.language,
+    format: look.format,
+    photo: look.photo,
+    profile: cv.profile,
+    marked: marks ? cv.marked : [],
+  })
+  return (
+    <CvPage
+      html={preview.data?.pages[look.style]}
+      format={look.format}
+      className="mx-auto max-w-xl rounded-sm shadow-[0_1px_2px_rgba(0,0,0,.06),0_8px_24px_-8px_rgba(0,0,0,.18)]"
+    />
   )
 }
 

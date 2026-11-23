@@ -200,6 +200,11 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "en": "No profile draft to confirm",
         "de": "Kein Profilentwurf zum Bestätigen",
     },
+    "cv_render_failed": {
+        "it": "Questo stile non si riesce a compilare: scegline un altro.",
+        "en": "This style can't be filled in: pick another one.",
+        "de": "Dieser Stil lässt sich nicht ausfüllen: wähle einen anderen.",
+    },
     "file_not_found": {
         "it": "File non trovato",
         "en": "File not found",

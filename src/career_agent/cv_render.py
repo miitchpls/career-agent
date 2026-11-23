@@ -281,6 +281,21 @@ def _years(start, end) -> str:
     return f"{a} – {b}" if a and b and a != b else str(a or b or "")
 
 
+def _replace_contact_row(source: str, row: str) -> str:
+    """Swap the template's .contact-row for `row`, finding its closing tag by nesting depth."""
+    start = source.find('<div class="contact-row">')
+    if start < 0:
+        return source
+    depth, i = 0, start
+    for tag in re.finditer(r"<(/?)div\b", source[start:]):
+        depth += -1 if tag[1] else 1
+        if depth == 0:
+            i = start + tag.end()
+            end = source.index(">", i) + 1
+            return source[:start] + row + source[end:]
+    return source
+
+
 def _contact_row(p: Profile) -> str:
     items = []
     if p.email:
@@ -288,14 +303,20 @@ def _contact_row(p: Profile) -> str:
     for link in p.links:
         href = safe_url(link.url)
         if href:
-            shown = re.sub(r"^https?://(www\.)?", "", link.url.strip()).rstrip("/")
-            items.append(f'<a href="{href}">{esc(shown)}</a>')
+            # The address itself, as career-ops prints it: no scheme, no www, no trailing slash.
+            shown = re.sub(
+                r"^(https?://(www\.)?|mailto:|tel:)",
+                "",
+                link.url.strip(),
+                flags=re.IGNORECASE,
+            )
+            items.append(f'<a href="{href}">{esc(shown.rstrip("/"))}</a>')
     if p.location:
         items.append(f"<span>{esc(p.location)}</span>")
     return '<div class="contact-row">\n      ' + "\n      ".join(items) + "\n    </div>"
 
 
-def _experience(p: Profile, part: Partial | None, lang: str) -> str:
+def _experience(p: Profile, part: Partial, lang: str, mark) -> str:
     out = []
     for e in p.experiences:
         if not (e.role or e.company):
@@ -305,7 +326,7 @@ def _experience(p: Profile, part: Partial | None, lang: str) -> str:
             for x in (e.location, e.location_type and _MODES[lang][e.location_type])
             if x
         )
-        bullets = "\n    ".join(f"<li>{esc(b)}</li>" for b in e.bullets if b)
+        bullets = "\n    ".join(f"<li>{mark(b)}</li>" for b in e.bullets if b)
         fields = {
             "COMPANY": esc(e.company),
             "PERIOD": esc(_period(e.start, e.end, e.current, lang)),
@@ -332,6 +353,8 @@ _MODES = {
 def _education(p: Profile, part: Partial, lang: str) -> str:
     out = []
     for d in p.education:
+        if not (d.school or d.degree or d.field):
+            continue
         title = ", ".join(x for x in (d.degree, d.field) if x) or d.school
         org = d.school if title != d.school else ""
         desc = " · ".join(x for x in (d.grade, d.description) if x)
@@ -417,7 +440,7 @@ def _skills(p: Profile, part: Partial, lang: str) -> str:
     return f'<div class="skills-grid">\n{items}\n  </div>'
 
 
-def _page_css(page: PageFormat) -> str:
+def _page_css(page: PageFormat, marks: bool = False) -> str:
     """The sheet: @page for printing (as career-ops' generate-pdf.mjs adds it), and on screen a
     page-sized white sheet with the same margin, so a preview looks like the printout."""
     return (
@@ -427,7 +450,15 @@ def _page_css(page: PageFormat) -> str:
         "  html, body { margin: 0; }\n"
         f"  .page {{ box-sizing: border-box; width: {PAGE_WIDTHS[page]}; max-width: none;"
         f" min-height: {PAGE_HEIGHTS[page]}; padding: var(--page-margin, 0.6in); }}\n"
-        "}\n</style>"
+        "}\n"
+        + (
+            "mark.ca-changed { background: #fde68a; color: inherit; border-radius: 2px;"
+            " padding: 0 1px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }\n"
+            "@media print { mark.ca-changed { background: none; padding: 0; } }\n"
+            if marks
+            else ""
+        )
+        + "</style>"
     )
 
 
@@ -437,8 +468,18 @@ def render(
     lang: CvLanguage = "en",
     page: PageFormat = "a4",
     photo: bool = False,
+    marked: frozenset[str] = frozenset(),
 ) -> str:
-    """The CV as an HTML document."""
+    """The CV as an HTML document. Texts in `marked` (bullets, the summary) are highlighted:
+    the parts a tailored CV changed."""
+
+    def mark(text: str) -> str:
+        return (
+            f'<mark class="ca-changed">{esc(text)}</mark>'
+            if text in marked
+            else esc(text)
+        )
+
     path = TEMPLATES[template]
     parts = _partials(path)
     w = WORDS[lang]
@@ -446,7 +487,7 @@ def render(
     photo_src = p.photo if photo and p.photo and _PHOTO_SRC.match(p.photo) else ""
 
     sections = {
-        "EXPERIENCE": _experience(p, parts["experience"], lang),
+        "EXPERIENCE": _experience(p, parts["experience"], lang, mark),
         "PROJECTS": _projects(p, parts["projects"]),
         "EDUCATION": _education(p, parts["education"], lang),
         "CERTIFICATIONS": _certifications(p, parts["certifications"]),
@@ -456,7 +497,7 @@ def render(
         "LANG": lang,
         "PAGE_WIDTH": PAGE_WIDTHS[page],
         "NAME": esc(p.name),
-        "SUMMARY_TEXT": esc(p.summary),
+        "SUMMARY_TEXT": mark(p.summary),
         "COMPETENCIES": "",
         "AWARDS": "",
         "INTERESTS": "",
@@ -468,18 +509,14 @@ def render(
         **{f"SECTION_{k.upper()}": esc(w[k]) for k in _SECTIONS},
     }
     source = _source(path)
-    out = re.sub(
-        r'<div class="contact-row">[\s\S]*?</div>',
-        lambda _: _contact_row(p),
-        source,
-        count=1,
-    )
+    out = _replace_contact_row(source, _contact_row(p))
     title = f'<div class="header-title">{esc(p.headline)}</div>' if p.headline else ""
+    # On its own line the whole line goes when there's no headline; anywhere else, just the token.
     out = re.sub(
         r"\n([ \t]*)\{\{TITLE_BLOCK\}\}",
         lambda m: f"\n{m[1]}{title}" if title else "",
         out,
-    )
+    ).replace("{{TITLE_BLOCK}}", title)
     out = strip_empty(
         out,
         {
@@ -491,9 +528,14 @@ def render(
             "skills": bool(sections["SKILLS"]),
         },
     )
-    out = fill(out, fields)
-    out = out.replace("</head>", _page_css(page) + "\n</head>", 1)
-    left = set(_TOKEN.findall(out))
+    # The <head> only gets plain values: its CSS comments quote tokens like {{PHOTO}}, and
+    # markup (or a name containing "*/") must never land inside a stylesheet.
+    head, sep, body = out.partition("</head>")
+    head = fill(head, {k: fields[k] for k in ("LANG", "NAME", "PAGE_WIDTH")})
+    body = fill(body, fields)
+    out = head + _page_css(page, bool(marked)) + "\n" + sep + body
+    code = re.sub(r"/\*[\s\S]*?\*/|<!--[\s\S]*?-->", "", head) + body
+    left = set(_TOKEN.findall(code))
     if left:  # a template this renderer doesn't know how to fill
         raise ValueError(f"{path.name}: unfilled placeholders {sorted(left)}")
     return out
