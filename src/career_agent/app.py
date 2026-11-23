@@ -309,27 +309,33 @@ def cv_preferences_put(prefs: CvPrefs):
 
 
 class PreviewRequest(BaseModel):
-    template: cv_render.TemplateId
+    templates: list[cv_render.TemplateId] = Field(
+        min_length=1, max_length=len(cv_render.TEMPLATES)
+    )
     language: cv_render.CvLanguage = "en"
     format: cv_render.PageFormat = "a4"
     photo: bool = False
-    # The profile to show, as on screen (the draft while reviewing); None: the sample.
+    # What to show, exactly as given (the draft while reviewing). None: the sample profile.
     profile: Profile | None = None
+    # Texts to highlight: what a tailored CV changed.
+    marked: list[str] = Field(default_factory=list, max_length=200)
 
 
 @app.post("/api/cv/preview")
 def cv_preview(req: PreviewRequest):
-    """A CV template filled with the profile, as an HTML document for the preview."""
-    p = req.profile
-    empty = p is None or not (p.name or p.experiences or p.education)
-    html = cv_render.render(
-        req.template,
-        cv_render.sample_profile() if empty else p,
-        req.language,
-        req.format,
-        req.photo,
-    )
-    return {"html": html, "sample": empty}
+    """CV templates filled with a profile, as HTML documents: one request for a whole gallery."""
+    profile = req.profile or cv_render.sample_profile()
+    marked = frozenset(req.marked)
+    try:
+        pages = {
+            tid: cv_render.render(
+                tid, profile, req.language, req.format, req.photo, marked
+            )
+            for tid in dict.fromkeys(req.templates)
+        }
+    except ValueError as e:  # a template this renderer can't fill
+        raise HTTPException(500, t("cv_render_failed")) from e
+    return {"pages": pages, "sample": req.profile is None}
 
 
 # Browsers may display these; anything else is downloaded, so an uploaded HTML page can

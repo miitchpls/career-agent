@@ -195,6 +195,17 @@ export interface ProfileState {
 export const CV_TEMPLATES = ["standard", "modern", "compact", "executive", "leadership", "jake", "ats"] as const
 export type CvTemplate = (typeof CV_TEMPLATES)[number]
 
+export interface CvPreviewRequest {
+  templates: CvTemplate[]
+  language: "it" | "en" | "de"
+  format: "a4" | "letter"
+  photo: boolean
+  /** Shown exactly as given; null: the sample profile. */
+  profile: unknown | null
+  /** Texts to highlight: what a tailored CV moved. */
+  marked?: string[]
+}
+
 /** How tailored CVs are written: `/api/cv/preferences`. */
 export interface CvPrefs {
   /** "job": the posting's language. */
@@ -267,9 +278,7 @@ export const api = {
   cv: {
     prefs: () => request<CvPrefs>("/api/cv/preferences"),
     savePrefs: (prefs: CvPrefs) => put<CvPrefs>("/api/cv/preferences", prefs),
-    /** `profile` null: the sample profile. */
-    preview: (body: { template: CvTemplate; language: "it" | "en" | "de"; format: "a4" | "letter"; photo: boolean; profile: unknown | null }) =>
-      post<{ html: string; sample: boolean }>("/api/cv/preview", body),
+    preview: (body: CvPreviewRequest) => post<{ pages: Partial<Record<CvTemplate, string>>; sample: boolean }>("/api/cv/preview", body),
   },
   profile: {
     get: () => request<ProfileState>("/api/profile"),

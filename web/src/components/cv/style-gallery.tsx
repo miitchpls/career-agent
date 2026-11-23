@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { CV_TEMPLATES, type CvTemplate } from "@/lib/api"
+import { useCvPreview } from "@/lib/cv-preview"
 import { useCvPrefs, useSaveCvPrefs } from "@/lib/cv-prefs"
 import { useLocale, useT } from "@/lib/i18n"
 import { useProfile } from "@/lib/profile"
@@ -25,14 +26,24 @@ export function StyleGallery({ open, onOpenChange }: { open: boolean; onOpenChan
   const hasOwn = !!(profile.name || profile.experiences.length || profile.education.length)
   const [source, setSource] = useState<"mine" | "sample">(hasOwn ? "mine" : "sample")
   const [focus, setFocus] = useState<CvTemplate | null>(null)
+  // Each opening starts from the user's own profile when there is one (the profile may have
+  // loaded, or been filled in, since this component mounted).
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setSource(hasOwn ? "mine" : "sample")
+  }
 
   // Without a posting, "the posting's language" falls back to the UI's.
-  const page = {
+  const format = prefs.format === "letter" ? ("letter" as const) : ("a4" as const)
+  const preview = useCvPreview({
+    templates: [...CV_TEMPLATES],
     language: prefs.language === "job" ? locale : prefs.language,
-    format: prefs.format === "letter" ? ("letter" as const) : ("a4" as const),
+    format,
     photo: prefs.photo !== "never" && !!profile.photo,
     profile: source === "mine" && hasOwn ? profile : null,
-  }
+  })
+  const pages = open ? preview.data?.pages : undefined
   const use = (template: CvTemplate) => save.mutate({ ...prefs, style: template })
 
   return (
@@ -78,7 +89,8 @@ export function StyleGallery({ open, onOpenChange }: { open: boolean; onOpenChan
             >
               <Focus
                 template={focus}
-                page={page}
+                html={pages?.[focus]}
+                format={format}
                 inUse={prefs.style === focus}
                 onUse={() => use(focus)}
                 onMove={setFocus}
@@ -108,7 +120,7 @@ export function StyleGallery({ open, onOpenChange }: { open: boolean; onOpenChan
                         active && "ring-2 ring-foreground",
                       )}
                     >
-                      <CvPage template={id} {...page} />
+                      <CvPage html={pages?.[id]} format={format} />
                       {active && (
                         <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-foreground px-2 py-0.5 text-[10px] font-medium text-background">
                           <CheckIcon className="size-2.5" />
@@ -133,14 +145,16 @@ export function StyleGallery({ open, onOpenChange }: { open: boolean; onOpenChan
 
 function Focus({
   template,
-  page,
+  html,
+  format,
   inUse,
   onUse,
   onMove,
   onBack,
 }: {
   template: CvTemplate
-  page: Omit<React.ComponentProps<typeof CvPage>, "template">
+  html: string | undefined
+  format: "a4" | "letter"
   inUse: boolean
   onUse: () => void
   onMove: (t: CvTemplate) => void
@@ -152,9 +166,12 @@ function Focus({
   const prev = CV_TEMPLATES[(i - 1 + CV_TEMPLATES.length) % CV_TEMPLATES.length]
   const next = CV_TEMPLATES[(i + 1) % CV_TEMPLATES.length]
 
-  // ← and → walk through the styles, as in a photo viewer.
+  // ← and → walk through the styles, as in a photo viewer, unless a control that uses the
+  // arrow keys itself (the Mine/Sample toggle, a menu, a field) has the focus.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target instanceof Element ? e.target : null
+      if (target?.closest('[role="group"],[role="radiogroup"],[role="listbox"],[role="menu"],input,textarea,select')) return
       if (e.key === "ArrowLeft") onMove(prev)
       if (e.key === "ArrowRight") onMove(next)
     }
@@ -165,7 +182,7 @@ function Focus({
   return (
     <div className="grid gap-8 p-6 md:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="rounded-lg bg-muted/50 p-4 sm:p-8">
-        <CvPage template={template} {...page} className="mx-auto max-w-2xl rounded-sm shadow-[0_1px_2px_rgba(0,0,0,.06),0_12px_32px_-12px_rgba(0,0,0,.25)]" />
+        <CvPage html={html} format={format} className="mx-auto max-w-2xl rounded-sm shadow-[0_1px_2px_rgba(0,0,0,.06),0_12px_32px_-12px_rgba(0,0,0,.25)]" />
       </div>
       <div className="flex flex-col gap-5 md:sticky md:top-28 md:self-start">
         <Button variant="ghost" size="sm" className="-ml-2 self-start text-muted-foreground" onClick={onBack}>

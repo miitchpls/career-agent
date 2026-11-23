@@ -553,25 +553,23 @@ export const it = {
     openProfile: "Apri profilo",
     changed: "Cosa è cambiato rispetto al profilo",
     preview: "Anteprima",
+    highlight: "Evidenzia le modifiche",
+    thinProfile: "Il profilo non ha ancora nome ed esperienze: l'anteprima mostra solo quello che c'è.",
     mark: "CV generato per questa offerta",
     mock: {
       now: "adesso",
-      germanB2: "Tedesco B2",
       why: {
-        python: "6 anni, in tutte le esperienze",
-        fastapi: "Fintrail, migrazione dei servizi",
-        postgres: "Fintrail e il progetto pgqueue",
-        events: "Redis Streams a Fintrail",
-        aws: "solo dalla certificazione, nessuna esperienza lo cita",
-        kafka: "non compare nel profilo",
-        german: "nel profilo hai una conoscenza elementare",
+        used: (where: string) => `nel profilo: ${where}`,
+        listed: "nell'elenco delle competenze",
+        inferred: "dedotta dal CV ma non scritta: confermala nel profilo",
+        missing: "non compare nel profilo",
       },
-      changes: (title: string) => [
-        `Riepilogo riscritto per «${title}»`,
-        "Esperienza Fintrail in cima, con la pipeline di eventi come primo punto",
-        "Tirocinio Nodo Labs tolto per stare in una pagina",
-        "Competenze riordinate: le 6 chieste dall'annuncio per prime",
-      ],
+      moved: (n: number) =>
+        n === 1 ? "1 punto spostato in alto: cita ciò che chiede l'annuncio" : `${n} punti spostati in alto: citano ciò che chiede l'annuncio`,
+      skillsFirst: (n: number) =>
+        n === 1 ? "Competenze riordinate: quella citata dall'annuncio per prima" : `Competenze riordinate: le ${n} citate dall'annuncio per prime`,
+      nothing: "Nessuno spostamento: il profilo è già in ordine per questo annuncio",
+      summaryKept: "Il riepilogo resta il tuo: lo riscriverà la generazione con l'AI",
     },
     templates: {
       standard: { name: "Standard", design: "Il modello base di career-ops: titoli colorati, una riga sotto l'intestazione, caratteri senza grazie.", suits: "Quasi ogni candidatura" },
