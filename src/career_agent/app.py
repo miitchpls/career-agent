@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import ai, cv_render, db, geo
+from . import ai, cv_render, db, geo, job_link, score
 from .i18n import LOCALE, parse_accept_language, t
 from .profile import (
     MAX_UPLOAD_MB,
@@ -36,6 +36,7 @@ async def lifespan(_: FastAPI):
     db.init()  # here rather than at import, so importing the app never touches the real DB
     db.fail_running_drafts()
     db.fail_running_reviews()
+    db.fail_running_scores()
     yield
 
 
@@ -51,6 +52,7 @@ app = FastAPI(
 runner = Runner()
 importer = Importer()
 reviewer = Reviewer()
+scorer = score.Scorer()
 
 
 class JobsRequest(BaseModel):
@@ -62,6 +64,92 @@ class JobsRequest(BaseModel):
     as_of: int | None = Field(
         None, ge=0
     )  # from the first page; keeps later pages stable
+
+
+class OpenLinkRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+    currency: str = Field("CHF", pattern=r"^[A-Z]{3}$")  # as Query.salary_currency
+
+
+@app.post("/api/jobs/open")
+def jobs_open(body: OpenLinkRequest):
+    """One posting from a pasted link: from the database when saved, else read from the board."""
+    try:
+        job, known = job_link.open_link(body.url, body.currency)
+    except job_link.LinkError as e:
+        raise HTTPException(e.status, str(e)) from e
+    return {"job": job, "known": known}
+
+
+class PasteJobRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+    title: str = Field(min_length=1, max_length=300)
+    company: str = Field("", max_length=300)
+    location: str = Field("", max_length=300)
+    description: str = Field(min_length=1, max_length=50_000)
+    currency: str = Field("CHF", pattern=r"^[A-Z]{3}$")
+
+
+@app.post("/api/jobs/paste")
+def jobs_paste(body: PasteJobRequest):
+    """A posting the board wouldn't show, from the text the user copied: no request is made."""
+    try:
+        job, known = job_link.paste_job(
+            body.url,
+            body.title,
+            body.company,
+            body.location,
+            body.description,
+            body.currency,
+        )
+    except job_link.LinkError as e:
+        raise HTTPException(e.status, str(e)) from e
+    return {"job": job, "known": known}
+
+
+# --- Fit score ---------------------------------------------------------------------------------
+
+
+class ScoreRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+
+
+@app.get("/api/jobs/score")
+def score_get(url: str):
+    """A posting's fit score: running, ready, or failed (with the last finished one)."""
+    return score.state(url)
+
+
+@app.post("/api/jobs/score", status_code=202)
+def score_start(body: ScoreRequest):
+    """Score a saved posting against the profile and the goals with the user's AI CLI."""
+    try:
+        scorer.start(body.url)
+    except LookupError as e:
+        raise HTTPException(404, str(e)) from e
+    except (ValueError, ai.AiError) as e:
+        raise HTTPException(400, str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from e
+    return score.state(body.url)
+
+
+@app.delete("/api/jobs/score")
+def score_cancel(url: str):
+    """Stop a posting's running score."""
+    scorer.cancel(url)
+    return score.state(url)
+
+
+@app.get("/api/goals")
+def goals_get():
+    """What the user is looking for: target roles, minimum pay, work modes, places..."""
+    return score.goals().model_dump(by_alias=True)
+
+
+@app.put("/api/goals")
+def goals_put(body: score.Goals):
+    return score.save_goals(body).model_dump(by_alias=True)
 
 
 @app.get("/api/places")

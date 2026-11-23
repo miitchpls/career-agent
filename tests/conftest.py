@@ -1,6 +1,6 @@
 import pytest
 
-from career_agent import ai, db, fx, geo
+from career_agent import ai, boards, db, fx, geo
 
 
 @pytest.fixture(autouse=True)
@@ -37,3 +37,20 @@ def no_ai_cli(monkeypatch):
 
     monkeypatch.setattr(ai, "_communicate", refuse)
     monkeypatch.setattr(ai, "_quick", refuse)
+
+
+@pytest.fixture(autouse=True)
+def no_board_pages(monkeypatch):
+    """Tests never open a job board's page: a session built for one refuses to send."""
+
+    class Refusing:
+        def __init__(self, *_a, **_k):
+            self.hooks = {"response": []}
+            self.headers = {}
+
+        def get(self, *_a, **_k):
+            raise AssertionError("a test tried to open a job board page")
+
+        post = get
+
+    monkeypatch.setattr(boards, "RequestsRotating", Refusing)

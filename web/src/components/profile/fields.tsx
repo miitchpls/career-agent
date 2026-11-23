@@ -76,6 +76,7 @@ export function FormDialog({
   onDelete,
   canSave = true,
   wide,
+  footnote,
   children,
 }: {
   open: boolean
@@ -86,6 +87,8 @@ export function FormDialog({
   onDelete?: () => void
   canSave?: boolean
   wide?: boolean
+  /** Left of the buttons when there's no Delete; by default, what the asterisk means. */
+  footnote?: React.ReactNode
   children: React.ReactNode
 }) {
   const t = useT()
@@ -111,7 +114,7 @@ export function FormDialog({
               {t.common.delete}
             </Button>
           ) : (
-            <span className="text-xs text-muted-foreground">{t.profile.required}</span>
+            <span className="text-xs text-muted-foreground">{footnote === undefined ? t.profile.required : footnote}</span>
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -203,10 +206,12 @@ export function SkillPicker({
   value,
   onChange,
   known,
+  placeholder,
 }: {
   value: string[]
   onChange: (v: string[]) => void
   known: string[]
+  placeholder?: string
 }) {
   const t = useT().profile
   const [draft, setDraft] = useState("")
@@ -253,7 +258,7 @@ export function SkillPicker({
               add(draft)
             } else if (e.key === "Backspace" && !draft && value.length) onChange(value.slice(0, -1))
           }}
-          placeholder={value.length ? "" : t.skillPlaceholder}
+          placeholder={value.length ? "" : (placeholder ?? t.skillPlaceholder)}
           className="h-6 min-w-32 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground"
         />
       </div>

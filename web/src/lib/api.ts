@@ -66,6 +66,8 @@ export interface Job {
   salary_converted: { min: number | null; max: number | null; currency: string } | null
   /** Which board searches found this job; `label` is the place's name ("Zurigo", "Ovunque"). */
   hits: { place: string; label: string | null; keyword: string }[]
+  /** The posting's last finished fit score, if any. */
+  score: { value: number; decision: ScoreDecision } | null
 }
 
 export interface JobsPage {
@@ -299,11 +301,102 @@ export interface ReviewState {
   earlier: ProfileReview | null
 }
 
+// --- Fit score (career_agent.score) -------------------------------------------------------------
+
+/** From the score through one table: 4.5 strong apply, 4.0 apply, 3.0 consider, below skip. */
+export type ScoreDecision = "strong_apply" | "apply" | "consider" | "skip"
+export type ScoreDimension = "cv" | "goals" | "salary" | "company"
+export type Importance = "critical" | "high" | "meaningful" | "preferred" | "low_signal"
+
+export interface ScoreResult {
+  /** 1.0-5.0 */
+  score: number
+  decision: ScoreDecision
+  verdict: string
+  /** How many dimensions rest on evidence; not a probability. */
+  confidence: "high" | "medium" | "low"
+  /** A dimension without evidence has `score` null: it doesn't count. */
+  dimensions: Record<ScoreDimension, { status: "supported" | "partial" | "unknown"; score: number | null; note: string }>
+  /** Most important first; within a band, unmet first. */
+  requirements: {
+    requirement: string
+    importance: Importance
+    /** What the importance rests on: the posting's words, its structure, or an estimate. */
+    evidence: "stated" | "structural" | "inferred"
+    jdQuote: string | null
+    match: "strong" | "partial" | "missing" | "na"
+    profileEvidence: string
+  }[]
+  /** Requirements past the row budget. */
+  omitted: number
+  redFlags: { text: string; jdQuote: string | null; hardStop: boolean }[]
+  hardStop: boolean
+  gaps: { requirement: string; risk: string; mitigation: string }[]
+  checks: string[]
+}
+
+export interface JobScore {
+  id: number
+  url: string
+  status: "running" | "ready" | "failed"
+  provider: string
+  model: string | null
+  value: number | null
+  decision: ScoreDecision | null
+  result: ScoreResult | null
+  error: string | null
+  created_at: string
+  /** Ready scores: the profile, the goals or the posting changed since. */
+  stale?: boolean
+}
+
+/** A posting's latest score and, while a new one runs or after it fails, the last finished one. */
+export interface ScoreState {
+  score: JobScore | null
+  earlier: JobScore | null
+  /** Whether the goals name roles, work modes or places (the goals dimension needs them). */
+  targets_set: boolean
+}
+
+/** What the user is looking for (`career_agent.score.Goals`). */
+export interface Goals {
+  roles: string[]
+  /** Yearly, gross. */
+  minSalary: number | null
+  salaryCurrency: string
+  workModes: Exclude<WorkMode, "unknown">[]
+  places: string[]
+  company: string[]
+  dealbreakers: string[]
+}
+
+/** A posting copied by the user from the board's page, when the board won't show it to us. */
+export interface PastedPosting {
+  title: string
+  company: string
+  location: string
+  description: string
+}
+
 export const api = {
   places: (q: string) =>
     request<{ places: PlaceOption[]; offline: boolean }>(`/api/places?q=${encodeURIComponent(q)}`),
   jobs: (query: Query, sort: Sort, direction: Direction, offset: number, asOf: number | null, limit = 50) =>
     post<JobsPage>("/api/jobs", { query, sort, direction, offset, limit, as_of: asOf }),
+  /** One posting from a pasted link: from the database when saved, else read from the board. */
+  openLink: (url: string, currency: string) => post<{ job: Job; known: boolean }>("/api/jobs/open", { url, currency }),
+  /** A posting the board wouldn't show, from the text the user copied: no request is made. */
+  pasteJob: (url: string, posting: PastedPosting, currency: string) =>
+    post<{ job: Job; known: boolean }>("/api/jobs/paste", { url, ...posting, currency }),
+  score: {
+    get: (url: string) => request<ScoreState>(`/api/jobs/score?url=${encodeURIComponent(url)}`),
+    start: (url: string) => post<ScoreState>("/api/jobs/score", { url }),
+    cancel: (url: string) => del<ScoreState>(`/api/jobs/score?url=${encodeURIComponent(url)}`),
+  },
+  goals: {
+    get: () => request<Goals>("/api/goals"),
+    save: (goals: Goals) => put<Goals>("/api/goals", goals),
+  },
   search: (query: Query, force = false) => post<RunSummary>(`/api/search${force ? "?force=true" : ""}`, query),
   cancel: () => post<{ ok: true }>("/api/cancel", {}),
   status: () => request<RunStatus>("/api/status"),
