@@ -1,97 +1,210 @@
-# career-agent (POC)
+# career-agent
 
-Ricerca offerte su LinkedIn e Indeed tramite [JobSpy](https://github.com/speedyapply/JobSpy), con UI web
-(React + shadcn/ui) e filtri componibili come una query SQL.
+A local job search tool. It searches LinkedIn and Indeed through [JobSpy](https://github.com/speedyapply/JobSpy),
+stores the postings in SQLite and lets you filter them in a browser UI. An optional profile, filled in by hand or
+drafted from your CV by an AI CLI already installed on your computer, is the base for tailored CVs (still a mock).
 
-## Avvio
+Proof of concept: one user, one machine, no authentication.
+
+## Quick start
+
+Requires Python 3.12+, [uv](https://docs.astral.sh/uv/) and Node.js 20+.
 
 ```bash
-cd web && npm install && npm run build && cd ..   # compila la UI in src/career_agent/static
+cd web && npm install && npm run build && cd ..   # builds the UI into src/career_agent/static
 uv run career-agent                               # http://127.0.0.1:8000
-HOST=0.0.0.0 uv run career-agent                  # visibile sulla rete locale (nessuna auth)
 ```
 
-Sviluppo UI con hot reload: `uv run career-agent` in un terminale, `cd web && npm run dev` in un altro
-(Vite su :5173, fa da proxy verso `/api`).
+| Variable | Default | |
+|---|---|---|
+| `HOST` | `127.0.0.1` | `0.0.0.0` exposes the app on the local network. There is no login: anyone on the network can use it. |
+| `PORT` | `8000` | |
 
-## Filtri
+Data goes to `data/` in the working directory (see [Data on disk](#data-on-disk)).
 
-Lo stato vive nell'URL (nuqs), quindi una query si condivide copiando il link; la pagina si apre vuota.
+## Searching
 
-| Filtro | Param URL | SQL | Semantica |
-|---|---|---|---|
-| Dove | `where=Zurigo:ch:2657896:Zurigo~onsite.hybrid\|*~remote` | `EXISTS hits.place IN (…) AND work_mode IN (…)` | blocchi in OR; dentro: luoghi OR, modalità OR, luoghi AND modalità |
-| Titolo contiene | `title=python developer,data engineer` | `lower(title) LIKE …` | frasi in OR, parole della frase in AND |
-| Stipendio | `salary=100&cur=EUR&nosalary=true` (CHF predefinito) | stipendio convertito in `cur` (cambi BCE) `>= 100000 [OR non indicato]` | — |
-| Tipo di impiego | `jt=fulltime.parttime&jtnull=true` | `job_type LIKE '%,fulltime,%' OR … [OR non indicato]` | OR |
-| Pubblicata | `posted=168` | `date_posted >= …` | — |
-| Portale | `sites=linkedin` | `site IN (…)` | OR |
-| Ricerca libera | `q=fastapi` | `LIKE` su titolo, azienda, descrizione | — |
+The page opens empty. In the search bar, what you type is turned into filters (title, place, work mode, salary,
+employment type, date), shown as a sentence whose parts you click to edit. The query lives in the URL, so a link
+reproduces it.
 
-Filtri diversi sono in AND.
+The bar filters the postings **already saved**. **Find new jobs** (or **Run** on a saved search) turns the same
+filters into board searches and starts them.
 
-La barra filtra solo le offerte già salvate (freccia o Invio). «Cerca nuove offerte», nella pagina dei risultati
-(o «Esegui» su una ricerca salvata), espande gli stessi filtri in ricerche (portale × luogo ×
-keyword) e le avvia subito, una alla volta con pause di 10–20 s; l'avanzamento compare nella pagina dei risultati, con una frase che dice cosa sta facendo
-e il dettaglio di ogni ricerca espandibile.
-Le ricerche identiche (portale, keyword, luogo, solo remoto, finestra di date) riuscite nelle ultime 6 ore vengono
-saltate: i loro risultati sono già salvati. «Aggiorna comunque», nell'avviso «Già aggiornata», le rifà subito.
-Al massimo 16 ricerche per volta.
+### Filters
 
-### Come si evitano i blocchi
+Different filters are combined with AND.
 
-- **Indeed**: una richiesta restituisce fino a 50 offerte, descrizioni comprese.
-- **LinkedIn**: una richiesta per la pagina della lista (10 offerte); la pagina di un'offerta (descrizione, tipo,
-  stipendio) si apre solo se è nuova, nel paese giusto e con un titolo che corrisponde, con 1,5–4 s di pausa tra
-  una e l'altra. Le offerte con un titolo diverso vengono scartate: la ricerca non le mostrerebbe comunque.
-- **Budget**: al massimo 150 richieste a LinkedIn nelle ultime 24 ore (lista e pagine delle offerte); finito il
-  budget, le ricerche LinkedIn vengono rimandate.
-- **Freno**: al primo segnale di limitazione (HTTP 403/429/999, rimando al login, pagina vuota sospetta) il portale
-  va in pausa per 45 minuti, anche se il server viene riavviato; le altre ricerche continuano.
+| Filter | URL parameter | Matches |
+|---|---|---|
+| Where | `where=Zurigo:ch:2657896:Zurigo~onsite.hybrid\|*~remote` | Scopes separated by `\|` are OR-ed. Inside a scope, places are OR-ed, modes are OR-ed, and places AND modes must both match. `*` is anywhere. |
+| Title contains | `title=python developer,data engineer` | Any phrase; every word of a phrase must be in the title. |
+| Salary | `salary=100&cur=EUR&nosalary=true` | Annual salary ≥ 100,000 in `cur` (default CHF), after converting the posting's currency. `nosalary` keeps postings without a salary. |
+| Employment type | `jt=fulltime.parttime&jtnull=true` | Any of the types; `jtnull` keeps postings that don't state one. |
+| Posted | `posted=168` | Posted in the last N hours. |
+| Board | `sites=linkedin` | Any of the boards. |
+| Free text | `q=fastapi` | Title, company or description. |
 
-«Aggiorna comunque» rispetta budget e pause come ogni altra ricerca.
+The work mode (on-site, hybrid, remote) is inferred from the posting's text, because LinkedIn's public endpoint
+ignores its own work-type filter.
 
-## Autocompletamento città
+Salaries in other currencies are converted with the day's ECB reference rates, or a bundled table when the ECB
+is unreachable. A salary in a currency the ECB doesn't publish counts as "not stated".
 
-Le città vengono da [Open-Meteo Geocoding](https://open-meteo.com/en/docs/geocoding-api) (dati GeoNames, senza
-chiave), tramite il backend (`/api/places`): nomi nella lingua della UI, in inglese per i portali. Il paese è quello
-della città scelta. Al servizio arriva solo il testo digitato come possibile città; se non è raggiungibile la UI usa
-un piccolo catalogo offline.
+### Running a search
 
-## Lingue
+A query becomes one board search per board × place × title phrase, capped at **16 per run**. The searches run one
+at a time, 10–20 s apart, and the results page shows their progress. A query needs at least one place (or
+"anywhere") and one title phrase: these are the boards' search terms.
 
-Interfaccia in italiano, inglese e tedesco (Preferenze, ⌘/Ctrl+,). La scelta resta nel browser; al primo avvio vale
-la lingua del browser, se è una di queste, altrimenti l'italiano. I testi stanno in `web/src/locales/` (l'italiano è il
-riferimento: le altre lingue devono avere le stesse chiavi, lo controllano TypeScript e i test). Il backend risponde
-nella lingua della UI (`Accept-Language`) con i messaggi di `src/career_agent/i18n.py`.
+An identical search (same board, phrase, place, remote-only flag and date window) that succeeded in the last
+**6 hours** is skipped, since its results are already saved. **Refresh anyway** runs it again; limits and pauses
+still apply.
 
-## Profilo
+Indeed searches one country at a time, so "anywhere" scopes skip Indeed.
 
-Facoltativo: la ricerca funziona anche senza. Si compila a mano, una sezione alla volta, oppure si importa un CV
-(PDF, Markdown, testo o testo incollato) che un'AI trasforma in una bozza da rivedere.
+### Staying under the boards' limits
 
-- **Motore AI**: l'app usa una CLI AI già installata e collegata sul computer (Claude Code o Codex), con
-  l'abbonamento dell'utente: nessuna chiave da inserire. In Preferenze → Motore AI si vedono le CLI trovate,
-  si sceglie la predefinita e il modello. Serve solo all'import del profilo.
-- **Esecuzione isolata**: Claude Code gira senza strumenti (`--tools ""`), con `--safe-mode` (niente hook, plugin,
-  MCP o CLAUDE.md) e senza salvare la sessione. Codex gira in sandbox `read-only` in una cartella temporanea
-  vuota, senza la config dell'utente. Il CV è trattato come dati, non come istruzioni.
-- **Bozza e conferma**: nulla entra nel profilo finché l'utente non conferma. Ogni esperienza, formazione,
-  progetto e certificazione porta una citazione dal CV, controllata sul testo estratto: se non c'è (o non c'è
-  l'azienda o la scuola), la voce è segnata «da verificare».
-- **Dove sta**: nello stesso SQLite (`data/jobs.db`). `profile_revisions` ha una riga per ogni salvataggio
-  (l'ultima è il profilo); `profile_drafts` le importazioni; `documents` i CV caricati, con il file originale in
-  `data/documents/`; `profile_files` foto e allegati, in `data/profile-files/`. «Ricomincia da capo» cancella tutto.
+- **Indeed**: one request returns up to 50 postings with their descriptions.
+- **LinkedIn**: one request per list page (10 postings). A posting's own page (description, employment type,
+  salary) is opened only for postings that are new, in the right country and with a title that can match the
+  query, with a 1.5–4 s pause between pages. Postings whose title can't match are dropped.
+- **Daily budget**: at most 150 LinkedIn requests (list and posting pages) in any 24 hours. Searches over budget
+  are postponed.
+- **Back-off**: at the first sign of throttling (HTTP 403, 429 or 999, a redirect to the login page, a suspiciously
+  empty page) the board is paused for 45 minutes. The pause survives a restart; searches on the other board go on.
 
-## Limiti noti
+### Places
 
-- Profilo: i PDF scansionati (senza testo selezionabile) non si importano; un nuovo import sostituisce il profilo
-  alla conferma (le versioni precedenti restano in `profile_revisions`). Il CV su misura per offerta è ancora un
-  mock.
+City suggestions come from the [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api) (GeoNames
+data, no key), through the backend. Only the typed text is sent. Names are shown in the UI's language and sent to
+the boards in English. When the API is unreachable, a small offline catalogue is used.
 
-- L'esclusione per titolo (`Query.title_none`) è supportata dall'API ma per ora non è esposta nella UI.
+## Profile
 
-- La modalità (in sede/ibrido/remoto) è dedotta dal testo: l'endpoint pubblico di LinkedIn ignora il filtro `f_WT`.
-- Gli stipendi in altre valute sono convertiti con i cambi di riferimento BCE del giorno (o una tabella di riserva se
-  la BCE non risponde); annunci in valute senza cambio contano come «stipendio non indicato».
-- Indeed cerca solo dentro un paese: con «Ovunque» viene saltato.
+Optional: searching works without it. The profile follows LinkedIn's sections (experience, education, skills,
+languages, projects, certifications) and accepts a photo and attachments.
+
+You can fill it in by hand (every save is kept) or import a CV:
+
+1. Upload a PDF, Markdown or text file, or paste the text. The file is kept and its text extracted locally. Scanned
+   PDFs without selectable text are refused.
+2. The selected AI CLI turns the text into a profile draft matching a JSON schema.
+3. Every experience, education, project and certification must quote the CV verbatim. The server looks for that
+   quote, and for the company, school or certificate name, in the extracted text. An entry it can't find is
+   marked for review, as are entries the model itself flags (unclear dates, ambiguous roles) and skills it
+   inferred.
+4. You review and edit the draft. Nothing reaches the profile until you press **Confirm and save**. You can also
+   discard the draft, retry a failed import, or cancel a running one.
+
+A confirmed import replaces the current profile; earlier versions remain in the database.
+
+### AI engines
+
+The import doesn't use an API key. It runs an AI CLI that is installed and signed in on the computer, so the
+user's own subscription pays for it:
+
+| Engine | Command | Sign-in check |
+|---|---|---|
+| Claude Code | `claude -p` | `claude auth status` |
+| Codex | `codex exec` | `codex login status` |
+
+**Preferences → AI engine** lists both, with their sign-in state and plan, and sets the default engine and model.
+Without a choice, the first connected engine is used. If the chosen engine is signed out, the import says so
+instead of switching engine.
+
+Each run is isolated, because a CV is untrusted input:
+
+- **Claude Code**: no tools (`--tools ""`); `--safe-mode`, so no hooks, plugins, MCP servers or CLAUDE.md; no saved
+  session.
+- **Codex**: every command-running, code, browser and app feature disabled, web search off, read-only sandbox,
+  user config and rules ignored, no saved session.
+
+Both run in an empty temporary directory and receive the CV inside `<cv>` tags, with the instruction to treat it as
+data. Their output is validated against the schema before it becomes a draft.
+
+## Languages
+
+The UI is in Italian, English and German (**Preferences**, ⌘/Ctrl+,). The choice is stored in the browser; the
+first visit uses the browser's language when supported, Italian otherwise. The server phrases its errors and
+progress messages in the language the UI sends as `Accept-Language`; an import keeps the language it started with.
+
+## Data on disk
+
+Everything lives in `data/` (git-ignored):
+
+| Path | Contents |
+|---|---|
+| `data/jobs.db` | SQLite database: postings, saved searches, board budgets and pauses, settings, profile |
+| `data/documents/` | Uploaded CVs, named by their SHA-256 |
+| `data/profile-files/` | Photos and attachments |
+
+Profile tables:
+
+| Table | Rows |
+|---|---|
+| `profile_revisions` | One per save; the latest is the profile |
+| `profile_drafts` | Imports: running, waiting for review, failed, confirmed or discarded |
+| `documents` | Uploaded CVs and their extracted text |
+| `profile_files` | Photos and attachments. Files the profile no longer uses are deleted after the next save |
+
+**Start over** on the profile page deletes the profile, drafts, CVs and attachments. Postings and saved searches
+are unaffected.
+
+## Development
+
+```bash
+uv run career-agent            # API and built UI on :8000
+cd web && npm run dev          # UI with hot reload on :5173, proxies /api to :8000
+```
+
+| | Backend | Frontend (`web/`) |
+|---|---|---|
+| Tests | `uv run pytest` | `npm test` |
+| Lint | `uvx ruff check src tests` | `npm run lint` |
+| Format | `uvx ruff format src tests` | — |
+| Types | — | `npx tsc -b` |
+
+The backend tests never call the boards, the geocoding API, the ECB or the AI CLIs, and each test gets its own
+database.
+
+### Layout
+
+```
+src/career_agent/
+  app.py       FastAPI routes; serves the built UI
+  query.py     The query model: SQL filter and search plan
+  scraper.py   Runs a search plan in the background: pauses, budget, back-off
+  boards.py    LinkedIn and Indeed through JobSpy, counting requests
+  db.py        SQLite schema and queries
+  geo.py       City autocomplete and English names for the boards
+  fx.py        ECB exchange rates
+  profile.py   Profile model, CV reading, import pipeline
+  ai.py        AI CLI detection, settings and isolated runs
+  i18n.py      Server messages in it/en/de
+web/           React UI, see web/README.md
+tests/
+```
+
+### API
+
+| Method and path | |
+|---|---|
+| `POST /api/jobs` | Saved postings matching a query, paginated |
+| `POST /api/search` | Start board searches for a query (`?force=true`: refresh anyway) |
+| `GET /api/status` · `POST /api/cancel` | Progress of the running search · stop it |
+| `GET/POST /api/saved` · `DELETE /api/saved/{id}` · `POST /api/saved/{id}/run` | Saved searches |
+| `GET /api/places?q=` | City suggestions |
+| `GET/PUT /api/ai` | AI engines found, saved choice |
+| `GET/PUT/DELETE /api/profile` | Profile and open draft · save · delete everything |
+| `POST /api/profile/import` | Start an import (multipart: `file` or `text`) |
+| `PUT/DELETE /api/profile/draft` · `POST /api/profile/draft/confirm` · `POST /api/profile/draft/retry` | Review an import |
+| `POST /api/profile/files` · `GET /api/profile/files/{id}` | Photos and attachments |
+
+## Known limitations
+
+- Excluding title words (`Query.title_none`) is supported by the API but not exposed in the UI.
+- Importing a CV replaces the profile on confirm; it doesn't merge with what's there.
+- Only Claude Code and Codex are supported as AI engines.
+- Errors reported by the AI CLIs are shown in the CLI's language, usually English.
+- The tailored CV for a posting is a UI mock.
