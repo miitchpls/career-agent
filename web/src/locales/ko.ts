@@ -513,7 +513,6 @@ export const ko: Messages = {
     failedHint: "다시 시도하거나 AI 엔진을 바꿔 보세요.",
     openPrefs: "환경설정 열기",
     pageTitle: "프로필",
-    pageText: "모든 맞춤 이력서의 바탕입니다. 이 컴퓨터에만 저장됩니다.",
     importCv: "이력서 가져오기",
     importBlocked: "먼저 검토 중인 초안을 확인하거나 버리세요",
     more: "프로필 작업 더 보기",
