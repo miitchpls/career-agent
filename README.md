@@ -150,25 +150,34 @@ The edit dialogs refuse an end date before the start date (and an expiry before 
 
 ### Fit score
 
-A saved posting can be scored against the profile and what you're looking for (**goals**: target roles,
-minimum yearly pay, work modes, places, what you want in a company, dealbreakers), the way career-ops scores an
-offer. The AI CLI reads only the saved posting, the profile (without name, email and links) and the goals;
-nothing is fetched. It returns:
+A saved posting can be scored against the profile, the way career-ops scores an offer. The score answers
+"how well do you fit this job", not "is it what you're looking for now": that depends on the search, and the
+sheet checks it separately (below). The AI CLI reads only the saved posting, the profile (without name, email
+and links) and two settings that hold whatever the search, on the profile page under **For the score**:
+dealbreakers in your own words ("no body rental") and an optional note. Nothing is fetched. It returns:
 
 - the posting's requirements (at most 12; every critical and high one is kept), each with its importance
   (critical, high, meaningful, preferred, low signal), what that rests on (the posting's words, its structure,
   or an estimate), whether the profile covers it, and the profile line that shows it;
-- four dimensions scored 1-5: CV match, goals, pay, company. One without evidence has no score and doesn't
-  count; it never becomes a neutral 3;
+- three dimensions scored 1-5: CV match, pay (against the market), company. One without evidence has no score
+  and doesn't count; it never becomes a neutral 3;
 - red flags, the gaps worth preparing for interviews, and up to three checks that could change the score;
 - one score from 1.0 to 5.0 and a one-sentence verdict.
 
 The server checks the answer rather than trusting it. The decision comes from the score through one table
-(4.5 strong apply, 4.0 apply, 3.0 consider, below skip). A quote must be in the posting's text, or it's
-dropped; an importance the posting doesn't back can't be critical or high; a hard stop needs the posting's
-words, and it forces skip without changing the number. The goals dimension has no score until you set goals.
+(4.5 strong apply, 4.0 apply, 3.0 consider, below skip). A quote must be in the posting's text as whole words,
+or it's dropped; an importance the posting doesn't back can't be critical or high; a hard stop (a posting that
+states one of your dealbreakers) needs the posting's words, and it forces skip without changing the number.
 Confidence (high, medium, low) follows how many dimensions rest on evidence. A score is stored per posting and
-marked stale when the profile, the goals or the posting change; the list shows each posting's last one.
+marked stale when the profile, the dealbreakers and note, or the posting change; the list shows each posting's
+last one.
+
+### Your search, on each posting
+
+A posting opened from the results shows how it meets the active search, condition by condition: the place
+group it was found in, the work mode that group asks for, the minimum pay (in the search's currency), the
+employment type and the posting's age. Each is met, not met, or unknown (the posting doesn't say). It's the
+filters' own rules, computed on the server: no AI and no request to a board.
 
 ### CV preferences
 
@@ -296,7 +305,7 @@ src/career_agent/
   fx.py        ECB exchange rates
   profile.py   Profile model, CV reading, import pipeline, CV preferences
   review.py    AI review of the profile: prompt, schema, checks against new facts
-  score.py     Fit score of a posting: goals, prompt, schema, checks, bands
+  score.py     Fit score of a posting: preferences, prompt, schema, checks, bands
   runs.py      One background AI run at a time (import, review, score), cancellable
   cv_render.py career-ops CV templates filled with the profile
   cv_templates/ the templates, copied from career-ops
@@ -326,7 +335,8 @@ tests/
 | `POST /api/profile/files` · `GET /api/profile/files/{id}` | Photos and attachments |
 | `GET/POST/DELETE /api/profile/review` · `PATCH /api/profile/review/suggestions/{id}` | Latest AI review · start · cancel · mark a suggestion applied or dismissed |
 | `GET /api/jobs/score?url=` · `POST /api/jobs/score` · `DELETE /api/jobs/score?url=` | A posting's fit score (and the last finished one) · start · cancel |
-| `GET/PUT /api/goals` | What you're looking for: roles, minimum pay, work modes, places, company, dealbreakers |
+| `GET/PUT /api/score/preferences` | What the fit score reads whatever the search: dealbreakers and a note |
+| `POST /api/jobs/match` | How a saved posting meets each condition of a search |
 
 ## Known limitations
 

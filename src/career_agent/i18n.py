@@ -297,12 +297,6 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "de": "Bewertung unterbrochen: der Server wurde neu gestartet.",
         "ko": "평가가 중단되었습니다: 서버가 다시 시작되었습니다.",
     },
-    "score_no_goals": {
-        "it": "Non hai indicato ruoli, modalità o luoghi che cerchi.",
-        "en": "You haven't said which roles, work modes or places you're after.",
-        "de": "Du hast keine gesuchten Rollen, Arbeitsmodelle oder Orte angegeben.",
-        "ko": "원하는 직무, 근무 형태, 지역을 입력하지 않았습니다.",
-    },
     "review_interrupted": {
         "it": "Revisione interrotta: il server è stato riavviato.",
         "en": "Review interrupted: the server was restarted.",

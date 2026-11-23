@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from career_agent import ai, db, score
 from career_agent.app import app, scorer
-from career_agent.score import Goals, decision_for, to_result
+from career_agent.score import ScorePrefs, decision_for, to_result
 
 client = TestClient(app)
 
@@ -37,7 +37,9 @@ PROFILE = {
         }
     ],
 }
-GOALS = Goals(roles=["Backend Engineer"], min_salary=110_000, work_modes=["hybrid"])
+PREFS = ScorePrefs(
+    dealbreakers=["No body rental"], note="Open to anything fully remote."
+)
 
 
 @pytest.fixture(autouse=True)
@@ -109,7 +111,7 @@ def test_bands_follow_career_ops():
 
 
 def test_a_clean_answer_is_kept_and_the_decision_derived():
-    r = to_result(answer(), JOB, GOALS)
+    r = to_result(answer(), JOB)
     assert r.score == 4.2 and r.decision == "apply" and r.confidence == "high"
     assert [x.requirement for x in r.requirements] == ["Go", "Kubernetes"]
     assert r.gaps[0].requirement == "Kubernetes"
@@ -134,7 +136,6 @@ def test_importance_needs_the_posting_behind_it():
             ]
         ),
         JOB,
-        GOALS,
     )
     rows = {x.requirement: x for x in r.requirements}
     assert (
@@ -153,7 +154,7 @@ def test_rows_are_sorted_and_budgeted_but_must_haves_stay():
         req("nice", "preferred", "structural"),
         req("gap", "critical", "structural", match="missing"),
     ]
-    r = to_result(answer(requirements=rows, gaps=[]), JOB, GOALS)
+    r = to_result(answer(requirements=rows, gaps=[]), JOB)
     assert len(r.requirements) == 14 and r.omitted == 1  # all 14 critical, "nice" cut
     assert r.requirements[0].requirement == "gap"  # unmet first within a band
 
@@ -162,7 +163,7 @@ def test_no_evidence_means_no_number():
     dims = {d: dim() for d in score.DIMENSIONS}
     dims["salary"] = dim(3, "unknown")
     dims["company"] = dim(None, "partial")
-    r = to_result(answer(dimensions=dims), JOB, GOALS)
+    r = to_result(answer(dimensions=dims), JOB)
     assert (
         r.dimensions["salary"].score is None
         and r.dimensions["salary"].status == "unknown"
@@ -171,11 +172,10 @@ def test_no_evidence_means_no_number():
     assert r.confidence == "low"  # two dimensions without evidence
 
 
-def test_without_goals_the_goals_dimension_is_unknown():
-    r = to_result(answer(), JOB, Goals(min_salary=100_000))
-    assert r.dimensions["goals"].score is None
-    assert "ruoli" in r.dimensions["goals"].note
-    assert r.confidence == "low"
+def test_the_score_doesnt_judge_what_you_search():
+    assert score.DIMENSIONS == ("cv", "salary", "company")
+    prompt = score.system_prompt("en")
+    assert "checked elsewhere" in prompt and "goals" not in prompt
 
 
 def test_a_hard_stop_needs_the_postings_words():
@@ -187,10 +187,10 @@ def test_a_hard_stop_needs_the_postings_words():
         },
         {"text": "Guess", "jd_quote": "Unpaid overtime expected", "hard_stop": True},
     ]
-    r = to_result(answer(red_flags=flags), JOB, GOALS)
+    r = to_result(answer(red_flags=flags), JOB)
     assert [f.hard_stop for f in r.red_flags] == [True, False]
     assert r.decision == "skip" and r.score == 4.2  # the number stays
-    r = to_result(answer(red_flags=flags[1:]), JOB, GOALS)
+    r = to_result(answer(red_flags=flags[1:]), JOB)
     assert r.decision == "apply" and r.red_flags[0].jd_quote is None
 
 
@@ -201,28 +201,28 @@ def test_gaps_only_for_unmet_must_haves():
         {"requirement": "Kubernetes", "risk": "x", "mitigation": "z"},  # a repeat
         {"requirement": "Cobol", "risk": "x", "mitigation": "y"},  # not a row
     ]
-    r = to_result(answer(gaps=gaps), JOB, GOALS)
+    r = to_result(answer(gaps=gaps), JOB)
     assert [(g.requirement, g.mitigation) for g in r.gaps] == [("Kubernetes", "y")]
 
 
 @pytest.mark.parametrize("bad", [6, 0.5, "4", None, True])
 def test_a_score_out_of_range_fails(bad):
     with pytest.raises((TypeError, ValueError)):
-        to_result(answer(score=bad), JOB, GOALS)
+        to_result(answer(score=bad), JOB)
 
 
-def test_the_prompt_carries_posting_profile_and_goals_not_contacts():
+def test_the_prompt_carries_posting_profile_and_preferences_not_contacts():
     from career_agent.profile import Profile
 
     prompt = score.user_prompt(
-        JOB, Profile.model_validate(PROFILE | {"email": "g@x.io"}), GOALS
+        JOB, Profile.model_validate(PROFILE | {"email": "g@x.io"}), PREFS
     )
     assert (
         "<posting>" in prompt
         and "Kubernetes" in prompt
         and "Backend Engineer" in prompt
     )
-    assert '"minSalary"' not in prompt and '"min_salary": 110000' in prompt
+    assert "<preferences>" in prompt and "No body rental" in prompt
     assert "g@x.io" not in prompt and "Giulia" not in prompt
 
 
@@ -288,13 +288,16 @@ def test_a_score_runs_shows_in_the_list_and_goes_stale(monkeypatch):
     _seed()
     client.put("/api/profile", json={"profile": PROFILE})
     client.put(
-        "/api/goals",
+        "/api/score/preferences",
         json={
-            "roles": [" Backend  Engineer ", "backend engineer"],
-            "minSalary": 110000,
+            "dealbreakers": [" No  body rental ", "no body rental"],
+            "note": " Remote. ",
         },
     )
-    assert client.get("/api/goals").json()["roles"] == ["Backend Engineer"]
+    assert client.get("/api/score/preferences").json() == {
+        "dealbreakers": ["No body rental"],
+        "note": "Remote.",
+    }
 
     r = client.post(
         "/api/jobs/score", json={"url": URL}, headers={"Accept-Language": "en"}
@@ -303,13 +306,13 @@ def test_a_score_runs_shows_in_the_list_and_goes_stale(monkeypatch):
     s = _settled()
     assert s["status"] == "ready" and s["value"] == 4.2 and s["decision"] == "apply"
     assert s["result"]["requirements"][0]["jdQuote"] and s["stale"] is False
-    assert "English" in calls[0]["system"] and "Backend Engineer" in calls[0]["prompt"]
+    assert "English" in calls[0]["system"] and "No body rental" in calls[0]["prompt"]
 
     page = client.post("/api/jobs", json={}).json()
     assert page["items"][0]["score"] == {"value": 4.2, "decision": "apply"}
 
-    # Changing the goals (or the profile, or the posting) makes it stale.
-    client.put("/api/goals", json={"roles": ["Platform Engineer"]})
+    # Changing the preferences (or the profile, or the posting) makes it stale.
+    client.put("/api/score/preferences", json={"note": "Only product companies."})
     assert (
         client.get("/api/jobs/score", params={"url": URL}).json()["score"]["stale"]
         is True
@@ -378,7 +381,6 @@ def test_a_quote_must_be_whole_words():
             gaps=[],
         ),
         job,
-        GOALS,
     )
     assert (r.requirements[0].evidence, r.requirements[0].importance) == (
         "inferred",
@@ -397,7 +399,7 @@ def test_a_quote_must_be_whole_words():
 )
 def test_a_wrong_shape_is_a_type_error(bad):
     with pytest.raises(TypeError):
-        to_result(answer(**bad), JOB, GOALS)
+        to_result(answer(**bad), JOB)
 
 
 def test_a_malformed_answer_fails_as_unexpected_shape(monkeypatch):
@@ -407,19 +409,6 @@ def test_a_malformed_answer_fails_as_unexpected_shape(monkeypatch):
     client.post("/api/jobs/score", json={"url": URL}, headers={"Accept-Language": "en"})
     s = _settled()
     assert s["status"] == "failed" and "unexpected shape" in s["error"]
-
-
-def test_goals_without_targets_say_so():
-    _seed()
-    client.put("/api/goals", json={"minSalary": 100000, "dealbreakers": ["x"]})
-    assert (
-        client.get("/api/jobs/score", params={"url": URL}).json()["targets_set"]
-        is False
-    )
-    client.put("/api/goals", json={"places": ["Zurigo"]})
-    assert (
-        client.get("/api/jobs/score", params={"url": URL}).json()["targets_set"] is True
-    )
 
 
 def test_at_most_three_run_and_slots_are_let_go(monkeypatch):
@@ -439,3 +428,13 @@ def test_at_most_three_run_and_slots_are_let_go(monkeypatch):
             break
         time.sleep(0.01)
     assert scorer._slots == {}
+
+
+def test_dealbreakers_saved_among_the_old_goals_carry_over():
+    db.set_setting("goals", '{"roles": ["x"], "dealbreakers": ["y"]}')
+    assert score.prefs() == ScorePrefs(dealbreakers=["y"])
+    # Once saved, the new settings win.
+    client.put("/api/score/preferences", json={"dealbreakers": [], "note": "z"})
+    assert score.prefs() == ScorePrefs(note="z")
+    db.set_setting("score_prefs", "not json")
+    assert score.prefs() == ScorePrefs()
