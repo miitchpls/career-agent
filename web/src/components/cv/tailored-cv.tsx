@@ -3,10 +3,10 @@ import {
   CheckIcon,
   CircleDashedIcon,
   DownloadIcon,
+  FilePenLineIcon,
   FileUserIcon,
   LoaderCircleIcon,
   RefreshCwIcon,
-  SparklesIcon,
   XIcon,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
@@ -82,14 +82,14 @@ function Idle({
   return (
     <Centered>
       <div className="grid size-10 place-items-center rounded-lg border bg-background shadow-xs">
-        <SparklesIcon className="size-4 text-muted-foreground" />
+        <FilePenLineIcon className="size-4 text-muted-foreground" />
       </div>
       <div className="space-y-1">
         <p className="text-sm font-medium">{t.forThisJob}</p>
         <p className="max-w-sm text-sm text-muted-foreground">{t.forThisJobHint}</p>
       </div>
       <Button size="sm" onClick={onGenerate}>
-        <SparklesIcon />
+        <FilePenLineIcon />
         {t.generate}
       </Button>
       {pending && (

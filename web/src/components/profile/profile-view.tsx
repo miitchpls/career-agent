@@ -1,21 +1,21 @@
 import { useRef, useState } from "react"
 import {
   AlertTriangleIcon,
+  AlignLeftIcon,
   ArrowUpRightIcon,
   AwardIcon,
   BriefcaseIcon,
   CameraIcon,
   CheckIcon,
   FolderGitIcon,
-  LoaderCircleIcon,
   GraduationCapIcon,
   LanguagesIcon,
   LayoutGridIcon,
+  LoaderCircleIcon,
   MailIcon,
   MapPinIcon,
   PencilIcon,
   PlusIcon,
-  SparklesIcon,
   WrenchIcon,
   XIcon,
 } from "lucide-react"
@@ -438,7 +438,7 @@ function Summary({ profile: p, onChange }: { profile: Profile; onChange: Change 
   const [edit, setEdit] = useState(false)
   return (
     <Section
-      icon={SparklesIcon}
+      icon={AlignLeftIcon}
       title={t.summary}
       action={
         p.summary && (
