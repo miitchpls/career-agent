@@ -11,6 +11,7 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/compon
 import type { Scope, WorkMode } from "@/lib/api"
 import { commitDraft, removeLast, suggest, type DraftKind, type Panel, type Patch, type Suggestion } from "@/lib/compose"
 import { CLEARED, SITES, activeCount, useFilters, type FilterState } from "@/lib/filters"
+import { MOD_KEY } from "@/lib/platform"
 import { DEFAULT_CURRENCY, formatAmount } from "@/lib/currencies"
 import { useT, type Messages } from "@/lib/i18n"
 import { splitModes } from "@/lib/modes"
@@ -642,7 +643,7 @@ export function Composer({
               <Kbd>⌫</Kbd> {c.keyBack}
             </span>
             <span className="ml-auto flex items-center gap-1">
-              <Kbd>⌘</Kbd>
+              <Kbd>{MOD_KEY}</Kbd>
               <Kbd>
                 <CornerDownLeftIcon className="size-3" />
               </Kbd>{" "}
