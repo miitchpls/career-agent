@@ -1,6 +1,6 @@
 import pytest
 
-from career_agent import db, fx, geo
+from career_agent import ai, db, fx, geo
 
 
 @pytest.fixture(autouse=True)
@@ -25,3 +25,15 @@ def no_network(monkeypatch):
     geo._search_online.cache_clear()
     monkeypatch.setattr(geo, "_english", {})
     monkeypatch.setattr(geo, "_failed", {})
+
+
+@pytest.fixture(autouse=True)
+def no_ai_cli(monkeypatch):
+    """Tests never run the user's AI CLIs (they would spend the user's subscription)."""
+    monkeypatch.setattr(ai, "detect", list)
+
+    def refuse(*_a, **_k):
+        raise AssertionError("a test tried to run an AI CLI")
+
+    monkeypatch.setattr(ai, "_communicate", refuse)
+    monkeypatch.setattr(ai, "_quick", refuse)

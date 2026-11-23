@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { WORK_MODES } from "@/lib/filters"
+import { useT } from "@/lib/i18n"
 import type { KnownMode } from "@/lib/modes"
 import { cn } from "@/lib/utils"
 
@@ -13,7 +14,7 @@ import { cn } from "@/lib/utils"
  */
 export function IncludeUnknown({
   label,
-  hint = "La maggior parte degli annunci non lo indica.",
+  hint,
   checked,
   onCheckedChange,
   disabled = false,
@@ -26,6 +27,7 @@ export function IncludeUnknown({
   disabled?: boolean
 }) {
   const id = useId()
+  const t = useT().editors
   return (
     <div
       className={cn(
@@ -35,7 +37,7 @@ export function IncludeUnknown({
     >
       <Label htmlFor={id} className="flex-col items-start gap-0.5 text-sm font-normal">
         {label}
-        <span className="text-xs text-muted-foreground">{hint}</span>
+        <span className="text-xs text-muted-foreground">{hint ?? t.unknownHint}</span>
       </Label>
       <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
     </div>
@@ -52,6 +54,8 @@ export function ModesPicker({
   includeUnknown: boolean
   onChange: (known: KnownMode[], includeUnknown: boolean) => void
 }) {
+  const all = useT()
+  const t = all.editors
   return (
     <div className="space-y-2">
       <ToggleGroup
@@ -64,20 +68,16 @@ export function ModesPicker({
         onValueChange={(v) => onChange(v as KnownMode[], v.length ? includeUnknown : true)}
         className="w-full"
       >
-        {WORK_MODES.filter((m) => m.value !== "unknown").map((m) => (
-          <ToggleGroupItem key={m.value} value={m.value} className="flex-1 text-xs">
-            {m.label}
+        {WORK_MODES.filter((m) => m !== "unknown").map((m) => (
+          <ToggleGroupItem key={m} value={m} className="flex-1 text-xs">
+            {all.modes[m]}
           </ToggleGroupItem>
         ))}
       </ToggleGroup>
       {/* Always visible; inert (and on) until a mode is picked, since "any mode" already includes them. */}
       <IncludeUnknown
-        label="Includi annunci senza modalità indicata"
-        hint={
-          known.length
-            ? "È dedotta dal testo: molti annunci non la dichiarano."
-            : "Senza modalità scelte valgono tutte, anche quelle non indicate."
-        }
+        label={t.unknownModes}
+        hint={known.length ? t.unknownModesOn : t.unknownModesOff}
         checked={known.length ? includeUnknown : true}
         disabled={!known.length}
         onCheckedChange={(v) => onChange(known, v)}

@@ -89,16 +89,6 @@ def test_sort_direction_keeps_missing_values_last():
     assert urls("asc") == ["cheap", "rich", "unknown"]
 
 
-def test_clear_empties_the_cache_but_keeps_saved_searches():
-    db.save_many([job("a")], "*", "Ovunque", "python")
-    db.record_board_search("linkedin|python|*|0|")
-    db.save_search("tengo", Query.model_validate({"title_any": ["python"]}))
-    db.clear()
-    assert db.search(Query(), "posted", 0, 10)["overall"] == 0
-    assert db.last_board_search("linkedin|python|*|0|") is None
-    assert [s["name"] for s in db.list_saved()] == ["tengo"]
-
-
 def test_salary_filter_and_sort_compare_across_currencies():
     db.save_many(
         [

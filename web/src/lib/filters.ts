@@ -11,31 +11,18 @@ import {
 import type { Query, Scope, Site, WorkMode } from "@/lib/api"
 import { CURRENCIES, DEFAULT_CURRENCY, parseCurrency } from "@/lib/currencies"
 
-export const WORK_MODES: { value: WorkMode; label: string }[] = [
-  { value: "onsite", label: "In sede" },
-  { value: "hybrid", label: "Ibrido" },
-  { value: "remote", label: "Remoto" },
-  { value: "unknown", label: "Non specificata" },
-]
-export const MODE_LABEL = Object.fromEntries(WORK_MODES.map((m) => [m.value, m.label])) as Record<
-  WorkMode,
-  string
->
+/** Labels live in the locale files (`t.modes`). */
+export const WORK_MODES: WorkMode[] = ["onsite", "hybrid", "remote", "unknown"]
 
 export const SITES: { value: Site; label: string }[] = [
   { value: "linkedin", label: "LinkedIn" },
   { value: "indeed", label: "Indeed" },
 ]
 
-export const POSTED: { value: number; label: string }[] = [
-  { value: 24, label: "Ultime 24 ore" },
-  { value: 72, label: "Ultimi 3 giorni" },
-  { value: 168, label: "Ultimi 7 giorni" },
-  { value: 336, label: "Ultime 2 settimane" },
-  { value: 720, label: "Ultimi 30 giorni" },
-]
+/** "Posted within" choices, in hours (labels: `t.posted`). */
+export const POSTED = [24, 72, 168, 336, 720]
 
-const MODE_VALUES = new Set<string>(WORK_MODES.map((m) => m.value))
+const MODE_VALUES = new Set<string>(WORK_MODES)
 
 /**
  * Scopes in the URL, readable on purpose:

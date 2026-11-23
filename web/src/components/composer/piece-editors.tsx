@@ -7,6 +7,7 @@ import { ModesPicker } from "@/components/filters/include-unknown"
 import { CommandGroup, CommandItem, CommandSeparator } from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import type { Place, WorkMode } from "@/lib/api"
+import { useT } from "@/lib/i18n"
 import { joinModes, splitModes } from "@/lib/modes"
 
 export function PhraseEditor({
@@ -52,21 +53,23 @@ export function PlaceEditor({
   onRemove: () => void
   onCancel: () => void
 }) {
+  const all = useT()
+  const t = all.editors
   return (
     <EditorShell
-      title="Luogo"
-      hint={initial ? `Ora: ${[initial.city, initial.region, initial.country.toUpperCase()].filter(Boolean).join(", ")}` : "Scegli una città: il paese viene da lì."}
+      title={t.place}
+      hint={initial ? t.placeNow([initial.city, initial.region, initial.country.toUpperCase()].filter(Boolean).join(", ")) : t.placeHint}
       onCancel={onCancel}
       onRemove={onRemove}
     >
-      <PlaceSearch onPick={onSave} placeholder={initial ? "Cambia città…" : "Cerca una città…"}>
+      <PlaceSearch onPick={onSave} placeholder={initial ? t.changeCity : t.searchCity}>
         {onAnywhere && (
           <>
             <CommandSeparator className="mx-0 my-1" />
             <CommandGroup className="p-0">
               <CommandItem value="anywhere" onSelect={onAnywhere} className="cursor-pointer">
                 <GlobeIcon className="text-muted-foreground" />
-                Ovunque
+                {all.common.anywhere}
               </CommandItem>
             </CommandGroup>
           </>
@@ -87,11 +90,12 @@ export function ModesEditor({
   onRemove: () => void
   onCancel: () => void
 }) {
+  const t = useT().editors
   const [modes, setModes] = useState(() => splitModes(initial))
   return (
     <EditorShell
-      title="Modalità di lavoro"
-      hint="Basta una delle modalità scelte, insieme ai luoghi del gruppo."
+      title={t.modes}
+      hint={t.modesHint}
       onCancel={onCancel}
       onRemove={onRemove}
       canApply={modes.known.length > 0}

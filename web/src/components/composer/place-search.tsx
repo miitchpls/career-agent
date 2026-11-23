@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/command"
 import type { Place } from "@/lib/api"
 import { placeLabel } from "@/lib/compose"
+import { useT } from "@/lib/i18n"
 import { toPlace } from "@/lib/places"
 import { usePlaces } from "@/lib/queries"
 
@@ -20,7 +21,7 @@ import { usePlaces } from "@/lib/queries"
  */
 export function PlaceSearch({
   onPick,
-  placeholder = "Cerca una città…",
+  placeholder,
   autoFocus = true,
   children,
 }: {
@@ -30,19 +31,20 @@ export function PlaceSearch({
   /** Extra items under the results (e.g. "Ovunque"). */
   children?: ReactNode
 }) {
+  const t = useT().editors
   const [text, setText] = useState("")
   const { places, loading } = usePlaces(text)
   const typed = text.trim().length >= 2
 
   return (
     <Command shouldFilter={false} className="-mx-1 w-auto bg-transparent p-0">
-      <CommandInput autoFocus={autoFocus} value={text} onValueChange={setText} placeholder={placeholder} />
+      <CommandInput autoFocus={autoFocus} value={text} onValueChange={setText} placeholder={placeholder ?? t.searchCity} />
       <CommandList className="mt-1">
-        {typed && !loading && <CommandEmpty className="py-3 text-xs text-muted-foreground">Nessuna città trovata.</CommandEmpty>}
+        {typed && !loading && <CommandEmpty className="py-3 text-xs text-muted-foreground">{t.noCity}</CommandEmpty>}
         {typed && loading && places.length === 0 && (
           <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
             <Loader2Icon className="size-3.5 animate-spin" />
-            Cerco…
+            {t.searchingCity}
           </div>
         )}
         {places.length > 0 && (

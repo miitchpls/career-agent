@@ -35,7 +35,8 @@ La barra filtra solo le offerte già salvate (freccia o Invio). «Cerca nuove of
 keyword) e le avvia subito, una alla volta con pause di 10–20 s; l'avanzamento compare nella pagina dei risultati, con una frase che dice cosa sta facendo
 e il dettaglio di ogni ricerca espandibile.
 Le ricerche identiche (portale, keyword, luogo, solo remoto, finestra di date) riuscite nelle ultime 6 ore vengono
-saltate: i loro risultati sono già salvati. Al massimo 16 ricerche per volta.
+saltate: i loro risultati sono già salvati. «Aggiorna comunque», nell'avviso «Già aggiornata», le rifà subito.
+Al massimo 16 ricerche per volta.
 
 ### Come si evitano i blocchi
 
@@ -48,16 +49,45 @@ saltate: i loro risultati sono già salvati. Al massimo 16 ricerche per volta.
 - **Freno**: al primo segnale di limitazione (HTTP 403/429/999, rimando al login, pagina vuota sospetta) il portale
   va in pausa per 45 minuti, anche se il server viene riavviato; le altre ricerche continuano.
 
-«Svuota cache» non azzera né il budget né le pause.
+«Aggiorna comunque» rispetta budget e pause come ogni altra ricerca.
 
 ## Autocompletamento città
 
 Le città vengono da [Open-Meteo Geocoding](https://open-meteo.com/en/docs/geocoding-api) (dati GeoNames, senza
-chiave), tramite il backend (`/api/places`): nomi in italiano per la UI, in inglese per i portali. Il paese è quello
+chiave), tramite il backend (`/api/places`): nomi nella lingua della UI, in inglese per i portali. Il paese è quello
 della città scelta. Al servizio arriva solo il testo digitato come possibile città; se non è raggiungibile la UI usa
 un piccolo catalogo offline.
 
+## Lingue
+
+Interfaccia in italiano, inglese e tedesco (Preferenze, ⌘/Ctrl+,). La scelta resta nel browser; al primo avvio vale
+la lingua del browser, se è una di queste, altrimenti l'italiano. I testi stanno in `web/src/locales/` (l'italiano è il
+riferimento: le altre lingue devono avere le stesse chiavi, lo controllano TypeScript e i test). Il backend risponde
+nella lingua della UI (`Accept-Language`) con i messaggi di `src/career_agent/i18n.py`.
+
+## Profilo
+
+Facoltativo: la ricerca funziona anche senza. Si compila a mano, una sezione alla volta, oppure si importa un CV
+(PDF, Markdown, testo o testo incollato) che un'AI trasforma in una bozza da rivedere.
+
+- **Motore AI**: l'app usa una CLI AI già installata e collegata sul computer (Claude Code o Codex), con
+  l'abbonamento dell'utente: nessuna chiave da inserire. In Preferenze → Motore AI si vedono le CLI trovate,
+  si sceglie la predefinita e il modello. Serve solo all'import del profilo.
+- **Esecuzione isolata**: Claude Code gira senza strumenti (`--tools ""`), con `--safe-mode` (niente hook, plugin,
+  MCP o CLAUDE.md) e senza salvare la sessione. Codex gira in sandbox `read-only` in una cartella temporanea
+  vuota, senza la config dell'utente. Il CV è trattato come dati, non come istruzioni.
+- **Bozza e conferma**: nulla entra nel profilo finché l'utente non conferma. Ogni esperienza, formazione,
+  progetto e certificazione porta una citazione dal CV, controllata sul testo estratto: se non c'è (o non c'è
+  l'azienda o la scuola), la voce è segnata «da verificare».
+- **Dove sta**: nello stesso SQLite (`data/jobs.db`). `profile_revisions` ha una riga per ogni salvataggio
+  (l'ultima è il profilo); `profile_drafts` le importazioni; `documents` i CV caricati, con il file originale in
+  `data/documents/`; `profile_files` foto e allegati, in `data/profile-files/`. «Ricomincia da capo» cancella tutto.
+
 ## Limiti noti
+
+- Profilo: i PDF scansionati (senza testo selezionabile) non si importano; un nuovo import sostituisce il profilo
+  alla conferma (le versioni precedenti restano in `profile_revisions`). Il CV su misura per offerta è ancora un
+  mock.
 
 - L'esclusione per titolo (`Query.title_none`) è supportata dall'API ma per ora non è esposta nella UI.
 

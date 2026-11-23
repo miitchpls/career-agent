@@ -1,6 +1,7 @@
 import { useRef, useState } from "react"
 import { FileTextIcon, ImageIcon, LinkIcon, PaperclipIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -14,7 +15,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { MONTHS_LONG, uid, type Media, type MonthYear } from "@/lib/profile-mock"
+import { msgs, useT } from "@/lib/i18n"
+import { monthNames, profileStore, uid, type Media, type MonthYear } from "@/lib/profile"
 import { cn } from "@/lib/utils"
 
 export function Field({
@@ -77,6 +79,7 @@ export function FormDialog({
   wide?: boolean
   children: React.ReactNode
 }) {
+  const t = useT()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={cn("flex max-h-[min(52rem,90svh)] flex-col gap-0 p-0", wide ? "sm:max-w-2xl" : "sm:max-w-lg")}>
@@ -96,14 +99,14 @@ export function FormDialog({
               }}
             >
               <Trash2Icon />
-              Elimina
+              {t.common.delete}
             </Button>
           ) : (
-            <span className="text-xs text-muted-foreground">* obbligatorio</span>
+            <span className="text-xs text-muted-foreground">{t.profile.required}</span>
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Annulla
+              {t.common.cancel}
             </Button>
             <Button
               disabled={!canSave}
@@ -112,7 +115,7 @@ export function FormDialog({
                 onOpenChange(false)
               }}
             >
-              Salva
+              {t.common.save}
             </Button>
           </div>
         </DialogFooter>
@@ -138,6 +141,7 @@ export function MonthYearField({
   disabled?: boolean
   required?: boolean
 }) {
+  const t = useT().profile
   return (
     <Field label={label} required={required}>
       <div className="grid grid-cols-[1fr_6.5rem] gap-2">
@@ -147,11 +151,11 @@ export function MonthYearField({
           onValueChange={(m) => value && onChange({ ...value, month: m === NONE ? null : Number(m) })}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Mese" />
+            <SelectValue placeholder={t.month} />
           </SelectTrigger>
           <SelectContent position="popper">
-            <SelectItem value={NONE}>Mese</SelectItem>
-            {MONTHS_LONG.map((m, i) => (
+            <SelectItem value={NONE}>{t.month}</SelectItem>
+            {monthNames("long").map((m, i) => (
               <SelectItem key={m} value={String(i)} className="capitalize">
                 {m}
               </SelectItem>
@@ -164,10 +168,10 @@ export function MonthYearField({
           onValueChange={(y) => onChange(y === NONE ? null : { month: value?.month ?? null, year: Number(y) })}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Anno" />
+            <SelectValue placeholder={t.year} />
           </SelectTrigger>
           <SelectContent position="popper" className="max-h-64">
-            <SelectItem value={NONE}>Anno</SelectItem>
+            <SelectItem value={NONE}>{t.year}</SelectItem>
             {YEARS.map((y) => (
               <SelectItem key={y} value={String(y)}>
                 {y}
@@ -193,6 +197,7 @@ export function SkillPicker({
   onChange: (v: string[]) => void
   known: string[]
 }) {
+  const t = useT().profile
   const [draft, setDraft] = useState("")
   const q = draft.trim().toLowerCase()
   const suggestions = known.filter((k) => !value.includes(k) && (!q || k.toLowerCase().includes(q))).slice(0, 8)
@@ -219,7 +224,7 @@ export function SkillPicker({
               {s}
               <button
                 type="button"
-                aria-label={`Togli ${s}`}
+                aria-label={t.removeSkill(s)}
                 className="grid size-5 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground"
                 onClick={() => onChange(value.filter((v) => v !== s))}
               >
@@ -237,13 +242,13 @@ export function SkillPicker({
               add(draft)
             } else if (e.key === "Backspace" && !draft && value.length) onChange(value.slice(0, -1))
           }}
-          placeholder={value.length ? "" : "Scrivi una competenza e premi Invio"}
+          placeholder={value.length ? "" : t.skillPlaceholder}
           className="h-6 min-w-32 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground"
         />
       </div>
       {(suggestions.length > 0 || isNew) && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-0.5 text-xs text-muted-foreground">{q ? "Corrispondenze" : "Dal tuo profilo"}</span>
+          <span className="mr-0.5 text-xs text-muted-foreground">{q ? t.matches : t.fromProfile}</span>
           {suggestions.map((s) => (
             <button
               key={s}
@@ -262,7 +267,7 @@ export function SkillPicker({
               className="inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs transition-colors hover:bg-muted"
             >
               <PlusIcon className="size-3" />
-              Crea «{draft.trim()}»
+              {t.create(draft.trim())}
             </button>
           )}
         </div>
@@ -288,6 +293,8 @@ function MediaThumb({ m, className }: { m: Media; className?: string }) {
 
 /** Files and links attached to an entry: images, PDFs, slides, a talk, a repo. */
 export function MediaEditor({ value, onChange }: { value: Media[]; onChange: (v: Media[]) => void }) {
+  const all = useT()
+  const t = all.profile
   const file = useRef<HTMLInputElement>(null)
   const [link, setLink] = useState<{ title: string; url: string } | null>(null)
   const rename = (id: string, title: string) => onChange(value.map((m) => (m.id === id ? { ...m, title } : m)))
@@ -302,13 +309,13 @@ export function MediaEditor({ value, onChange }: { value: Media[]; onChange: (v:
               <Input
                 value={m.title}
                 onChange={(e) => rename(m.id, e.target.value)}
-                aria-label="Titolo"
+                aria-label={t.mediaTitle}
                 className="h-8 border-transparent shadow-none hover:border-input focus-visible:border-ring"
               />
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={`Rimuovi ${m.title}`}
+                aria-label={t.removeNamed(m.title)}
                 onClick={() => onChange(value.filter((x) => x.id !== m.id))}
               >
                 <XIcon />
@@ -333,10 +340,10 @@ export function MediaEditor({ value, onChange }: { value: Media[]; onChange: (v:
                 value={link.url}
                 onChange={(e) => setLink({ ...link, url: e.target.value })}
               />
-              <Input placeholder="Titolo" value={link.title} onChange={(e) => setLink({ ...link, title: e.target.value })} />
+              <Input placeholder={t.mediaTitle} value={link.title} onChange={(e) => setLink({ ...link, title: e.target.value })} />
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setLink(null)}>
-                  Annulla
+                  {all.common.cancel}
                 </Button>
                 <Button
                   size="sm"
@@ -346,7 +353,7 @@ export function MediaEditor({ value, onChange }: { value: Media[]; onChange: (v:
                     setLink(null)
                   }}
                 >
-                  Aggiungi
+                  {all.common.add}
                 </Button>
               </div>
             </div>
@@ -357,11 +364,11 @@ export function MediaEditor({ value, onChange }: { value: Media[]; onChange: (v:
       <div className="flex gap-2">
         <Button variant="outline" size="sm" onClick={() => file.current?.click()}>
           <PaperclipIcon />
-          Carica file
+          {t.uploadFile}
         </Button>
         <Button variant="outline" size="sm" onClick={() => setLink({ title: "", url: "" })} disabled={!!link}>
           <LinkIcon />
-          Aggiungi link
+          {t.addLink}
         </Button>
       </div>
       <input
@@ -371,14 +378,22 @@ export function MediaEditor({ value, onChange }: { value: Media[]; onChange: (v:
         accept="image/*,.pdf,.ppt,.pptx,.doc,.docx"
         className="hidden"
         onChange={(e) => {
-          const picked = [...(e.target.files ?? [])].map((f) => ({
-            id: uid(),
-            kind: f.type.startsWith("image/") ? ("image" as const) : ("document" as const),
-            title: f.name,
-            url: URL.createObjectURL(f),
-          }))
-          onChange([...value, ...picked])
+          const files = [...(e.target.files ?? [])]
           e.target.value = ""
+          // Stored by the server, so the attachment is still there after a reload.
+          Promise.all(files.map((f) => profileStore.upload(f)))
+            .then((uploaded) =>
+              onChange([
+                ...value,
+                ...uploaded.map((up) => ({
+                  id: uid(),
+                  kind: up.mime.startsWith("image/") ? ("image" as const) : ("document" as const),
+                  title: up.name,
+                  url: up.url,
+                })),
+              ]),
+            )
+            .catch((err: Error) => toast.error(msgs().profile.uploadFailed, { description: err.message }))
         }}
       />
     </div>

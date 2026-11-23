@@ -1,8 +1,9 @@
 """Places: city autocomplete and the names the job boards understand.
 
 Online: the Open-Meteo geocoding API (GeoNames data, no API key). Two lookups per
-search, merged by GeoNames id: Italian names for the UI, English names for the boards
-(LinkedIn geocodes "Zurigo" as all of Switzerland). Only the typed text leaves the machine.
+search, merged by GeoNames id: names in the UI's language for display, English names for
+the boards (LinkedIn geocodes "Zurigo" as all of Switzerland). Only the typed text leaves
+the machine.
 
 Offline: a small catalogue, also the single source of the Italian exonyms used for
 places that have no GeoNames id.
@@ -16,6 +17,8 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+
+from .i18n import Locale
 
 API = "https://geocoding-api.open-meteo.com/v1"
 TIMEOUT = 4
@@ -35,6 +38,23 @@ COUNTRIES: dict[str, tuple[str, str, str]] = {
     "ie": ("Irlanda", "Ireland", "ireland"),
     "pt": ("Portogallo", "Portugal", "portugal"),
     "us": ("Stati Uniti", "United States", "usa"),
+}
+
+# German country names, for the offline catalogue in a German UI (it has no German city names:
+# those come out in English, which the boards understand anyway).
+COUNTRIES_DE: dict[str, str] = {
+    "it": "Italien",
+    "ch": "Schweiz",
+    "de": "Deutschland",
+    "fr": "Frankreich",
+    "es": "Spanien",
+    "gb": "Vereinigtes Königreich",
+    "nl": "Niederlande",
+    "at": "Österreich",
+    "be": "Belgien",
+    "ie": "Irland",
+    "pt": "Portugal",
+    "us": "Vereinigte Staaten",
 }
 
 # (Italian name, English name, country)
@@ -126,16 +146,21 @@ def _populated(r: dict) -> bool:
 
 
 @lru_cache(maxsize=512)
-def _search_online(text: str, limit: int) -> tuple[dict, ...]:
-    """Raises on network errors, so failures are never cached."""
+def _search_online(text: str, limit: int, lang: Locale = "it") -> tuple[dict, ...]:
+    """Places named in `lang`; raises on network errors, so failures are never cached."""
     params = {"name": text, "count": 20, "format": "json"}
-    it_f = _pool.submit(_get, "search", {**params, "language": "it"})
-    en_f = _pool.submit(_get, "search", {**params, "language": "en"})
-    it_rows = [r for r in it_f.result().get("results", []) if _populated(r)]
+    shown_f = _pool.submit(_get, "search", {**params, "language": lang})
+    # English names are what the boards get: fetch them alongside (once, for an English UI).
+    en_f = (
+        shown_f
+        if lang == "en"
+        else _pool.submit(_get, "search", {**params, "language": "en"})
+    )
+    rows = [r for r in shown_f.result().get("results", []) if _populated(r)]
     en_rows = {r["id"]: r for r in en_f.result().get("results", [])}
 
     out = []
-    for r in it_rows[:limit]:
+    for r in rows[:limit]:
         # The English search may rank differently; only cache names it actually returned,
         # otherwise english() fetches them by id later.
         if en := en_rows.get(r["id"]):
@@ -157,7 +182,7 @@ def _search_online(text: str, limit: int) -> tuple[dict, ...]:
     return tuple(out)
 
 
-def _search_offline(text: str, limit: int) -> list[dict]:
+def _search_offline(text: str, limit: int, lang: Locale = "it") -> list[dict]:
     t = _norm(text)
     scored = []
     for it, en, cc in OFFLINE_CITIES:
@@ -177,28 +202,30 @@ def _search_offline(text: str, limit: int) -> list[dict]:
                     score,
                     {
                         "geo_id": None,
-                        "city": it,
+                        "city": it if lang == "it" else en,
                         "region": None,
                         "country": cc,
-                        "country_name": COUNTRIES[cc][0],
+                        "country_name": COUNTRIES_DE[cc]
+                        if lang == "de"
+                        else COUNTRIES[cc][0 if lang == "it" else 1],
                     },
                 )
             )
     return [p for _, p in sorted(scored, key=lambda x: x[0])[:limit]]
 
 
-def search(text: str, limit: int = 8) -> tuple[list[dict], bool]:
-    """Places matching `text` and whether they come from the offline catalogue."""
+def search(text: str, limit: int = 8, lang: Locale = "it") -> tuple[list[dict], bool]:
+    """Places matching `text`, named in `lang`, and whether they come from the offline catalogue."""
     text = text.strip()[:80]
     if len(text) < 2:
         return [], False
     try:
-        return list(_search_online(text, limit)), False
+        return list(_search_online(text, limit, lang)), False
     except (
         OSError,
         ValueError,
     ):  # network/timeout (URLError is an OSError) or a bad payload
-        return _search_offline(text, limit), True
+        return _search_offline(text, limit, lang), True
 
 
 def english(geo_id: int) -> dict | None:

@@ -9,7 +9,9 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.162.5",
+    "pypdf>=7.1.1",
     "python-jobspy>=1.4.1,<1.5",  # boards.py uses LinkedIn._fetch_details (not public API)
+    "python-multipart>=0.0.34",
     "uvicorn[standard]>=0.54.0",
 ]
 

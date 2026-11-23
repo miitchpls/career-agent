@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { useT } from "@/lib/i18n"
 import { useDraft } from "@/lib/use-draft"
 import {
   CEFR,
@@ -39,7 +40,7 @@ import {
   type Profile,
   type Project,
   type SkillUse,
-} from "@/lib/profile-mock"
+} from "@/lib/profile"
 
 interface EntryDialog<T> {
   open: boolean
@@ -67,6 +68,8 @@ export function IdentityDialog({
   profile: Profile
   onSave: (p: Profile) => void
 }) {
+  const all = useT()
+  const t = all.profile
   const [d, setD] = useDraft(open, profile)
   const text = (k: "name" | "headline" | "location" | "email") => (e: React.ChangeEvent<HTMLInputElement>) =>
     setD({ ...d, [k]: e.target.value })
@@ -77,31 +80,31 @@ export function IdentityDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Informazioni personali"
+      title={t.identity}
       canSave={!!d.name.trim()}
       onSave={() => onSave({ ...d, links: d.links.filter((l) => l.url.trim()) })}
     >
-      <FormGroup title="Chi sei">
-        <Field label="Nome e cognome" required>
+      <FormGroup title={t.whoYouAre}>
+        <Field label={t.fullName} required>
           <Input value={d.name} onChange={text("name")} />
         </Field>
-        <Field label="Titolo" hint="Una riga, come sotto il nome su LinkedIn.">
+        <Field label={t.headline} hint={t.headlineHint}>
           <Input value={d.headline} onChange={text("headline")} placeholder="Backend Engineer · Python" />
         </Field>
       </FormGroup>
 
-      <FormGroup title="Contatti">
+      <FormGroup title={t.contacts}>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Città">
+          <Field label={t.city}>
             <Input value={d.location} onChange={text("location")} />
           </Field>
-          <Field label="Email">
+          <Field label={t.email}>
             <Input type="email" value={d.email} onChange={text("email")} />
           </Field>
         </div>
       </FormGroup>
 
-      <FormGroup title="Link" description="Profili, portfolio, articoli: compaiono sotto il nome e nell'intestazione del CV.">
+      <FormGroup title={t.links} description={t.linksHint}>
         <ul className="grid gap-2">
           <AnimatePresence initial={false}>
             {d.links.map((l) => (
@@ -116,21 +119,21 @@ export function IdentityDialog({
                 <Input
                   value={l.label}
                   onChange={(e) => setLink(l.id, { label: e.target.value })}
-                  placeholder="Titolo"
-                  aria-label="Titolo del link"
+                  placeholder={t.linkTitle}
+                  aria-label={t.linkTitleAria}
                   className="w-36 shrink-0"
                 />
                 <Input
                   value={l.url}
                   onChange={(e) => setLink(l.id, { url: e.target.value })}
                   placeholder="https://"
-                  aria-label="Indirizzo del link"
+                  aria-label={t.linkUrlAria}
                   className="font-mono text-xs"
                 />
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Rimuovi link"
+                  aria-label={t.removeLink}
                   onClick={() => setD({ ...d, links: d.links.filter((x) => x.id !== l.id) })}
                 >
                   <XIcon />
@@ -146,7 +149,7 @@ export function IdentityDialog({
           onClick={() => setD({ ...d, links: [...d.links, { id: uid(), label: "", url: "" }] })}
         >
           <PlusIcon />
-          Aggiungi link
+          {t.addLink}
         </Button>
       </FormGroup>
     </FormDialog>
@@ -164,13 +167,15 @@ export function SummaryDialog({
   profile: Profile
   onSave: (p: Profile) => void
 }) {
+  const all = useT()
+  const t = all.profile
   const [text, setText] = useDraft(open, profile.summary)
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Riepilogo"
-      description="Il punto di partenza: per ogni offerta lo riscriviamo puntando su quello che chiede."
+      title={t.summary}
+      description={t.summaryHint}
       onSave={() => onSave({ ...profile, summary: text })}
     >
       <div className="grid gap-1.5">
@@ -199,6 +204,8 @@ const NEW_EXPERIENCE: Experience = {
 }
 
 export function ExperienceDialog({ open, onOpenChange, entry, profile, onSave, onDelete }: EntryDialog<Experience>) {
+  const all = useT()
+  const t = all.profile
   const source = entry ?? NEW_EXPERIENCE
   const [d, setD] = useDraft(open, source)
   const [bullets, setBullets] = useDraft(open, source.bullets.join("\n"))
@@ -210,14 +217,14 @@ export function ExperienceDialog({ open, onOpenChange, entry, profile, onSave, o
       open={open}
       onOpenChange={onOpenChange}
       wide
-      title={entry ? "Modifica esperienza" : "Aggiungi esperienza"}
+      title={entry ? t.editExperience : t.addExperience}
       canSave={!!d.role.trim() && !!d.company.trim() && !!d.start}
       onDelete={entry ? () => onDelete(entry) : undefined}
       onSave={() =>
         onSave({
           ...d,
           id: d.id || uid(),
-          review: undefined,
+          review: null,
           end: d.current ? null : d.end,
           bullets: bullets
             .split("\n")
@@ -226,27 +233,27 @@ export function ExperienceDialog({ open, onOpenChange, entry, profile, onSave, o
         })
       }
     >
-      <FormGroup title="Ruolo">
-        <Field label="Qualifica" required>
+      <FormGroup title={t.role}>
+        <Field label={t.jobTitle} required>
           <Input value={d.role} onChange={text("role")} placeholder="Backend Engineer" />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Azienda" required>
+          <Field label={t.company} required>
             <Input value={d.company} onChange={text("company")} />
           </Field>
-          <Field label="Tipo di impiego">
+          <Field label={t.employmentType}>
             <Select
               value={d.employment ?? NONE}
               onValueChange={(v) => setD({ ...d, employment: v === NONE ? null : (v as Experience["employment"]) })}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Seleziona" />
+                <SelectValue placeholder={t.select} />
               </SelectTrigger>
               <SelectContent position="popper">
-                <SelectItem value={NONE}>Non indicato</SelectItem>
+                <SelectItem value={NONE}>{t.notStated}</SelectItem>
                 {EMPLOYMENT.map((e) => (
                   <SelectItem key={e} value={e}>
-                    {e}
+                    {t.employment[e]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -254,22 +261,22 @@ export function ExperienceDialog({ open, onOpenChange, entry, profile, onSave, o
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Località">
-            <Input value={d.location} onChange={text("location")} placeholder="Milano" />
+          <Field label={t.location}>
+            <Input value={d.location} onChange={text("location")} placeholder={t.locationPlaceholder} />
           </Field>
-          <Field label="Tipo di località">
+          <Field label={t.locationTypeLabel}>
             <Select
               value={d.locationType ?? NONE}
               onValueChange={(v) => setD({ ...d, locationType: v === NONE ? null : (v as Experience["locationType"]) })}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Seleziona" />
+                <SelectValue placeholder={t.select} />
               </SelectTrigger>
               <SelectContent position="popper">
-                <SelectItem value={NONE}>Non indicato</SelectItem>
-                {LOCATION_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
+                <SelectItem value={NONE}>{t.notStated}</SelectItem>
+                {LOCATION_TYPES.map((l) => (
+                  <SelectItem key={l} value={l}>
+                    {t.locationType[l]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -278,28 +285,28 @@ export function ExperienceDialog({ open, onOpenChange, entry, profile, onSave, o
         </div>
       </FormGroup>
 
-      <FormGroup title="Periodo">
+      <FormGroup title={t.period}>
         <label className="flex items-center gap-2 text-sm">
           <Switch checked={d.current} onCheckedChange={(c) => setD({ ...d, current: c })} />
-          Attualmente ricopro questo ruolo
+          {t.currentRole}
         </label>
         <div className="grid grid-cols-2 gap-3">
-          <MonthYearField label="Data di inizio" required value={d.start} onChange={(start) => setD({ ...d, start })} />
-          <MonthYearField label="Data di fine" value={d.current ? null : d.end} disabled={d.current} onChange={(end) => setD({ ...d, end })} />
+          <MonthYearField label={t.startDate} required value={d.start} onChange={(start) => setD({ ...d, start })} />
+          <MonthYearField label={t.endDate} value={d.current ? null : d.end} disabled={d.current} onChange={(end) => setD({ ...d, end })} />
         </div>
       </FormGroup>
 
-      <FormGroup title="Cosa hai fatto">
-        <Field label="Risultati" hint="Uno per riga. I numeri contano: «p95 da 820 a 490 ms» vale più di «migliorato le prestazioni».">
+      <FormGroup title={t.whatYouDid}>
+        <Field label={t.results} hint={t.resultsHint}>
           <Textarea value={bullets} onChange={(e) => setBullets(e.target.value)} className="min-h-32" />
         </Field>
       </FormGroup>
 
-      <FormGroup title="Competenze" description="Quelle che hai usato in questo ruolo. Le nuove si aggiungono anche alla sezione Competenze.">
+      <FormGroup title={t.skills} description={t.experienceSkillsHint}>
         <SkillPicker value={d.skills} onChange={(skills) => setD({ ...d, skills })} known={known(profile)} />
       </FormGroup>
 
-      <FormGroup title="Contenuti multimediali" description="Immagini, documenti, presentazioni o link a un lavoro di questo periodo.">
+      <FormGroup title={t.media} description={t.mediaHint}>
         <MediaEditor value={d.media} onChange={(media) => setD({ ...d, media })} />
       </FormGroup>
     </FormDialog>
@@ -323,6 +330,8 @@ const NEW_EDUCATION: Education = {
 }
 
 export function EducationDialog({ open, onOpenChange, entry, profile, onSave, onDelete }: EntryDialog<Education>) {
+  const all = useT()
+  const t = all.profile
   const [d, setD] = useDraft(open, entry ?? NEW_EDUCATION)
   const text = (k: "school" | "degree" | "field" | "grade") => (e: React.ChangeEvent<HTMLInputElement>) =>
     setD({ ...d, [k]: e.target.value })
@@ -332,46 +341,46 @@ export function EducationDialog({ open, onOpenChange, entry, profile, onSave, on
       open={open}
       onOpenChange={onOpenChange}
       wide
-      title={entry ? "Modifica formazione" : "Aggiungi formazione"}
+      title={entry ? t.editEducation : t.addEducation}
       canSave={!!d.school.trim()}
       onDelete={entry ? () => onDelete(entry) : undefined}
-      onSave={() => onSave({ ...d, id: d.id || uid(), review: undefined })}
+      onSave={() => onSave({ ...d, id: d.id || uid(), review: null })}
     >
-      <FormGroup title="Percorso">
-        <Field label="Scuola o università" required>
-          <Input value={d.school} onChange={text("school")} placeholder="Politecnico di Torino" />
+      <FormGroup title={t.course}>
+        <Field label={t.school} required>
+          <Input value={d.school} onChange={text("school")} placeholder={t.schoolPlaceholder} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Titolo di studio">
-            <Input value={d.degree} onChange={text("degree")} placeholder="Laurea magistrale" />
+          <Field label={t.degree}>
+            <Input value={d.degree} onChange={text("degree")} placeholder={t.degreePlaceholder} />
           </Field>
-          <Field label="Corso di studi">
-            <Input value={d.field} onChange={text("field")} placeholder="Ingegneria Informatica" />
+          <Field label={t.field}>
+            <Input value={d.field} onChange={text("field")} placeholder={t.fieldPlaceholder} />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <MonthYearField label="Data di inizio" value={d.start} onChange={(start) => setD({ ...d, start })} />
-          <MonthYearField label="Data di fine (o prevista)" value={d.end} onChange={(end) => setD({ ...d, end })} />
+          <MonthYearField label={t.startDate} value={d.start} onChange={(start) => setD({ ...d, start })} />
+          <MonthYearField label={t.endDateExpected} value={d.end} onChange={(end) => setD({ ...d, end })} />
         </div>
-        <Field label="Votazione" className="w-1/2 pr-1.5">
-          <Input value={d.grade} onChange={text("grade")} placeholder="110/110" />
+        <Field label={t.grade} className="w-1/2 pr-1.5">
+          <Input value={d.grade} onChange={text("grade")} placeholder={t.gradePlaceholder} />
         </Field>
       </FormGroup>
 
-      <FormGroup title="Dettagli">
-        <Field label="Attività e associazioni" hint="Gruppi, squadre, tutorato, rappresentanza.">
+      <FormGroup title={t.details}>
+        <Field label={t.activities} hint={t.activitiesHint}>
           <Textarea value={d.activities} onChange={(e) => setD({ ...d, activities: e.target.value })} className="min-h-16" />
         </Field>
-        <Field label="Descrizione" hint="Tesi, progetti, scambi all'estero.">
+        <Field label={t.description} hint={t.educationDescriptionHint}>
           <Textarea value={d.description} onChange={(e) => setD({ ...d, description: e.target.value })} className="min-h-24" />
         </Field>
       </FormGroup>
 
-      <FormGroup title="Competenze">
+      <FormGroup title={t.skills}>
         <SkillPicker value={d.skills} onChange={(skills) => setD({ ...d, skills })} known={known(profile)} />
       </FormGroup>
 
-      <FormGroup title="Contenuti multimediali">
+      <FormGroup title={t.media}>
         <MediaEditor value={d.media} onChange={(media) => setD({ ...d, media })} />
       </FormGroup>
     </FormDialog>
@@ -381,9 +390,10 @@ export function EducationDialog({ open, onOpenChange, entry, profile, onSave, on
 // --- Language --------------------------------------------------------------------------------
 
 const NEW_LANGUAGE: Language = { id: "", name: "", level: "professional", certificate: "" }
-const LANGUAGE_SUGGESTIONS = ["Inglese", "Tedesco", "Francese", "Spagnolo", "Portoghese", "Cinese", "Arabo", "Russo"]
 
 export function LanguageDialog({ open, onOpenChange, entry, profile, onSave, onDelete }: EntryDialog<Language>) {
+  const all = useT()
+  const t = all.profile
   const [d, setD] = useDraft(open, entry ?? NEW_LANGUAGE)
   const taken = new Set(profile.languages.map((l) => l.name))
   const cefr = (CEFR as readonly string[]).includes(d.level)
@@ -392,17 +402,17 @@ export function LanguageDialog({ open, onOpenChange, entry, profile, onSave, onD
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={entry ? "Modifica lingua" : "Aggiungi lingua"}
+      title={entry ? t.editLanguage : t.addLanguage}
       canSave={!!d.name.trim()}
       onDelete={entry ? () => onDelete(entry) : undefined}
       onSave={() => onSave({ ...d, id: d.id || uid(), certificate: cefr ? d.certificate : "" })}
     >
-      <Field label="Lingua" required>
-        <Input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder="Inglese" />
+      <Field label={t.language} required>
+        <Input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder={t.languagePlaceholder} />
       </Field>
       {!entry && !d.name && (
         <div className="-mt-2 flex flex-wrap gap-1.5">
-          {LANGUAGE_SUGGESTIONS.filter((l) => !taken.has(l)).map((l) => (
+          {t.languageSuggestions.filter((l) => !taken.has(l)).map((l) => (
             <button
               key={l}
               type="button"
@@ -415,8 +425,8 @@ export function LanguageDialog({ open, onOpenChange, entry, profile, onSave, onD
         </div>
       )}
       <Field
-        label="Livello"
-        hint={cefr ? "Livello del Quadro europeo: indicalo se hai un certificato o un test." : "Autovalutazione, come su LinkedIn: va bene quando non hai un certificato."}
+        label={t.level}
+        hint={cefr ? t.levelCefrHint : t.levelSelfHint}
       >
         <Select value={d.level} onValueChange={(v) => setD({ ...d, level: v as LanguageLevel })}>
           <SelectTrigger className="w-full">
@@ -424,20 +434,20 @@ export function LanguageDialog({ open, onOpenChange, entry, profile, onSave, onD
           </SelectTrigger>
           <SelectContent position="popper">
             <SelectGroup>
-              <SelectLabel>Senza certificazione</SelectLabel>
-              {Object.entries(PROFICIENCY).map(([k, label]) => (
+              <SelectLabel>{t.noCertificate}</SelectLabel>
+              {PROFICIENCY.map((k) => (
                 <SelectItem key={k} value={k}>
-                  {label}
+                  {t.proficiency[k]}
                 </SelectItem>
               ))}
             </SelectGroup>
             <SelectSeparator />
             <SelectGroup>
-              <SelectLabel>Quadro europeo (QCER)</SelectLabel>
+              <SelectLabel>{t.cefr}</SelectLabel>
               {CEFR.map((c) => (
                 <SelectItem key={c} value={c}>
                   <span className="font-mono">{c}</span>
-                  <span className="text-muted-foreground">{CEFR_HINT[c]}</span>
+                  <span className="text-muted-foreground">{t.cefrHint[c]}</span>
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -447,7 +457,7 @@ export function LanguageDialog({ open, onOpenChange, entry, profile, onSave, onD
       <AnimatePresence initial={false}>
         {cefr && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <Field label="Certificato" hint="Facoltativo: nome e punteggio, per esempio «IELTS Academic 7.5» o «Goethe-Zertifikat B2».">
+            <Field label={t.certificate} hint={t.certificateHint}>
               <Input value={d.certificate} onChange={(e) => setD({ ...d, certificate: e.target.value })} />
             </Field>
           </motion.div>
@@ -455,15 +465,6 @@ export function LanguageDialog({ open, onOpenChange, entry, profile, onSave, onD
       </AnimatePresence>
     </FormDialog>
   )
-}
-
-const CEFR_HINT: Record<(typeof CEFR)[number], string> = {
-  A1: "base",
-  A2: "elementare",
-  B1: "intermedio",
-  B2: "intermedio superiore",
-  C1: "avanzato",
-  C2: "padronanza",
 }
 
 // --- Certification ---------------------------------------------------------------------------
@@ -481,6 +482,8 @@ const NEW_CERTIFICATION: Certification = {
 }
 
 export function CertificationDialog({ open, onOpenChange, entry, profile, onSave, onDelete }: EntryDialog<Certification>) {
+  const all = useT()
+  const t = all.profile
   const [d, setD] = useDraft(open, entry ?? NEW_CERTIFICATION)
   const text = (k: "name" | "issuer" | "credentialId" | "url") => (e: React.ChangeEvent<HTMLInputElement>) =>
     setD({ ...d, [k]: e.target.value })
@@ -490,40 +493,40 @@ export function CertificationDialog({ open, onOpenChange, entry, profile, onSave
       open={open}
       onOpenChange={onOpenChange}
       wide
-      title={entry ? "Modifica certificazione" : "Aggiungi certificazione"}
+      title={entry ? t.editCertification : t.addCertification}
       canSave={!!d.name.trim() && !!d.issuer.trim()}
       onDelete={entry ? () => onDelete(entry) : undefined}
-      onSave={() => onSave({ ...d, id: d.id || uid() })}
+      onSave={() => onSave({ ...d, id: d.id || uid(), review: null })}
     >
-      <FormGroup title="Certificazione">
-        <Field label="Nome" required>
+      <FormGroup title={t.certification}>
+        <Field label={t.name} required>
           <Input value={d.name} onChange={text("name")} placeholder="AWS Certified Developer – Associate" />
         </Field>
-        <Field label="Organizzazione emittente" required>
+        <Field label={t.issuer} required>
           <Input value={d.issuer} onChange={text("issuer")} placeholder="Amazon Web Services" />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <MonthYearField label="Data di rilascio" value={d.issued} onChange={(issued) => setD({ ...d, issued })} />
-          <MonthYearField label="Data di scadenza" value={d.expires} onChange={(expires) => setD({ ...d, expires })} />
+          <MonthYearField label={t.issued} value={d.issued} onChange={(issued) => setD({ ...d, issued })} />
+          <MonthYearField label={t.expires} value={d.expires} onChange={(expires) => setD({ ...d, expires })} />
         </div>
       </FormGroup>
 
-      <FormGroup title="Verifica" description="Chi legge il CV può controllare la credenziale.">
+      <FormGroup title={t.verification} description={t.verificationHint}>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="ID credenziale">
+          <Field label={t.credentialId}>
             <Input value={d.credentialId} onChange={text("credentialId")} className="font-mono text-xs" />
           </Field>
-          <Field label="URL credenziale">
+          <Field label={t.credentialUrl}>
             <Input value={d.url} onChange={text("url")} placeholder="https://" className="font-mono text-xs" />
           </Field>
         </div>
       </FormGroup>
 
-      <FormGroup title="Competenze">
+      <FormGroup title={t.skills}>
         <SkillPicker value={d.skills} onChange={(skills) => setD({ ...d, skills })} known={known(profile)} />
       </FormGroup>
 
-      <FormGroup title="Contenuti multimediali">
+      <FormGroup title={t.media}>
         <MediaEditor value={d.media} onChange={(media) => setD({ ...d, media })} />
       </FormGroup>
     </FormDialog>
@@ -546,6 +549,8 @@ const NEW_PROJECT: Project = {
 }
 
 export function ProjectDialog({ open, onOpenChange, entry, profile, onSave, onDelete }: EntryDialog<Project>) {
+  const all = useT()
+  const t = all.profile
   const [d, setD] = useDraft(open, entry ?? NEW_PROJECT)
 
   return (
@@ -553,31 +558,31 @@ export function ProjectDialog({ open, onOpenChange, entry, profile, onSave, onDe
       open={open}
       onOpenChange={onOpenChange}
       wide
-      title={entry ? "Modifica progetto" : "Aggiungi progetto"}
+      title={entry ? t.editProject : t.addProject}
       canSave={!!d.name.trim()}
       onDelete={entry ? () => onDelete(entry) : undefined}
-      onSave={() => onSave({ ...d, id: d.id || uid(), end: d.current ? null : d.end })}
+      onSave={() => onSave({ ...d, id: d.id || uid(), review: null, end: d.current ? null : d.end })}
     >
-      <FormGroup title="Progetto">
-        <Field label="Nome del progetto" required>
+      <FormGroup title={t.project}>
+        <Field label={t.projectName} required>
           <Input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} />
         </Field>
-        <Field label="Descrizione" hint="Cosa fa, il tuo ruolo e un numero che ne misura il risultato.">
+        <Field label={t.description} hint={t.projectDescriptionHint}>
           <Textarea value={d.description} onChange={(e) => setD({ ...d, description: e.target.value })} className="min-h-24" />
         </Field>
-        <Field label="Link">
+        <Field label={t.link}>
           <Input value={d.url} onChange={(e) => setD({ ...d, url: e.target.value })} placeholder="https://github.com/…" className="font-mono text-xs" />
         </Field>
-        <Field label="Associato a" hint="Il lavoro o il percorso di studi in cui l'hai realizzato.">
+        <Field label={t.associatedWith} hint={t.associatedWithHint}>
           <Select value={d.associatedWith ?? NONE} onValueChange={(v) => setD({ ...d, associatedWith: v === NONE ? null : v })}>
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper">
-              <SelectItem value={NONE}>Progetto personale</SelectItem>
+              <SelectItem value={NONE}>{t.personalProject}</SelectItem>
               {profile.experiences.length > 0 && (
                 <SelectGroup>
-                  <SelectLabel>Esperienze</SelectLabel>
+                  <SelectLabel>{t.experiences}</SelectLabel>
                   {profile.experiences.map((e) => (
                     <SelectItem key={e.id} value={e.id}>
                       {e.role} · {e.company}
@@ -587,7 +592,7 @@ export function ProjectDialog({ open, onOpenChange, entry, profile, onSave, onDe
               )}
               {profile.education.length > 0 && (
                 <SelectGroup>
-                  <SelectLabel>Formazione</SelectLabel>
+                  <SelectLabel>{t.educationGroup}</SelectLabel>
                   {profile.education.map((e) => (
                     <SelectItem key={e.id} value={e.id}>
                       {e.degree || e.school} · {e.school}
@@ -600,22 +605,22 @@ export function ProjectDialog({ open, onOpenChange, entry, profile, onSave, onDe
         </Field>
       </FormGroup>
 
-      <FormGroup title="Periodo">
+      <FormGroup title={t.period}>
         <label className="flex items-center gap-2 text-sm">
           <Switch checked={d.current} onCheckedChange={(c) => setD({ ...d, current: c })} />
-          Ci sto ancora lavorando
+          {t.stillWorking}
         </label>
         <div className="grid grid-cols-2 gap-3">
-          <MonthYearField label="Data di inizio" value={d.start} onChange={(start) => setD({ ...d, start })} />
-          <MonthYearField label="Data di fine" value={d.current ? null : d.end} disabled={d.current} onChange={(end) => setD({ ...d, end })} />
+          <MonthYearField label={t.startDate} value={d.start} onChange={(start) => setD({ ...d, start })} />
+          <MonthYearField label={t.endDate} value={d.current ? null : d.end} disabled={d.current} onChange={(end) => setD({ ...d, end })} />
         </div>
       </FormGroup>
 
-      <FormGroup title="Competenze">
+      <FormGroup title={t.skills}>
         <SkillPicker value={d.skills} onChange={(skills) => setD({ ...d, skills })} known={known(profile)} />
       </FormGroup>
 
-      <FormGroup title="Contenuti multimediali">
+      <FormGroup title={t.media}>
         <MediaEditor value={d.media} onChange={(media) => setD({ ...d, media })} />
       </FormGroup>
     </FormDialog>
@@ -635,27 +640,28 @@ export function RemoveSkillDialog({
   onOpenChange: (o: boolean) => void
   onConfirm: () => void
 }) {
+  const all = useT()
+  const t = all.profile
   return (
     <Dialog open={!!skill} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Rimuovere «{skill}»?</DialogTitle>
+          <DialogTitle>{t.removeSkillTitle(skill ?? "")}</DialogTitle>
           <DialogDescription>
-            {uses.length === 1 ? "È collegata a una voce del profilo" : `È collegata a ${uses.length} voci del profilo`}: la togliamo
-            anche da lì.
+            {t.linkedTo(uses.length)}
           </DialogDescription>
         </DialogHeader>
         <ul className="divide-y rounded-lg border">
           {uses.map((u) => (
             <li key={u.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
               <span className="truncate">{u.label}</span>
-              <span className="shrink-0 text-xs text-muted-foreground capitalize">{u.section}</span>
+              <span className="shrink-0 text-xs text-muted-foreground capitalize">{t.useSection[u.section]}</span>
             </li>
           ))}
         </ul>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Annulla
+            {all.common.cancel}
           </Button>
           <Button
             variant="destructive"
@@ -664,7 +670,7 @@ export function RemoveSkillDialog({
               onOpenChange(false)
             }}
           >
-            Rimuovi ovunque
+            {t.removeEverywhere}
           </Button>
         </DialogFooter>
       </DialogContent>
