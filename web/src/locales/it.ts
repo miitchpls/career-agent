@@ -499,7 +499,7 @@ export const it = {
     manualHint: "Parti da zero, una sezione alla volta.",
     engineLine: (name: string, model: string | null) =>
       `Il file resta su questo computer. Lo legge ${name}${model ? ` (${model})` : ""} con il tuo abbonamento.`,
-    noEngine: "Per importare un CV serve un'app AI collegata, come Claude Code o Codex.",
+    noEngine: "Per importare un CV serve un'app AI collegata.",
     setupEngine: "Configura",
     changeEngine: "Cambia",
     uploading: "Carico il file…",
@@ -605,12 +605,12 @@ export const it = {
     start: "Rivedi con AI",
     open: "Apri la revisione",
     title: "Revisione del profilo",
-    description: "L'AI propone, tu decidi: niente cambia senza un tuo clic.",
+    description: "Suggerimenti dell'AI su punti, descrizioni e riepilogo.",
     ai: {
       title: "Suggerimenti",
       intro:
-        "L'AI rilegge punti, descrizioni, riepilogo e titolo e propone come renderli più chiari. Non inventa nulla: dove servirebbe un numero, te lo chiede.",
-      engine: (name: string, model: string | null) => `Usa ${name}${model ? ` (${model})` : ""}, con il tuo abbonamento.`,
+        "Riscrive con gli stessi fatti e, dove servirebbe un numero, te lo chiede invece di inventarlo.",
+      engine: (_name: string, model: string | null) => `${model ? `Modello ${model}, con` : "Con"} il tuo abbonamento: nessuna chiave da inserire.`,
       noEngine: "Collega un motore AI nelle Preferenze per usarla.",
       blockedDraft: "Conferma o scarta prima la bozza importata dal CV.",
       nothing: "Aggiungi un riepilogo o i punti di un'esperienza per avviarla.",

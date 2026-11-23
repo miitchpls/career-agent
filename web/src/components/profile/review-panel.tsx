@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { CheckIcon, LoaderCircleIcon, PlusIcon, RefreshCwIcon, SparklesIcon, XIcon } from "lucide-react"
+import { CheckIcon, LoaderCircleIcon, PlusIcon, RefreshCwIcon, ScanTextIcon, XIcon } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 
@@ -52,14 +52,14 @@ export function ReviewCard() {
         </p>
       )}
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <SparklesIcon />
+        <ScanTextIcon />
         {pending || running ? t.open : t.start}
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-lg">
           <SheetHeader className="border-b px-6 py-5">
             <SheetTitle>{t.title}</SheetTitle>
-            <SheetDescription className="text-balance">{t.description}</SheetDescription>
+            <SheetDescription className="text-pretty">{t.description}</SheetDescription>
           </SheetHeader>
           <div className="px-6 py-6">
             <AiSection />
@@ -100,7 +100,7 @@ function AiSection() {
 
   const startButton = (label: string, variant: "default" | "outline" = "default") => (
     <Button size="sm" variant={variant} disabled={!!blocked || start.isPending} onClick={() => start.mutate()}>
-      {start.isPending ? <LoaderCircleIcon className="animate-spin" /> : variant === "default" ? <SparklesIcon /> : <RefreshCwIcon />}
+      {start.isPending ? <LoaderCircleIcon className="animate-spin" /> : variant === "default" ? <ScanTextIcon /> : <RefreshCwIcon />}
       {label}
     </Button>
   )

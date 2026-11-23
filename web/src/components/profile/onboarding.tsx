@@ -7,7 +7,7 @@ import {
   LoaderCircleIcon,
   PencilLineIcon,
   ShieldCheckIcon,
-  SparklesIcon,
+  UnplugIcon,
   UploadIcon,
 } from "lucide-react"
 import { motion } from "motion/react"
@@ -156,7 +156,7 @@ function EngineLine() {
         </>
       ) : (
         <>
-          <SparklesIcon className="size-3.5 shrink-0" />
+          <UnplugIcon className="size-3.5 shrink-0" />
           {t.noEngine}
           <button type="button" onClick={openPreferences} className="text-foreground underline-offset-4 hover:underline">
             {t.setupEngine}

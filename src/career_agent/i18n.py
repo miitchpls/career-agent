@@ -122,10 +122,10 @@ MESSAGES: dict[str, dict[Locale, str]] = {
     },
     # AI engines (ai.py)
     "ai_none": {
-        "it": "Nessun motore AI collegato: installa Claude Code o Codex ed esegui l'accesso.",
-        "en": "No AI engine connected: install Claude Code or Codex and sign in.",
-        "de": "Keine KI verbunden: installiere Claude Code oder Codex und melde dich an.",
-        "ko": "연결된 AI 엔진이 없습니다: Claude Code 또는 Codex를 설치하고 로그인하세요.",
+        "it": "Nessun motore AI collegato: in Preferenze → Motore AI trovi quelli supportati e come collegarli.",
+        "en": "No AI engine connected: Preferences → AI engine lists the supported ones and how to connect them.",
+        "de": "Keine KI verbunden: unter Einstellungen → KI findest du die unterstützten und wie du sie verbindest.",
+        "ko": "연결된 AI 엔진이 없습니다: 환경설정 → AI 엔진에서 지원되는 엔진과 연결 방법을 확인하세요.",
     },
     "ai_unknown": {
         "it": "Motore AI sconosciuto",

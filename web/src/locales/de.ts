@@ -497,7 +497,7 @@ export const de: Messages = {
     manualHint: "Fang bei null an, ein Bereich nach dem anderen.",
     engineLine: (name, model) =>
       `Die Datei bleibt auf diesem Computer. ${name}${model ? ` (${model})` : ""} liest sie, mit deinem Abo.`,
-    noEngine: "Für den Import brauchst du eine verbundene KI-App, etwa Claude Code oder Codex.",
+    noEngine: "Für den Import brauchst du eine verbundene KI-App.",
     setupEngine: "Einrichten",
     changeEngine: "Ändern",
     uploading: "Datei wird hochgeladen…",
@@ -600,12 +600,12 @@ export const de: Messages = {
     start: "Mit KI prüfen",
     open: "Prüfung öffnen",
     title: "Profilprüfung",
-    description: "Die KI schlägt vor, du entscheidest: nichts ändert sich ohne deinen Klick.",
+    description: "KI-Vorschläge zu deinen Punkten, Beschreibungen und der Zusammenfassung.",
     ai: {
       title: "Vorschläge",
       intro:
-        "Die KI liest deine Punkte, Beschreibungen, Zusammenfassung und Überschrift und schlägt vor, wie sie klarer werden. Sie erfindet nichts: wo eine Zahl helfen würde, fragt sie dich danach.",
-      engine: (name, model) => `Nutzt ${name}${model ? ` (${model})` : ""}, mit deinem Abo.`,
+        "Formuliert mit denselben Fakten um und fragt dich nach Zahlen, statt sie zu erfinden.",
+      engine: (_name, model) => `${model ? `Modell ${model}, mit` : "Mit"} deinem eigenen Abo: kein Schlüssel nötig.`,
       noEngine: "Verbinde in den Einstellungen eine KI, um sie zu nutzen.",
       blockedDraft: "Bestätige oder verwirf zuerst den aus dem Lebenslauf importierten Entwurf.",
       nothing: "Füge eine Zusammenfassung oder Punkte zu einer Erfahrung hinzu, um sie zu starten.",

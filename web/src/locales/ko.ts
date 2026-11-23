@@ -494,7 +494,7 @@ export const ko: Messages = {
     manualHint: "처음부터 한 섹션씩 작성합니다.",
     engineLine: (name, model) =>
       `파일은 이 컴퓨터에 남아 있습니다. ${name}${model ? ` (${model})` : ""}이(가) 본인 구독으로 파일을 읽습니다.`,
-    noEngine: "이력서를 가져오려면 Claude Code나 Codex 같은 AI 앱이 연결되어 있어야 합니다.",
+    noEngine: "이력서를 가져오려면 AI 앱이 연결되어 있어야 합니다.",
     setupEngine: "설정",
     changeEngine: "변경",
     uploading: "파일 업로드 중…",
@@ -597,12 +597,12 @@ export const ko: Messages = {
     start: "AI로 검토",
     open: "검토 열기",
     title: "프로필 검토",
-    description: "AI가 제안하고 결정은 직접 합니다: 클릭하기 전에는 아무것도 바뀌지 않습니다.",
+    description: "경력 항목, 설명, 자기소개에 대한 AI 제안입니다.",
     ai: {
       title: "제안",
       intro:
-        "AI가 경력 항목, 설명, 자기소개, 헤드라인을 다시 읽고 더 명확하게 만드는 방법을 제안합니다. 아무것도 지어내지 않습니다: 수치가 필요하면 직접 물어봅니다.",
-      engine: (name, model) => `${name}${model ? ` (${model})` : ""}을(를) 본인 구독으로 사용합니다.`,
+        "같은 사실로 다시 다듬고, 수치가 필요하면 지어내지 않고 직접 물어봅니다.",
+      engine: (_name, model) => `${model ? `모델 ${model}, ` : ""}본인 구독으로 실행되며 키를 입력할 필요가 없습니다.`,
       noEngine: "사용하려면 환경설정에서 AI 엔진을 연결하세요.",
       blockedDraft: "먼저 이력서에서 가져온 초안을 확인하거나 버리세요.",
       nothing: "시작하려면 자기소개나 경력 항목을 추가하세요.",

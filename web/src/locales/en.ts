@@ -495,7 +495,7 @@ export const en: Messages = {
     manualHint: "Start from scratch, one section at a time.",
     engineLine: (name, model) =>
       `The file stays on this computer. ${name}${model ? ` (${model})` : ""} reads it, with your subscription.`,
-    noEngine: "Importing a CV needs a connected AI app, such as Claude Code or Codex.",
+    noEngine: "Importing a CV needs a connected AI app.",
     setupEngine: "Set up",
     changeEngine: "Change",
     uploading: "Uploading the file…",
@@ -598,12 +598,12 @@ export const en: Messages = {
     start: "Review with AI",
     open: "Open the review",
     title: "Profile review",
-    description: "The AI suggests, you decide: nothing changes without your click.",
+    description: "AI suggestions on your bullets, descriptions and summary.",
     ai: {
       title: "Suggestions",
       intro:
-        "The AI rereads your bullets, descriptions, summary and headline and suggests how to make them clearer. It never makes things up: where a number would help, it asks you for it.",
-      engine: (name, model) => `Uses ${name}${model ? ` (${model})` : ""}, with your subscription.`,
+        "It rewrites with the same facts and, where a figure would help, asks you for it instead of making one up.",
+      engine: (_name, model) => `${model ? `Model ${model}, on` : "On"} your own subscription: no key to paste.`,
       noEngine: "Connect an AI engine in Preferences to use it.",
       blockedDraft: "Confirm or discard the draft imported from your CV first.",
       nothing: "Add a summary or an experience's bullets to start it.",
