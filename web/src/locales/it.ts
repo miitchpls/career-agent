@@ -518,7 +518,6 @@ export const it = {
     failedHint: "Puoi riprovare o cambiare motore AI.",
     openPrefs: "Apri le Preferenze",
     pageTitle: "Profilo",
-    pageText: "La base da cui scriviamo ogni CV su misura. Resta sul tuo computer.",
     importCv: "Importa CV",
     importBlocked: "Conferma o scarta prima la bozza in revisione",
     more: "Altre azioni sul profilo",

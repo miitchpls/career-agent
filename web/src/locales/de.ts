@@ -516,7 +516,6 @@ export const de: Messages = {
     failedHint: "Versuche es erneut oder wechsle die KI.",
     openPrefs: "Einstellungen öffnen",
     pageTitle: "Profil",
-    pageText: "Die Grundlage für jeden passenden Lebenslauf. Bleibt auf deinem Computer.",
     importCv: "Lebenslauf importieren",
     importBlocked: "Bestätige oder verwirf zuerst den Entwurf in Prüfung",
     more: "Weitere Profilaktionen",

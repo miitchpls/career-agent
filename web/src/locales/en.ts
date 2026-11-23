@@ -514,7 +514,6 @@ export const en: Messages = {
     failedHint: "Try again, or switch AI engine.",
     openPrefs: "Open Preferences",
     pageTitle: "Profile",
-    pageText: "The base we write every tailored CV from. It stays on your computer.",
     importCv: "Import CV",
     importBlocked: "Confirm or discard the draft under review first",
     more: "More profile actions",
