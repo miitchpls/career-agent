@@ -14,11 +14,11 @@ import { StartSearchButton } from "@/components/run/start-search"
 import { useStartSearch } from "@/lib/use-start-search"
 import { SaveSearchButton, SavedSearchShelf, SavedSearchesMenu } from "@/components/saved/saved-searches"
 import { Button } from "@/components/ui/button"
+import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import type { Job, SavedSearch } from "@/lib/api"
@@ -26,9 +26,9 @@ import { CLEARED, activeCount, fromQuery, toQuery, useFilters, type FilterState 
 import { useJobs, useRunStatus } from "@/lib/queries"
 import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
+import { MOD_KEY } from "@/lib/platform"
 import { openPreferences, setPreferencesOpen, usePreferencesOpen } from "@/lib/preferences"
 
-const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
 const SPRING: Transition = { type: "spring", stiffness: 260, damping: 32, mass: 0.9 }
 const hasQuery = (f: FilterState) => activeCount(f) > 0 || !!f.q
 
@@ -213,7 +213,10 @@ export default function App() {
                 <DropdownMenuItem onSelect={openPreferences}>
                   <Settings2Icon />
                   {t.preferences}
-                  <DropdownMenuShortcut>{isMac ? "⌘," : "Ctrl+,"}</DropdownMenuShortcut>
+                  <KbdGroup className="ml-auto">
+                    <Kbd className="group-focus/dropdown-menu-item:bg-foreground/10">{MOD_KEY}</Kbd>
+                    <Kbd className="group-focus/dropdown-menu-item:bg-foreground/10">,</Kbd>
+                  </KbdGroup>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
