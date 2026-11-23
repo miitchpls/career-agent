@@ -11,7 +11,7 @@ from . import fx
 from .query import Query, Sql, salary_in, where
 
 DB_PATH = Path("data/jobs.db")
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -89,6 +89,19 @@ CREATE TABLE IF NOT EXISTS profile_drafts (
     provider    TEXT NOT NULL,
     model       TEXT,               -- NULL: the CLI's default
     data        TEXT,               -- JSON Profile, once ready (edited while reviewing)
+    raw         TEXT,               -- the AI's answer as it came, for debugging
+    error       TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS profile_reviews (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    revision_id INTEGER REFERENCES profile_revisions(id) ON DELETE CASCADE,  -- what was reviewed
+    status      TEXT NOT NULL,      -- running | ready | failed | cancelled
+    provider    TEXT NOT NULL,
+    model       TEXT,
+    suggestions TEXT,               -- JSON list of review.Suggestion, once ready
+    dropped     INTEGER NOT NULL DEFAULT 0,  -- the AI's suggestions that failed the checks
     raw         TEXT,               -- the AI's answer as it came, for debugging
     error       TEXT,
     created_at  TEXT NOT NULL,
@@ -565,6 +578,64 @@ def fail_running_drafts(error: str = INTERRUPTED) -> None:
         )
 
 
+# --- Profile reviews (review.py) ---------------------------------------------------------------
+
+
+def create_review(revision_id: int, provider: str, model: str | None) -> int:
+    """A new review; it replaces the previous one, whose suggestions no longer show."""
+    now = _now()
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO profile_reviews (revision_id, status, provider, model, created_at, updated_at) "
+            "VALUES (?, 'running', ?, ?, ?, ?)",
+            (revision_id, provider, model, now, now),
+        )
+        return cur.lastrowid
+
+
+_REVIEW_FIELDS = {"status", "suggestions", "dropped", "raw", "error"}
+
+
+def update_review(review_id: int, when_status: str | None = None, **fields) -> bool:
+    """Set review columns; with `when_status`, only if it's still in that state."""
+    assert fields and set(fields) <= _REVIEW_FIELDS
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    sql = f"UPDATE profile_reviews SET {sets}, updated_at = ? WHERE id = ?"
+    params: list = [*fields.values(), _now(), review_id]
+    if when_status:
+        sql += " AND status = ?"
+        params.append(when_status)
+    with connect() as conn:
+        return conn.execute(sql, params).rowcount > 0
+
+
+def latest_review() -> dict | None:
+    """The last review that wasn't cancelled: running, ready or failed."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM profile_reviews WHERE status != 'cancelled' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    if not row:
+        return None
+    r = dict(row)
+    r["suggestions"] = json.loads(r["suggestions"]) if r["suggestions"] else []
+    r.pop("raw")
+    return r
+
+
+REVIEW_INTERRUPTED = "review_interrupted"  # an i18n key, translated when read
+
+
+def fail_running_reviews(error: str = REVIEW_INTERRUPTED) -> None:
+    """At startup: no review survives a restart."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE profile_reviews SET status = 'failed', error = ?, updated_at = ? "
+            "WHERE status = 'running'",
+            (error, _now()),
+        )
+
+
 def save_profile(data: dict, source: str, document_id: int | None = None) -> dict:
     """A new revision, unless nothing changed since the last one."""
     text = json.dumps(data, ensure_ascii=False, sort_keys=True)
@@ -650,7 +721,7 @@ def clear_profile() -> list[str]:
         paths = [r["path"] for r in conn.execute("SELECT path FROM documents")]
         paths += [r["path"] for r in conn.execute("SELECT path FROM profile_files")]
         conn.executescript(
-            "DELETE FROM profile_drafts; DELETE FROM profile_revisions; "
+            "DELETE FROM profile_reviews; DELETE FROM profile_drafts; DELETE FROM profile_revisions; "
             "DELETE FROM documents; DELETE FROM profile_files;"
         )
     return paths

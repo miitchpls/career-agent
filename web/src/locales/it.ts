@@ -597,6 +597,68 @@ export const it = {
     },
   },
 
+  review: {
+    card: "Revisione",
+    cardText: "Controlli sempre attivi e, su richiesta, i suggerimenti dell'AI su punti, descrizioni e riepilogo.",
+    counts: (checks: number, open: number) =>
+      [checks && (checks === 1 ? "1 controllo" : `${checks} controlli`), open && (open === 1 ? "1 suggerimento" : `${open} suggerimenti`)]
+        .filter(Boolean)
+        .join(" · ") || "Nessun problema trovato",
+    start: "Rivedi con AI",
+    open: "Apri la revisione",
+    title: "Revisione del profilo",
+    description: "L'AI propone, tu decidi: niente cambia senza un tuo clic.",
+    checks: {
+      title: "Controlli",
+      hint: "Senza AI, aggiornati a ogni modifica.",
+      none: "Nessun problema trovato.",
+      show: "Mostra",
+      noHeadline: "Manca il titolo sotto il nome.",
+      endBeforeStart: (label: string) => `${label}: la fine è prima dell'inizio.`,
+      future: (label: string) => `${label}: inizia in una data futura.`,
+      noBullets: (label: string) => `${label}: nessun punto su cosa hai fatto.`,
+      noNumbers: (label: string) => `${label}: nessun risultato con un numero.`,
+      longBullet: (label: string, n: number) => `${label}: il punto ${n} è lungo, dividilo in due.`,
+      duplicate: (label: string, other: string) => `${label}: un punto è uguale a uno di ${other}.`,
+      noDescription: (label: string) => `${label}: manca la descrizione.`,
+    },
+    ai: {
+      title: "Suggerimenti",
+      intro:
+        "L'AI rilegge punti, descrizioni, riepilogo e titolo e propone come renderli più chiari. Non inventa nulla: dove servirebbe un numero, te lo chiede.",
+      engine: (name: string, model: string | null) => `Usa ${name}${model ? ` (${model})` : ""}, con il tuo abbonamento.`,
+      noEngine: "Collega un motore AI nelle Preferenze per usarla.",
+      blockedDraft: "Conferma o scarta prima la bozza importata dal CV.",
+      nothing: "Aggiungi un riepilogo o i punti di un'esperienza per avviarla.",
+      start: "Avvia la revisione",
+      running: (name: string) => `${name} sta rileggendo il profilo`,
+      runningHint: "Di solito meno di un minuto. Puoi continuare a modificare il profilo.",
+      cancel: "Annulla",
+      failed: "Revisione non riuscita",
+      again: "Rivedi di nuovo",
+      done: "Hai visto tutti i suggerimenti.",
+      tally: (applied: number, dismissed: number) =>
+        `${applied} ${applied === 1 ? "applicato" : "applicati"} · ${dismissed} ${dismissed === 1 ? "ignorato" : "ignorati"}`,
+      dropped: (n: number) =>
+        `${n === 1 ? "1 suggerimento scartato" : `${n} suggerimenti scartati`} dai controlli: ad esempio aggiungevano fatti che il profilo non contiene, o puntavano a testo che non c'è.`,
+      none: "Nessun suggerimento: il profilo è già scritto bene.",
+      reviewedAt: (when: string) => `Revisione del ${when}`,
+    },
+    kinds: { rewrite: "Riformula", question: "Domanda", add_skill: "Competenza" },
+    where: {
+      summary: "Riepilogo",
+      headline: "Titolo",
+      description: "Descrizione",
+      bullet: (n: number) => `punto ${n}`,
+    },
+    fillHint: "Completa gli spazi con i tuoi dati per applicarlo.",
+    stale: "Il testo è cambiato dopo la revisione: il suggerimento non vale più.",
+    apply: "Applica",
+    dismiss: "Ignora",
+    applied: "Modifica applicata",
+    saveFailed: "Non sono riuscito a salvare la scelta",
+  },
+
   editors: {
     place: "Luogo",
     placeNow: (where: string) => `Ora: ${where}`,

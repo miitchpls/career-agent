@@ -25,6 +25,7 @@ from .profile import (
     store_upload,
 )
 from .query import Query
+from .review import Reviewer, State
 from .scraper import Runner
 
 STATIC = Path(__file__).parent / "static"
@@ -34,6 +35,7 @@ STATIC = Path(__file__).parent / "static"
 async def lifespan(_: FastAPI):
     db.init()  # here rather than at import, so importing the app never touches the real DB
     db.fail_running_drafts()
+    db.fail_running_reviews()
     yield
 
 
@@ -48,6 +50,7 @@ app = FastAPI(
 )
 runner = Runner()
 importer = Importer()
+reviewer = Reviewer()
 
 
 class JobsRequest(BaseModel):
@@ -203,8 +206,9 @@ def profile_put(body: ProfileBody):
 
 @app.delete("/api/profile")
 def profile_delete():
-    """Start over: profile, drafts, uploaded CVs and attachments are deleted."""
+    """Start over: profile, drafts, reviews, uploaded CVs and attachments are deleted."""
     importer.cancel()
+    reviewer.cancel()
     for rel in db.clear_profile():
         (db.data_dir() / rel).unlink(missing_ok=True)
     return _profile_state()
@@ -295,6 +299,60 @@ def draft_delete():
     if draft:
         db.update_draft(draft["id"], status="discarded")
     return _profile_state()
+
+
+# --- Profile review ---------------------------------------------------------------------------
+
+
+def _review_state() -> dict:
+    review = db.latest_review()
+    if review and review["error"] == db.REVIEW_INTERRUPTED:
+        review["error"] = t(db.REVIEW_INTERRUPTED)
+    return {"review": review}
+
+
+@app.get("/api/profile/review")
+def review_get():
+    """The latest review of the saved profile: running, ready with suggestions, or failed."""
+    return _review_state()
+
+
+@app.post("/api/profile/review", status_code=202)
+def review_start():
+    """Review the saved profile with the user's AI CLI."""
+    draft = db.open_draft()
+    if draft and draft["status"] in ("running", "ready"):
+        raise HTTPException(409, t("review_draft_pending"))
+    try:
+        reviewer.start()
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from e
+    except ai.AiError as e:
+        raise HTTPException(400, str(e)) from e
+    return _review_state()
+
+
+@app.delete("/api/profile/review")
+def review_cancel():
+    """Stop a running review."""
+    reviewer.cancel()
+    return _review_state()
+
+
+class SuggestionBody(BaseModel):
+    state: State
+
+
+@app.patch("/api/profile/review/suggestions/{suggestion_id}")
+def suggestion_set(suggestion_id: str, body: SuggestionBody):
+    """Record that a suggestion was applied (the UI saved the profile) or dismissed."""
+    try:
+        review = reviewer.set_state(suggestion_id, body.state)
+    except LookupError as e:
+        raise HTTPException(404, str(e)) from e
+    return {"review": review}
 
 
 @app.get("/api/cv/preferences")
