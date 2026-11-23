@@ -130,14 +130,14 @@ def _verdict(pq: PlannedQuery, q: Query, row: boards.Row) -> Verdict:
     return "known" if db.is_known(str(row["job_url"])) else "new"
 
 
-def _job(pq: PlannedQuery, row: boards.Row) -> dict:
+def job_row(site: Site, row: boards.Row) -> dict:
     """A board row as a `jobs` row (db.JOB_COLUMNS)."""
     title = str(row["title"] or "")
     location = str(row["location"] or "")
     description = str(row["description"] or "")
     return {
         "url": row["job_url"],
-        "site": pq.site,
+        "site": site,
         "title": title,
         "company": row["company"],
         "location": location,
@@ -157,7 +157,7 @@ def _local_time(t: datetime) -> str:
     return t.astimezone().strftime("%H:%M")
 
 
-def _paused_message(site: Site, until: datetime) -> str:
+def paused_message(site: Site, until: datetime) -> str:
     return t("paused", site=SITE_NAME[site], time=_local_time(until))
 
 
@@ -170,11 +170,11 @@ def _requests_left(site: Site) -> int | None:
     return max(budget - used, 0)
 
 
-def _hold_reason(site: Site) -> str | None:
+def hold_reason(site: Site) -> str | None:
     """Why `site` must be left alone right now (for the UI); None if it may be asked."""
     until = db.board_paused_until(site)
     if until:
-        return _paused_message(site, until)
+        return paused_message(site, until)
     if _requests_left(site) == 0:
         return t("budget", n=DAILY_REQUESTS[site], site=SITE_NAME[site])
     return None
@@ -262,7 +262,7 @@ class Runner:
             raise ValueError(t("nothing_to_run"))
 
         now = datetime.now(UTC)
-        holds = {site: _hold_reason(site) for site in {pq.site for pq in queries}}
+        holds = {site: hold_reason(site) for site in {pq.site for pq in queries}}
         steps, todo = [], []
         for pq in queries:
             step = Step(pq.site, pq.keyword, pq.place_display)
@@ -320,7 +320,7 @@ class Runner:
                     break
                 step = s.steps[i]
                 # A board can go on hold mid-run: it throttled us, or the budget ran out.
-                if reason := _hold_reason(pq.site):
+                if reason := hold_reason(pq.site):
                     step.status, step.error = "skipped", reason
                     continue
                 if asked:
@@ -388,14 +388,14 @@ class Runner:
             ):
                 step.missed += 1  # incomplete without its page: next search retries it
             else:
-                jobs.append(_job(pq, row))
+                jobs.append(job_row(pq.site, row))
         step.found = len(jobs)
         step.new = db.save_many(jobs, pq.place_key, pq.place_display, pq.keyword)
 
         if result.blocked:
             until = datetime.now(UTC) + BLOCK_PAUSE
             db.pause_board(pq.site, until)
-            message = _paused_message(pq.site, until)
+            message = paused_message(pq.site, until)
             if jobs:
                 step.status, step.note = "done", message
             else:

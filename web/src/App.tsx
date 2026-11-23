@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertCircleIcon, MoreHorizontalIcon, Settings2Icon } from "lucide-react"
 import { parseAsStringLiteral, useQueryState } from "nuqs"
 import { AnimatePresence, motion, type Transition } from "motion/react"
@@ -6,7 +6,8 @@ import { AnimatePresence, motion, type Transition } from "motion/react"
 import { Composer } from "@/components/composer/composer"
 import { MainNav } from "@/components/profile/main-nav"
 import { ProfilePage } from "@/components/profile/profile-page"
-import { JobSheet } from "@/components/jobs/job-sheet"
+import { JobSheet, type PendingJob } from "@/components/jobs/job-sheet"
+import { OpenLink } from "@/components/jobs/open-link"
 import { JobsTable } from "@/components/jobs/jobs-table"
 import { RunProgress } from "@/components/run/run-progress"
 import { PreferencesDialog } from "@/components/settings/preferences-dialog"
@@ -21,7 +22,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Job, SavedSearch } from "@/lib/api"
+import { useQueryClient } from "@tanstack/react-query"
+import { api, type Job, type PastedPosting, type SavedSearch } from "@/lib/api"
+import type { LinkSite } from "@/lib/job-link"
 import { CLEARED, activeCount, fromQuery, toQuery, useFilters, type FilterState } from "@/lib/filters"
 import { useJobs, useRunStatus } from "@/lib/queries"
 import { useT } from "@/lib/i18n"
@@ -138,12 +141,49 @@ export default function App() {
   const query = useMemo(() => toQuery(filters), [filters])
   const { data: status } = useRunStatus()
   const [open, setOpen] = useState<Job | null>(null)
+  const [pending, setPending] = useState<PendingJob | null>(null)
+  const client = useQueryClient()
+  // Only the latest link may fill the sheet: closing it, or pasting another, drops a late answer.
+  const linkRun = useRef(0)
+  const closeSheet = () => {
+    linkRun.current++
+    setOpen(null)
+    setPending(null)
+  }
+  const openJob = (job: Job) => {
+    linkRun.current++
+    setPending(null)
+    setOpen(job)
+  }
+  const openLink = async (url: string, site: LinkSite) => {
+    const run = ++linkRun.current
+    setOpen(null)
+    setPending({ url, site, error: null })
+    try {
+      const { job, known } = await api.openLink(url, filters.cur)
+      if (run !== linkRun.current) return
+      if (!known) void client.invalidateQueries({ queryKey: ["jobs"] })
+      setPending(null)
+      setOpen(job)
+    } catch (e) {
+      if (run === linkRun.current) setPending({ url, site, error: (e as Error).message })
+    }
+  }
+  // The board wouldn't show the posting (or its text): the user pasted it. Errors stay in the form.
+  const pasteJob = async (url: string, posting: PastedPosting) => {
+    const run = linkRun.current
+    const { job, known } = await api.pasteJob(url, posting, filters.cur)
+    if (run !== linkRun.current) return
+    if (!known) void client.invalidateQueries({ queryKey: ["jobs"] })
+    setPending(null)
+    setOpen(job)
+  }
   // Results show only after the user runs the query; a shared link with filters opens straight on them.
   const [submitted, setSubmitted] = useState(() => hasQuery(filters))
   // The profile is a separate page in the URL (?view=profilo), so back and forward work.
   const [view, setView] = useQueryState("view", parseAsStringLiteral(["profilo"] as const).withOptions({ history: "push" }))
   const openProfile = () => {
-    setOpen(null)
+    closeSheet()
     setView("profilo")
     window.scrollTo({ top: 0 })
   }
@@ -259,6 +299,18 @@ export default function App() {
           <AnimatePresence>
             {!submitted && (
               <motion.div
+                key="link"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { duration: 0.3, delay: 0.25 } }}
+                exit={{ opacity: 0, transition: { duration: 0.1 } }}
+              >
+                <OpenLink busy={!!pending && !pending.error} onOpen={openLink} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <AnimatePresence>
+            {!submitted && (
+              <motion.div
                 key="shelf"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0, transition: { duration: 0.35, delay: 0.2 } }}
@@ -282,7 +334,7 @@ export default function App() {
             >
               <Results
                 filters={filters}
-                onOpen={setOpen}
+                onOpen={openJob}
                 onClearFilters={goHome}
                 onLoadSaved={loadSaved}
                 onRunSaved={runSavedSearch}
@@ -293,7 +345,7 @@ export default function App() {
       </main>
       )}
 
-      <JobSheet job={open} onClose={() => setOpen(null)} onOpenProfile={openProfile} />
+      <JobSheet job={open} pending={pending} onClose={closeSheet} onPaste={pasteJob} onOpenProfile={openProfile} />
     </div>
   )
 }

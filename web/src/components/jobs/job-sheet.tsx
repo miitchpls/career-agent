@@ -1,28 +1,27 @@
 import { useCallback, useState } from "react"
 import Markdown from "react-markdown"
-import { ArrowUpRightIcon, Building2Icon, FilePenLineIcon, FileUserIcon, MapPinIcon } from "lucide-react"
+import { AlertCircleIcon, ArrowUpRightIcon, Building2Icon, ClipboardPasteIcon, GaugeIcon, FilePenLineIcon, FileUserIcon, MapPinIcon } from "lucide-react"
 
 import { TailoredCv, type CvPhase } from "@/components/cv/tailored-cv"
 
+import { PastePosting } from "@/components/jobs/paste-posting"
+import { ScorePanel } from "@/components/jobs/score-panel"
 import { SiteMark, WorkModeBadge } from "@/components/jobs/work-mode-badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { Job } from "@/lib/api"
+import type { Job, PastedPosting } from "@/lib/api"
+import type { LinkSite } from "@/lib/job-link"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
-import { msgs, useT } from "@/lib/i18n"
+import { useT } from "@/lib/i18n"
+import { formatScore, shownScore, useScore } from "@/lib/job-score"
 import { parseStoredJobTypes } from "@/lib/job-types"
-import { ANYWHERE } from "@/lib/run-messages"
 import { useGenerated } from "@/lib/cv-mock"
 import { hasProfile, useProfile } from "@/lib/profile"
 
-/** Older hits have no label; their legacy key is "city|cc". */
-function hitPlace(h: Job["hits"][number]): string {
-  if (h.label === ANYWHERE || h.place === "*") return msgs().common.anywhere
-  if (h.label) return h.label
-  return h.place.startsWith("geo:") ? msgs().jobs.place : h.place.split("|")[0]
-}
+type Tab = "job" | "fit" | "cv"
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -33,36 +32,61 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
   )
 }
 
+/** A posting being opened from a link: the sheet shows at once, filled when it arrives. */
+export interface PendingJob {
+  url: string
+  site: LinkSite
+  error: string | null
+}
+
 /**
  * Job details in a wide side panel: the list stays visible beside it, so moving
  * from one posting to the next keeps context (a modal would hide it).
  */
 export function JobSheet({
   job,
+  pending = null,
   onClose,
+  onPaste,
   onOpenProfile,
 }: {
   job: Job | null
+  pending?: PendingJob | null
   onClose: () => void
+  /** Saves the text the user copied for a posting the board wouldn't show, or showed without text. */
+  onPaste: (url: string, posting: PastedPosting) => Promise<void>
   onOpenProfile: () => void
 }) {
   return (
-    <Sheet open={!!job} onOpenChange={(o) => !o && onClose()}>
+    <Sheet open={!!job || !!pending} onOpenChange={(o) => !o && onClose()}>
       {/* The base sheet caps right panels at sm:max-w-sm via data-[side=right]:…;
           override with the same variant, or the higher-specificity cap wins. */}
       <SheetContent className="flex flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl data-[side=right]:lg:max-w-3xl">
         {/* Keyed by posting: tab and CV state start over for each one. */}
-        {job && <JobDetails key={job.url} job={job} onOpenProfile={onOpenProfile} />}
+        {job ? (
+          <JobDetails key={job.url} job={job} onOpenProfile={onOpenProfile} onPaste={onPaste} />
+        ) : (
+          pending && <PendingDetails key={pending.url} pending={pending} onClose={onClose} onPaste={onPaste} />
+        )}
       </SheetContent>
     </Sheet>
   )
 }
 
-function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => void }) {
+function JobDetails({
+  job,
+  onOpenProfile,
+  onPaste,
+}: {
+  job: Job
+  onOpenProfile: () => void
+  onPaste: (url: string, posting: PastedPosting) => Promise<void>
+}) {
   const t = useT().jobs
   const state = useProfile()
   const already = useGenerated().has(job.url)
-  const [tab, setTab] = useState<"job" | "cv">("job")
+  const [tab, setTab] = useState<Tab>("job")
+  const fit = shownScore(useScore(job.url).data)
   const [phase, setPhase] = useState<CvPhase>(already ? "done" : "idle")
   const generate = () => {
     setTab("cv")
@@ -75,8 +99,12 @@ function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => voi
       <SheetHeader className="gap-3 px-6 pt-6 pb-4 pr-14">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <SiteMark site={job.site} />
-          <span aria-hidden>·</span>
-          <span title={fullDate(job.date_posted)}>{t.posted(relativeDay(job.date_posted))}</span>
+          {job.date_posted && (
+            <>
+              <span aria-hidden>·</span>
+              <span title={fullDate(job.date_posted)}>{t.posted(relativeDay(job.date_posted))}</span>
+            </>
+          )}
         </div>
         <SheetTitle className="text-xl leading-tight font-semibold tracking-tight text-balance">{job.title}</SheetTitle>
         <SheetDescription className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -107,10 +135,17 @@ function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => voi
         </div>
       </SheetHeader>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as "job" | "cv")} className="min-h-0 flex-1 gap-0">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-10 w-full justify-start gap-4 border-b px-6">
           <TabsTrigger value="job" className="flex-none px-0">
             {t.tabPosting}
+          </TabsTrigger>
+          <TabsTrigger value="fit" className="flex-none px-0">
+            <GaugeIcon />
+            {t.tabFit}
+            {fit?.value != null && (
+              <span className="rounded-[5px] border px-1.5 text-xs font-medium tabular-nums">{formatScore(fit.value)}</span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="cv" className="flex-none px-0">
             <FileUserIcon />
@@ -121,7 +156,10 @@ function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => voi
 
         <ScrollArea className="min-h-0 flex-1">
           <TabsContent value="job">
-            <JobBody job={job} />
+            <JobBody job={job} onPaste={onPaste} />
+          </TabsContent>
+          <TabsContent value="fit">
+            <ScorePanel job={job} onOpenProfile={onOpenProfile} />
           </TabsContent>
           <TabsContent value="cv">
             <TailoredCv
@@ -138,9 +176,11 @@ function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => voi
   )
 }
 
-function JobBody({ job }: { job: Job }) {
+function JobBody({ job, onPaste }: { job: Job; onPaste: (url: string, posting: PastedPosting) => Promise<void> }) {
   const all = useT()
   const t = all.jobs
+  const [pasting, setPasting] = useState(false)
+  const site = job.site === "linkedin" ? "LinkedIn" : "Indeed"
   return (
     <>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-b px-6 py-5 sm:grid-cols-4">
@@ -161,20 +201,100 @@ function JobBody({ job }: { job: Job }) {
         <Meta label={t.postedOn}>{fullDate(job.date_posted)}</Meta>
       </dl>
 
-      {job.hits.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-b px-6 py-3">
-          <span className="mr-1 text-xs text-muted-foreground">{t.foundWith}</span>
-          {job.hits.map((h) => (
-            <span key={`${h.place}:${h.keyword}`} className="rounded-md border bg-muted/40 px-2 py-0.5 text-xs">
-              «{h.keyword}» · {hitPlace(h)}
-            </span>
-          ))}
+      {job.description ? (
+        <article className="prose-job max-w-prose px-6 py-6">
+          <Markdown>{job.description}</Markdown>
+        </article>
+      ) : !pasting ? (
+        <div className="space-y-3 px-6 py-6">
+          <p className="text-sm text-muted-foreground">{t.noDescription}</p>
+          <Button size="sm" variant="outline" onClick={() => setPasting(true)}>
+            <ClipboardPasteIcon />
+            {all.link.paste.action}
+          </Button>
         </div>
+      ) : (
+        <PastePosting
+          site={site}
+          url={job.url}
+          initial={{ title: job.title, company: job.company ?? "", location: job.location ?? "" }}
+          onSave={(posting) => onPaste(job.url, posting)}
+          onCancel={() => setPasting(false)}
+        />
       )}
-
-      <article className="prose-job max-w-prose px-6 py-6">
-        {job.description ? <Markdown>{job.description}</Markdown> : <p>{t.noDescription}</p>}
-      </article>
     </>
+  )
+}
+
+/** The sheet's shape while the posting is read, or why it couldn't be. */
+function PendingDetails({
+  pending,
+  onClose,
+  onPaste,
+}: {
+  pending: PendingJob
+  onClose: () => void
+  onPaste: (url: string, posting: PastedPosting) => Promise<void>
+}) {
+  const all = useT()
+  const t = all.link
+  const site = pending.site === "linkedin" ? "LinkedIn" : "Indeed"
+  const [pasting, setPasting] = useState(false)
+  if (pending.error)
+    return (
+      <ScrollArea className="min-h-0 flex-1">
+        <SheetHeader className="gap-4 px-6 pt-6 pb-6 pr-14">
+          <SiteMark site={pending.site} />
+          <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+            <AlertCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <div className="min-w-0 space-y-1">
+              <SheetTitle className="text-sm font-medium">{t.failed}</SheetTitle>
+              <SheetDescription className="text-pretty">{pending.error}</SheetDescription>
+            </div>
+          </div>
+          {!pasting && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={() => setPasting(true)}>
+                <ClipboardPasteIcon />
+                {t.paste.action}
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <a href={pending.url} target="_blank" rel="noreferrer">
+                  {t.openOnSite(site)}
+                  <ArrowUpRightIcon />
+                </a>
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onClose}>
+                {all.common.close}
+              </Button>
+            </div>
+          )}
+        </SheetHeader>
+        {pasting && <PastePosting site={site} url={pending.url} onSave={(p) => onPaste(pending.url, p)} onCancel={() => setPasting(false)} />}
+      </ScrollArea>
+    )
+  return (
+    <div aria-busy className="flex flex-col">
+      <SheetHeader className="gap-3 px-6 pt-6 pb-4 pr-14">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <SiteMark site={pending.site} />
+          <span aria-hidden>·</span>
+          <span className="text-shimmer">{t.reading}…</span>
+        </div>
+        <SheetTitle className="sr-only">{t.reading}</SheetTitle>
+        <SheetDescription className="sr-only">{pending.url}</SheetDescription>
+        <Skeleton className="h-7 w-2/3" />
+        <Skeleton className="h-4 w-1/2" />
+        <div className="flex gap-2 pt-1">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-8 w-28" />
+        </div>
+      </SheetHeader>
+      <div className="space-y-3 border-t px-6 py-6">
+        {[92, 78, 86, 64, 88, 70].map((w) => (
+          <Skeleton key={w} className="h-3" style={{ width: `${w}%` }} />
+        ))}
+      </div>
+    </div>
   )
 }

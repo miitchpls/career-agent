@@ -11,7 +11,7 @@ from . import fx
 from .query import Query, Sql, salary_in, where
 
 DB_PATH = Path("data/jobs.db")
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -107,6 +107,23 @@ CREATE TABLE IF NOT EXISTS profile_reviews (
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS job_scores (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    url         TEXT NOT NULL REFERENCES jobs(url) ON DELETE CASCADE,
+    revision_id INTEGER REFERENCES profile_revisions(id) ON DELETE CASCADE,  -- the profile scored
+    inputs      TEXT NOT NULL,      -- score.fingerprint: the posting's text and the goals
+    status      TEXT NOT NULL,      -- running | ready | failed | cancelled
+    provider    TEXT NOT NULL,
+    model       TEXT,
+    value       REAL,               -- 1.0-5.0, once ready
+    decision    TEXT,               -- score.Decision, once ready
+    result      TEXT,               -- JSON of score.Result, once ready
+    raw         TEXT,               -- the AI's answer as it came, for debugging
+    error       TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS job_scores_url ON job_scores(url, id);
 CREATE TABLE IF NOT EXISTS profile_files (
     id          TEXT PRIMARY KEY,   -- random, used in the URL
     filename    TEXT,
@@ -255,22 +272,7 @@ def search(
             f"SELECT * FROM jobs {pinned} ORDER BY {order.text}, url LIMIT ? OFFSET ?",
             [*w.params, as_of, *order.params, limit, offset],
         ).fetchall()
-        items = [dict(r) for r in rows]
-        for i in items:
-            i["salary_converted"] = _converted(i, q.salary_currency, rates)
-        if items:
-            urls = [i["url"] for i in items]
-            hits = conn.execute(
-                f"SELECT url, place, label, keyword FROM hits WHERE url IN ({', '.join('?' * len(urls))})",
-                urls,
-            ).fetchall()
-            by_url: dict[str, list] = {}
-            for h in hits:
-                by_url.setdefault(h["url"], []).append(
-                    {"place": h["place"], "label": h["label"], "keyword": h["keyword"]}
-                )
-            for i in items:
-                i["hits"] = by_url.get(i["url"], [])
+        items = _items(conn, rows, q.salary_currency, rates)
     return {
         "items": items,
         "total": total,
@@ -278,6 +280,70 @@ def search(
         "as_of": as_of,
         "fx_date": fx_date,
     }
+
+
+def _items(conn, rows, currency: str, rates: dict[str, float]) -> list[dict]:
+    """Job rows as the API returns them: with the salary in `currency` and their hits."""
+    items = [dict(r) for r in rows]
+    for i in items:
+        i["salary_converted"] = _converted(i, currency, rates)
+    if items:
+        urls = [i["url"] for i in items]
+        hits = conn.execute(
+            f"SELECT url, place, label, keyword FROM hits WHERE url IN ({', '.join('?' * len(urls))})",
+            urls,
+        ).fetchall()
+        by_url: dict[str, list] = {}
+        for h in hits:
+            by_url.setdefault(h["url"], []).append(
+                {"place": h["place"], "label": h["label"], "keyword": h["keyword"]}
+            )
+        for i in items:
+            i["hits"] = by_url.get(i["url"], [])
+        # The last finished score of each posting, for the list.
+        scores = conn.execute(
+            f"SELECT url, value, decision FROM job_scores WHERE id IN ("
+            f"SELECT max(id) FROM job_scores WHERE status = 'ready' "
+            f"AND url IN ({', '.join('?' * len(urls))}) GROUP BY url)",
+            urls,
+        ).fetchall()
+        by_score = {
+            r["url"]: {"value": r["value"], "decision": r["decision"]} for r in scores
+        }
+        for i in items:
+            i["score"] = by_score.get(i["url"])
+    return items
+
+
+def find_job(site: str, key: str, currency: str) -> dict | None:
+    """A saved posting by its board id, as a jobs-list item: LinkedIn stores
+    linkedin.com/jobs/view/<id>, Indeed its country domain's /viewjob?jk=<id>."""
+    if site == "linkedin":
+        sql, arg = "url = ?", f"https://www.linkedin.com/jobs/view/{key}"
+    else:
+        sql, arg = "url LIKE ?", f"%/viewjob?jk={key}"  # key is hex: no LIKE wildcards
+    _, rates = fx.rates()
+    with connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM jobs WHERE site = ? AND {sql} LIMIT 1", (site, arg)
+        ).fetchall()
+        items = _items(conn, rows, currency, rates)
+    return items[0] if items else None
+
+
+def get_job(url: str) -> dict | None:
+    """A saved posting's row, as stored."""
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM jobs WHERE url = ?", (url,)).fetchone()
+    return dict(row) if row else None
+
+
+def fill_job(url: str, **fields) -> None:
+    """Fill a saved posting's text fields (a pasted description, for one the board left empty)."""
+    assert fields and set(fields) <= {"description", "company", "location", "work_mode"}
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    with connect() as conn:
+        conn.execute(f"UPDATE jobs SET {sets} WHERE url = ?", [*fields.values(), url])
 
 
 def _converted(job: dict, currency: str, rates: dict[str, float]) -> dict | None:
@@ -640,6 +706,74 @@ def fail_running_reviews(error: str = REVIEW_INTERRUPTED) -> None:
     with connect() as conn:
         conn.execute(
             "UPDATE profile_reviews SET status = 'failed', error = ?, updated_at = ? "
+            "WHERE status = 'running'",
+            (error, _now()),
+        )
+
+
+# --- Job scores (score.py) --------------------------------------------------------------------
+
+
+def create_score(
+    url: str, revision_id: int, inputs: str, provider: str, model: str | None
+) -> int:
+    now = _now()
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO job_scores (url, revision_id, inputs, status, provider, model, created_at, updated_at) "
+            "VALUES (?, ?, ?, 'running', ?, ?, ?, ?)",
+            (url, revision_id, inputs, provider, model, now, now),
+        )
+        return cur.lastrowid
+
+
+_SCORE_FIELDS = {"status", "value", "decision", "result", "raw", "error"}
+
+
+def update_score(score_id: int, when_status: str | None = None, **fields) -> bool:
+    """Set score columns; with `when_status`, only if it's still in that state."""
+    assert fields and set(fields) <= _SCORE_FIELDS
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    sql = f"UPDATE job_scores SET {sets}, updated_at = ? WHERE id = ?"
+    params: list = [*fields.values(), _now(), score_id]
+    if when_status:
+        sql += " AND status = ?"
+        params.append(when_status)
+    with connect() as conn:
+        return conn.execute(sql, params).rowcount > 0
+
+
+def latest_score(url: str) -> dict | None:
+    """The posting's last score that wasn't cancelled: running, ready or failed."""
+    return _score_row(url, "status != 'cancelled'")
+
+
+def last_ready_score(url: str) -> dict | None:
+    return _score_row(url, "status = 'ready'")
+
+
+def _score_row(url: str, condition: str) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            f"SELECT * FROM job_scores WHERE url = ? AND {condition} ORDER BY id DESC LIMIT 1",
+            (url,),
+        ).fetchone()
+    if not row:
+        return None
+    r = dict(row)
+    r["result"] = json.loads(r["result"]) if r["result"] else None
+    r.pop("raw")
+    return r
+
+
+SCORE_INTERRUPTED = "score_interrupted"  # an i18n key, translated when read
+
+
+def fail_running_scores(error: str = SCORE_INTERRUPTED) -> None:
+    """At startup: no score survives a restart."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE job_scores SET status = 'failed', error = ?, updated_at = ? "
             "WHERE status = 'running'",
             (error, _now()),
         )
