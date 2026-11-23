@@ -594,9 +594,8 @@ export const de: Messages = {
 
   review: {
     card: "Prüfung",
-    cardText: "Prüfungen, die immer laufen, und auf Wunsch Vorschläge der KI zu Punkten, Beschreibungen und Zusammenfassung.",
     counts: (checks, open) =>
-      [checks && (checks === 1 ? "1 Hinweis" : `${checks} Hinweise`), open && (open === 1 ? "1 Vorschlag" : `${open} Vorschläge`)]
+      [checks && `${checks} zu beheben`, open && (open === 1 ? "1 Vorschlag" : `${open} Vorschläge`)]
         .filter(Boolean)
         .join(" · ") || "Keine Probleme gefunden",
     start: "Mit KI prüfen",
@@ -604,11 +603,10 @@ export const de: Messages = {
     title: "Profilprüfung",
     description: "Die KI schlägt vor, du entscheidest: nichts ändert sich ohne deinen Klick.",
     checks: {
-      title: "Hinweise",
-      hint: "Ohne KI, bei jeder Änderung aktualisiert.",
+      title: "Zu beheben",
+      hint: "Ohne KI gefunden, aktualisiert sich, während du dein Profil bearbeitest.",
       none: "Keine Probleme gefunden.",
       show: "Zeigen",
-      noHeadline: "Die Überschrift unter deinem Namen fehlt.",
       endBeforeStart: (label) => `${label}: das Ende liegt vor dem Beginn.`,
       future: (label) => `${label}: beginnt in der Zukunft.`,
       noBullets: (label) => `${label}: keine Punkte dazu, was du gemacht hast.`,

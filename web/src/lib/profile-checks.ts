@@ -7,7 +7,7 @@ import type { MonthYear, Profile } from "@/lib/profile"
 
 export interface Check {
   id: string
-  /** DOM id of what to show (`entry-<id>`, `profile-identity`, `profile-summary`). */
+  /** DOM id of what to show (`entry-<id>`). The headline and photo are the completeness card's. */
   target: string
   message: string
 }
@@ -32,8 +32,6 @@ export function profileChecks(p: Profile): Check[] {
   const t = msgs().review.checks
   const out: Check[] = []
   const add = (id: string, target: string, message: string) => out.push({ id, target, message })
-
-  if (!p.headline.trim()) add("headline", "profile-identity", t.noHeadline)
 
   const seen = new Map<string, string>()
   for (const e of p.experiences) {

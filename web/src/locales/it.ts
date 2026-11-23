@@ -599,9 +599,8 @@ export const it = {
 
   review: {
     card: "Revisione",
-    cardText: "Controlli sempre attivi e, su richiesta, i suggerimenti dell'AI su punti, descrizioni e riepilogo.",
     counts: (checks: number, open: number) =>
-      [checks && (checks === 1 ? "1 controllo" : `${checks} controlli`), open && (open === 1 ? "1 suggerimento" : `${open} suggerimenti`)]
+      [checks && `${checks} da sistemare`, open && (open === 1 ? "1 suggerimento" : `${open} suggerimenti`)]
         .filter(Boolean)
         .join(" · ") || "Nessun problema trovato",
     start: "Rivedi con AI",
@@ -609,11 +608,10 @@ export const it = {
     title: "Revisione del profilo",
     description: "L'AI propone, tu decidi: niente cambia senza un tuo clic.",
     checks: {
-      title: "Controlli",
-      hint: "Senza AI, aggiornati a ogni modifica.",
+      title: "Da sistemare",
+      hint: "Trovati senza AI, aggiornati mentre modifichi il profilo.",
       none: "Nessun problema trovato.",
       show: "Mostra",
-      noHeadline: "Manca il titolo sotto il nome.",
       endBeforeStart: (label: string) => `${label}: la fine è prima dell'inizio.`,
       future: (label: string) => `${label}: inizia in una data futura.`,
       noBullets: (label: string) => `${label}: nessun punto su cosa hai fatto.`,

@@ -37,7 +37,7 @@ function reveal(target: string) {
     if (!el) return
     el.scrollIntoView({ behavior: "smooth", block: "center" })
     el.animate(
-      [{ boxShadow: "0 0 0 2px color-mix(in oklab, var(--color-violet-500) 55%, transparent)" }, { boxShadow: "0 0 0 2px transparent" }],
+      [{ boxShadow: "0 0 0 2px color-mix(in oklab, var(--foreground) 35%, transparent)" }, { boxShadow: "0 0 0 2px transparent" }],
       { duration: 1800, easing: "ease-out" },
     )
   }, 250)
@@ -57,12 +57,14 @@ export function ReviewCard() {
     <Card className="gap-3 px-5 py-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium">{t.card}</h2>
-        {running && <LoaderCircleIcon className="size-3.5 animate-spin text-violet-500" />}
+        {running && <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground" />}
       </div>
-      <p className="text-xs text-pretty text-muted-foreground">{t.cardText}</p>
-      <p className="text-xs font-medium tabular-nums">{t.counts(checks.length, pending)}</p>
+      <p className="flex items-center gap-2 text-xs tabular-nums">
+        <span className={cn("size-1.5 shrink-0 rounded-full", checks.length || pending ? "bg-amber-500" : "bg-emerald-500")} />
+        {t.counts(checks.length, pending)}
+      </p>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <SparklesIcon className="text-violet-500" />
+        <SparklesIcon />
         {pending || running ? t.open : t.start}
       </Button>
       <ReviewSheet open={open} onOpenChange={setOpen} checks={checks} />
@@ -81,7 +83,7 @@ function ReviewSheet({ open, onOpenChange, checks }: { open: boolean; onOpenChan
       <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-lg">
         <SheetHeader className="border-b px-6 py-5">
           <SheetTitle>{t.title}</SheetTitle>
-          <SheetDescription>{t.description}</SheetDescription>
+          <SheetDescription className="text-balance">{t.description}</SheetDescription>
         </SheetHeader>
         <div className="space-y-8 px-6 py-6">
           <AiSection />
@@ -135,7 +137,7 @@ function Elapsed({ since }: { since: string }) {
     return () => window.clearInterval(id)
   }, [])
   const s = Math.max(0, Math.round((now - new Date(since).getTime()) / 1000))
-  return <span className="font-mono tabular-nums">{`${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`}</span>
+  return <span className="font-mono text-xs text-muted-foreground tabular-nums">{`${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`}</span>
 }
 
 function AiSection() {
@@ -178,21 +180,18 @@ function AiSection() {
     <section>
       <SectionTitle title={t.title} />
       {data?.status === "running" ? (
-        <div className="space-y-3 rounded-lg border border-violet-500/25 bg-violet-500/5 p-4">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <LoaderCircleIcon className="size-4 animate-spin text-violet-500" />
-            <span className="min-w-0 flex-1">{t.running(engine?.provider.name ?? data.provider)}</span>
+        <div className="space-y-3 rounded-lg border bg-card p-4 shadow-xs">
+          <div className="flex items-center gap-3 text-sm">
+            <LoaderCircleIcon className="size-4 shrink-0 animate-spin text-muted-foreground" />
+            <span className="text-shimmer min-w-0 flex-1">{t.running(engine?.provider.name ?? data.provider)}</span>
             <Elapsed since={data.created_at} />
           </div>
-          <p className="text-xs text-muted-foreground">{t.runningHint}</p>
-          <div className="space-y-2">
-            {[0.9, 0.7, 0.8].map((w, i) => (
-              <div key={i} className="h-2 animate-pulse rounded-full bg-violet-500/10" style={{ width: `${w * 100}%` }} />
-            ))}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">{t.runningHint}</p>
+            <Button variant="ghost" size="xs" className="-mr-2 shrink-0" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
+              {t.cancel}
+            </Button>
           </div>
-          <Button variant="ghost" size="xs" className="-ml-2" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
-            {t.cancel}
-          </Button>
         </div>
       ) : !data ? (
         <div className="space-y-3 rounded-lg border border-dashed p-4">
@@ -255,7 +254,7 @@ function useWhere(p: Profile, s: ReviewSuggestion): string {
         ? p.projects.find((x) => x.id === s.entryId)?.name
         : p.certifications.find((c) => c.id === s.entryId)?.name
   const part = s.field === "bullet" && s.index !== null ? w.bullet(s.index + 1) : s.field === "description" ? w.description : null
-  return [name || "—", part].filter(Boolean).join(", ")
+  return [part && part[0].toUpperCase() + part.slice(1), name || "—"].filter(Boolean).join(" · ")
 }
 
 function SuggestionCard({ s, profile, disabled }: { s: ReviewSuggestion; profile: Profile; disabled: boolean }) {
@@ -278,22 +277,24 @@ function SuggestionCard({ s, profile, disabled }: { s: ReviewSuggestion; profile
   return (
     <div className={cn("space-y-3 rounded-lg border bg-card p-3.5 shadow-xs", stale && "opacity-70")}>
       <div className="flex items-center gap-2">
-        <Badge variant="outline" className="border-transparent bg-violet-500/10 text-[11px] text-violet-700 dark:text-violet-300">
+        <Badge variant="secondary" className="text-[11px] font-normal">
           {t.kinds[s.kind]}
         </Badge>
-        <span className="min-w-0 truncate text-xs text-muted-foreground">{where}</span>
+        <span className="min-w-0 truncate text-xs text-muted-foreground" title={where}>
+          {where}
+        </span>
       </div>
-      {s.reason && <p className="text-sm text-pretty">{s.reason}</p>}
+      {s.reason && <p className="text-xs text-pretty text-muted-foreground">{s.reason}</p>}
 
       {s.kind === "add_skill" ? (
-        <span className="inline-flex h-7 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 text-xs whitespace-nowrap">
+        <span className="inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs whitespace-nowrap">
           <PlusIcon className="size-3" />
           {s.after}
         </span>
       ) : (
         <div className="overflow-hidden rounded-md border text-sm leading-relaxed">
           {s.before && <Before before={s.before} after={s.kind === "question" ? s.before : s.after} />}
-          <div className="bg-emerald-500/[0.04] px-3 py-2">
+          <div className="px-3 py-2">
             {s.kind === "question" ? (
               <p className="text-pretty">
                 {pieces.map((x, i) =>
@@ -307,7 +308,7 @@ function SuggestionCard({ s, profile, disabled }: { s: ReviewSuggestion; profile
                       placeholder={x.blank}
                       aria-label={x.blank}
                       size={Math.max((answers[x.index] || x.blank).length, 3)}
-                      className="mx-0.5 rounded-sm border-b border-dashed border-violet-500/60 bg-violet-500/10 px-1 text-sm outline-none placeholder:text-violet-700/60 focus:border-solid focus:bg-violet-500/15 dark:placeholder:text-violet-300/60"
+                      className="mx-0.5 rounded-sm border-b border-dashed border-foreground/40 bg-muted px-1 text-sm outline-none placeholder:text-muted-foreground focus:border-solid focus:border-foreground"
                     />
                   ),
                 )}
@@ -329,7 +330,7 @@ function SuggestionCard({ s, profile, disabled }: { s: ReviewSuggestion; profile
           <XIcon />
           {t.dismiss}
         </Button>
-        <Button size="xs" disabled={disabled || stale || (s.kind === "question" && !filled)} onClick={apply}>
+        <Button variant="outline" size="xs" disabled={disabled || stale || (s.kind === "question" && !filled)} onClick={apply}>
           <CheckIcon />
           {t.apply}
         </Button>
@@ -347,7 +348,7 @@ function Before({ before, after }: { before: string; after: string }) {
         .filter((d) => d.change !== "added")
         .map((d, i) =>
           d.change === "removed" ? (
-            <del key={i} className="rounded-[3px] bg-rose-500/10 decoration-rose-500/60">
+            <del key={i} className="decoration-foreground/40">
               {d.text}
             </del>
           ) : (
