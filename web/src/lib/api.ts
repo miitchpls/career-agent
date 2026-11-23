@@ -1,3 +1,5 @@
+import { getLocale, msgs } from "@/lib/i18n"
+
 export type WorkMode = "onsite" | "hybrid" | "remote" | "unknown"
 export type Site = "linkedin" | "indeed"
 export type JobType = "fulltime" | "parttime" | "contract" | "internship" | "volunteer"
@@ -138,35 +140,162 @@ export interface SavedSearch {
   last_run_at: string | null
 }
 
+/** One AI CLI found (or not) on this computer: `/api/ai`. */
+export interface AiProvider {
+  id: "claude" | "codex"
+  name: string
+  command: string
+  install_url: string
+  /** What to run in a terminal to sign in. */
+  login: string
+  installed: boolean
+  connected: boolean
+  /** How it's signed in: "Pro", "ChatGPT", "API key". */
+  plan: string | null
+  models: { id: string; label: string }[]
+}
+
+/** model null: the CLI's own default. */
+export interface AiChoice {
+  provider: string | null
+  model: string | null
+}
+
+export interface AiEngines {
+  providers: AiProvider[]
+  saved: AiChoice
+  /** What an import would use now; null when nothing is connected. */
+  active: AiChoice | null
+}
+
+/** An import: running, waiting for review (`data`), or failed (`error`). */
+export interface ProfileDraft {
+  id: number
+  document_id: number
+  status: "running" | "ready" | "failed"
+  provider: string
+  model: string | null
+  /** Profile as drafted, with the user's edits while reviewing. */
+  data: unknown | null
+  error: string | null
+  /** null for pasted text. */
+  filename: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProfileState {
+  /** The saved profile; null before the first save. */
+  profile: unknown | null
+  saved_at: string | null
+  draft: ProfileDraft | null
+}
+
+/** Languages a CV can be written in (`career_agent.cv_render.CvLanguage`). */
+export const CV_LANGUAGES = ["it", "en", "de", "ko"] as const
+export type CvLanguage = (typeof CV_LANGUAGES)[number]
+
+/** career-ops' CV templates, rendered by `career_agent.cv_render`. */
+export const CV_TEMPLATES = ["standard", "modern", "compact", "executive", "leadership", "jake", "ats"] as const
+export type CvTemplate = (typeof CV_TEMPLATES)[number]
+
+export interface CvPreviewRequest {
+  templates: CvTemplate[]
+  language: CvLanguage
+  format: "a4" | "letter"
+  photo: boolean
+  /** Shown exactly as given; null: the sample profile. */
+  profile: unknown | null
+  /** Texts to highlight: what a tailored CV moved. */
+  marked?: string[]
+}
+
+/** How tailored CVs are written: `/api/cv/preferences`. */
+export interface CvPrefs {
+  /** "job": the posting's language. */
+  language: "job" | CvLanguage
+  /** "auto": Letter for the US and Canada, A4 elsewhere. */
+  format: "auto" | "a4" | "letter"
+  /** One of career-ops' CV templates. */
+  style: CvTemplate
+  /** "auto": only where CVs usually carry a photo. */
+  photo: "auto" | "always" | "never"
+}
+
+export interface UploadedFile {
+  id: string
+  url: string
+  name: string
+  mime: string
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // FormData sets its own multipart Content-Type.
+  const json = !(init?.body instanceof FormData)
   const res = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    // The server phrases its errors and run messages in the UI's language.
+    headers: {
+      ...(json ? { "Content-Type": "application/json" } : {}),
+      "Accept-Language": getLocale(),
+      ...init?.headers,
+    },
   })
   const body = await res.json().catch(() => null)
   if (!res.ok) {
     const detail = body?.detail
-    throw new Error(typeof detail === "string" ? detail : "Richiesta non valida")
+    throw new Error(typeof detail === "string" ? detail : msgs().common.invalidRequest)
   }
   return body as T
 }
 
 const post = <T>(path: string, data: unknown) =>
   request<T>(path, { method: "POST", body: JSON.stringify(data) })
+const put = <T>(path: string, data: unknown) =>
+  request<T>(path, { method: "PUT", body: JSON.stringify(data) })
+const del = <T>(path: string) => request<T>(path, { method: "DELETE" })
+
+function form(fields: Record<string, string | Blob>): FormData {
+  const f = new FormData()
+  for (const [k, v] of Object.entries(fields)) f.append(k, v)
+  return f
+}
 
 export const api = {
   places: (q: string) =>
     request<{ places: PlaceOption[]; offline: boolean }>(`/api/places?q=${encodeURIComponent(q)}`),
   jobs: (query: Query, sort: Sort, direction: Direction, offset: number, asOf: number | null, limit = 50) =>
     post<JobsPage>("/api/jobs", { query, sort, direction, offset, limit, as_of: asOf }),
-  search: (query: Query) => post<RunSummary>("/api/search", query),
+  search: (query: Query, force = false) => post<RunSummary>(`/api/search${force ? "?force=true" : ""}`, query),
   cancel: () => post<{ ok: true }>("/api/cancel", {}),
   status: () => request<RunStatus>("/api/status"),
-  clear: () => request<{ ok: true }>("/api/jobs", { method: "DELETE" }),
   saved: {
     list: () => request<SavedSearch[]>("/api/saved"),
     save: (name: string, query: Query) => post<SavedSearch & { created: boolean }>("/api/saved", { name, query }),
     remove: (id: number) => request<{ ok: true }>(`/api/saved/${id}`, { method: "DELETE" }),
-    run: (id: number) => post<RunSummary>(`/api/saved/${id}/run`, {}),
+    run: (id: number, force = false) => post<RunSummary>(`/api/saved/${id}/run${force ? "?force=true" : ""}`, {}),
+  },
+  ai: {
+    get: () => request<AiEngines>("/api/ai"),
+    choose: (provider: string, model: string | null) => put<AiEngines>("/api/ai", { provider, model }),
+  },
+  cv: {
+    prefs: () => request<CvPrefs>("/api/cv/preferences"),
+    savePrefs: (prefs: CvPrefs) => put<CvPrefs>("/api/cv/preferences", prefs),
+    preview: (body: CvPreviewRequest) => post<{ pages: Partial<Record<CvTemplate, string>>; sample: boolean }>("/api/cv/preview", body),
+  },
+  profile: {
+    get: () => request<ProfileState>("/api/profile"),
+    save: (profile: unknown) => put<ProfileState>("/api/profile", { profile }),
+    clear: () => del<ProfileState>("/api/profile"),
+    importFile: (file: File) =>
+      request<ProfileState>("/api/profile/import", { method: "POST", body: form({ file }) }),
+    importText: (text: string) =>
+      request<ProfileState>("/api/profile/import", { method: "POST", body: form({ text }) }),
+    retry: () => post<ProfileState>("/api/profile/draft/retry", {}),
+    saveDraft: (profile: unknown) => put<ProfileState>("/api/profile/draft", { profile }),
+    confirm: (profile: unknown) => post<ProfileState>("/api/profile/draft/confirm", { profile }),
+    discard: () => del<ProfileState>("/api/profile/draft"),
+    upload: (file: File) => request<UploadedFile>("/api/profile/files", { method: "POST", body: form({ file }) }),
   },
 }

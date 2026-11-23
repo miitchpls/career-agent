@@ -134,3 +134,21 @@ def test_title_matches_mirrors_the_sql_filter():
     assert not title_matches(q, "Python Engineer")
     assert not title_matches(q, "Senior Data Engineer")
     assert title_matches(Query(), "anything")
+
+
+def test_korea_is_searched_on_indeed_too():
+    # From the offline catalogue: no GeoNames id, so the country table decides.
+    seoul = Place(city="Seul", country="kr")
+    board = seoul.board()
+    assert (board.city, board.country, board.indeed_country) == (
+        "Seoul",
+        "South Korea",
+        "south korea",
+    )
+    assert board.matches("Gangnam-gu, Seoul, South Korea")
+    assert not board.matches("Seoul, TX, United States")
+    searches, _, errors = plan(
+        q(scopes=[{"places": [seoul.model_dump()]}], title_any=["backend"])
+    )
+    assert not errors
+    assert {s.site for s in searches} == {"linkedin", "indeed"}

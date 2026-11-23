@@ -15,7 +15,8 @@ import { AnimatePresence, motion } from "motion/react"
 import { Button } from "@/components/ui/button"
 import { api, type RunStatus, type RunStep } from "@/lib/api"
 import { ago } from "@/lib/format"
-import { runMessage, stepOutcome } from "@/lib/run-messages"
+import { useT } from "@/lib/i18n"
+import { ANYWHERE, runMessage, stepOutcome } from "@/lib/run-messages"
 import { useRunStatus } from "@/lib/queries"
 import { useRunEffects } from "@/lib/use-run-effects"
 import { cn } from "@/lib/utils"
@@ -23,6 +24,8 @@ import { cn } from "@/lib/utils"
 const SITE: Record<string, string> = { linkedin: "LinkedIn", indeed: "Indeed" }
 
 function StepRow({ step }: { step: RunStep }) {
+  const all = useT()
+  const t = all.run
   const icon = {
     pending: <CircleIcon className="size-3 text-muted-foreground/50" />,
     running: <Loader2Icon className="size-3.5 animate-spin text-muted-foreground" />,
@@ -32,19 +35,19 @@ function StepRow({ step }: { step: RunStep }) {
     skipped: <CirclePauseIcon className="size-3.5 text-amber-600 dark:text-amber-400" />,
   }[step.status]
   const outcome = {
-    pending: "in attesa",
-    running: "in corso…",
+    pending: t.stepPending,
+    running: t.stepRunning,
     done: stepOutcome(step),
-    error: step.error ?? "errore",
-    recent: `già cercata ${step.ran_at ? ago(step.ran_at) : "di recente"}, risultati già salvati`,
-    skipped: `rimandata: ${step.error ?? "portale in pausa"}`,
+    error: step.error ?? t.stepError,
+    recent: t.stepRecent(step.ran_at ? ago(step.ran_at) : null),
+    skipped: t.stepHeld(step.error),
   }[step.status]
   return (
     <li className="flex items-center gap-2.5 py-1.5 text-xs">
       <span className="grid size-4 shrink-0 place-items-center">{icon}</span>
       <span className="w-16 shrink-0 text-muted-foreground">{SITE[step.site] ?? step.site}</span>
       <span className="min-w-0 flex-1 truncate">
-        «{step.keyword}» · {step.place}
+        «{step.keyword}» · {step.place === ANYWHERE ? all.common.anywhere : step.place}
       </span>
       <span
         title={outcome}
@@ -57,6 +60,8 @@ function StepRow({ step }: { step: RunStep }) {
 }
 
 function Panel({ status, onDismiss }: { status: RunStatus; onDismiss: () => void }) {
+  const all = useT()
+  const t = all.run
   const [open, setOpen] = useState(false)
   const qc = useQueryClient()
   const cancel = useMutation({
@@ -102,7 +107,7 @@ function Panel({ status, onDismiss }: { status: RunStatus; onDismiss: () => void
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={open ? "Nascondi dettagli" : "Mostra dettagli"}
+            aria-label={open ? t.hideDetails : t.showDetails}
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
             className="text-muted-foreground"
@@ -112,10 +117,10 @@ function Panel({ status, onDismiss }: { status: RunStatus; onDismiss: () => void
         )}
         {status.running ? (
           <Button variant="ghost" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
-            Interrompi
+            {t.stop}
           </Button>
         ) : (
-          <Button variant="ghost" size="icon-sm" aria-label="Chiudi" onClick={onDismiss} className="text-muted-foreground">
+          <Button variant="ghost" size="icon-sm" aria-label={all.common.close} onClick={onDismiss} className="text-muted-foreground">
             <XIcon />
           </Button>
         )}

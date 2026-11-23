@@ -77,9 +77,15 @@ def test_saved_search_api_roundtrip():
 
 def test_salary_over_limit_is_rejected():
     assert (
-        client.post("/api/jobs", json={"query": {"salary_min": 20_000}}).status_code
+        client.post("/api/jobs", json={"query": {"salary_min": 20_000_000}}).status_code
         == 422
     )
+
+
+def test_a_salary_in_won_is_accepted():
+    # 60 million won, in thousands: far above the francs or euros anyone earns.
+    query = {"salary_min": 60_000, "salary_currency": "KRW"}
+    assert client.post("/api/jobs", json={"query": query}).status_code == 200
 
 
 def test_search_starts_immediately_and_returns_a_summary(monkeypatch):
