@@ -112,21 +112,21 @@ entry, and to keep projects or clients within a role in its bullets.
 
 ### Profile review
 
-The **Review** card on the profile page has two parts:
+**Review with AI**, on the profile page, runs the same AI CLI as the import over bullets, descriptions,
+summary and headline. It proposes, one by one, each with the reason:
 
-- **Checks**, without AI, recomputed on every edit: dates that end before they start or start
-  in the future, experiences with no bullets or no figures, long or repeated bullets, projects without a
-  description. **Show** scrolls to the entry.
-- **Suggestions**, on request, from the same AI CLI as the import. It rereads bullets, descriptions, summary and
-  headline and proposes, one by one:
-  - a **rewrite** with the same facts (active verb, no filler), shown as a word diff;
-  - a **question** where a figure only you know would help: the improved text with blanks you fill in;
-  - a **skill** an entry's own text names but its skills list lacks.
+- a **rewrite** with the same facts (active verb, no filler), shown as a word diff;
+- a **question** where a figure only you know would help: the improved text with blanks you fill in;
+- a **skill** an entry's own text names but its skills list lacks.
 
 Nothing changes until you press **Apply**, which is an ordinary edit (a new revision). The server drops any
 suggestion that points at text that isn't there, or that brings in a fact the profile doesn't hold: a number, or
 a name such as a tool, product or employer that appears nowhere in the profile. A suggestion whose text you've
-edited since the review is marked as no longer applying.
+edited since the review is marked as no longer applying. Suggestions are stored with the review, so they survive a
+restart; if a later review fails or is interrupted, the last finished one's open suggestions stay on screen
+until a new one finishes.
+
+The edit dialogs refuse an end date before the start date (and an expiry before the issue date).
 
 ### CV preferences
 

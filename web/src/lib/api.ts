@@ -290,6 +290,15 @@ export interface ProfileReview {
   created_at: string
 }
 
+/**
+ * The latest review, and while it runs or after it fails the last finished one, whose open
+ * suggestions stay on screen until a newer review finishes.
+ */
+export interface ReviewState {
+  review: ProfileReview | null
+  earlier: ProfileReview | null
+}
+
 export const api = {
   places: (q: string) =>
     request<{ places: PlaceOption[]; offline: boolean }>(`/api/places?q=${encodeURIComponent(q)}`),
@@ -326,11 +335,11 @@ export const api = {
     confirm: (profile: unknown) => post<ProfileState>("/api/profile/draft/confirm", { profile }),
     discard: () => del<ProfileState>("/api/profile/draft"),
     upload: (file: File) => request<UploadedFile>("/api/profile/files", { method: "POST", body: form({ file }) }),
-    review: () => request<{ review: ProfileReview | null }>("/api/profile/review"),
-    startReview: () => post<{ review: ProfileReview | null }>("/api/profile/review", {}),
-    cancelReview: () => del<{ review: ProfileReview | null }>("/api/profile/review"),
+    review: () => request<ReviewState>("/api/profile/review"),
+    startReview: () => post<ReviewState>("/api/profile/review", {}),
+    cancelReview: () => del<ReviewState>("/api/profile/review"),
     setSuggestion: (id: string, state: ReviewSuggestion["state"]) =>
-      request<{ review: ProfileReview | null }>(`/api/profile/review/suggestions/${encodeURIComponent(id)}`, {
+      request<ReviewState>(`/api/profile/review/suggestions/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify({ state }),
       }),

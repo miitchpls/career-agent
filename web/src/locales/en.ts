@@ -333,6 +333,8 @@ export const en: Messages = {
     currentRole: "I currently work in this role",
     startDate: "Start date",
     endDate: "End date",
+    endBeforeStart: "The end date is before the start date.",
+    expiresBeforeIssued: "The expiration date is before the issue date.",
     whatYouDid: "What you did",
     results: "Results",
     resultsHint: "One per line. Numbers matter: “p95 from 820 to 490 ms” beats “improved performance”.",
@@ -592,27 +594,11 @@ export const en: Messages = {
 
   review: {
     card: "Review",
-    counts: (checks, open) =>
-      [checks && `${checks} to fix`, open && (open === 1 ? "1 suggestion" : `${open} suggestions`)]
-        .filter(Boolean)
-        .join(" · ") || "No issues found",
+    counts: (open) => (open === 1 ? "1 suggestion to look at" : `${open} suggestions to look at`),
     start: "Review with AI",
     open: "Open the review",
     title: "Profile review",
     description: "The AI suggests, you decide: nothing changes without your click.",
-    checks: {
-      title: "To fix",
-      hint: "Found without AI, updated as you edit your profile.",
-      none: "No issues found.",
-      show: "Show",
-      endBeforeStart: (label) => `${label}: the end is before the start.`,
-      future: (label) => `${label}: it starts in the future.`,
-      noBullets: (label) => `${label}: no bullets on what you did.`,
-      noNumbers: (label) => `${label}: no result with a number.`,
-      longBullet: (label, n) => `${label}: bullet ${n} is long, split it in two.`,
-      duplicate: (label, other) => `${label}: a bullet repeats one from ${other}.`,
-      noDescription: (label) => `${label}: the description is missing.`,
-    },
     ai: {
       title: "Suggestions",
       intro:

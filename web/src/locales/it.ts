@@ -337,6 +337,8 @@ export const it = {
     currentRole: "Attualmente ricopro questo ruolo",
     startDate: "Data di inizio",
     endDate: "Data di fine",
+    endBeforeStart: "La data di fine è prima di quella di inizio.",
+    expiresBeforeIssued: "La scadenza è prima della data di rilascio.",
     whatYouDid: "Cosa hai fatto",
     results: "Risultati",
     resultsHint: "Uno per riga. I numeri contano: «p95 da 820 a 490 ms» vale più di «migliorato le prestazioni».",
@@ -599,27 +601,11 @@ export const it = {
 
   review: {
     card: "Revisione",
-    counts: (checks: number, open: number) =>
-      [checks && `${checks} da sistemare`, open && (open === 1 ? "1 suggerimento" : `${open} suggerimenti`)]
-        .filter(Boolean)
-        .join(" · ") || "Nessun problema trovato",
+    counts: (open: number) => (open === 1 ? "1 suggerimento da vedere" : `${open} suggerimenti da vedere`),
     start: "Rivedi con AI",
     open: "Apri la revisione",
     title: "Revisione del profilo",
     description: "L'AI propone, tu decidi: niente cambia senza un tuo clic.",
-    checks: {
-      title: "Da sistemare",
-      hint: "Trovati senza AI, aggiornati mentre modifichi il profilo.",
-      none: "Nessun problema trovato.",
-      show: "Mostra",
-      endBeforeStart: (label: string) => `${label}: la fine è prima dell'inizio.`,
-      future: (label: string) => `${label}: inizia in una data futura.`,
-      noBullets: (label: string) => `${label}: nessun punto su cosa hai fatto.`,
-      noNumbers: (label: string) => `${label}: nessun risultato con un numero.`,
-      longBullet: (label: string, n: number) => `${label}: il punto ${n} è lungo, dividilo in due.`,
-      duplicate: (label: string, other: string) => `${label}: un punto è uguale a uno di ${other}.`,
-      noDescription: (label: string) => `${label}: manca la descrizione.`,
-    },
     ai: {
       title: "Suggerimenti",
       intro:

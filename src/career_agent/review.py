@@ -378,10 +378,11 @@ class Reviewer:
             )
         )
 
-    def set_state(self, suggestion_id: str, state: State) -> dict:
-        """Mark one suggestion of the latest review applied or dismissed."""
+    def set_state(self, suggestion_id: str, state: State) -> None:
+        """Mark one suggestion applied or dismissed. Suggestions belong to the last finished
+        review, which stays on screen while a newer one runs or after it fails."""
         with self._states:
-            review = db.latest_review()
+            review = db.last_ready_review()
             items = review["suggestions"] if review else []
             hit = next((s for s in items if s["id"] == suggestion_id), None)
             if hit is None:
@@ -390,7 +391,6 @@ class Reviewer:
             db.update_review(
                 review["id"], suggestions=json.dumps(items, ensure_ascii=False)
             )
-        return db.latest_review()
 
     def _run(
         self, review_id: int, profile: Profile, provider: ai.Provider, model

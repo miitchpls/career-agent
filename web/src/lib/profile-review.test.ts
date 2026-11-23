@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import type { ReviewSuggestion } from "@/lib/api"
-import { profileChecks } from "@/lib/profile-checks"
 import { applySuggestion, blanks, currentText, diffWords, fill, isStale, parts } from "@/lib/profile-review"
-import { EMPTY_PROFILE, type Experience, type Profile } from "@/lib/profile"
+import { EMPTY_PROFILE, endsBefore, type Experience, type Profile } from "@/lib/profile"
 
 const exp = (over: Partial<Experience> = {}): Experience => ({
   id: "e1",
@@ -91,25 +90,13 @@ describe("review suggestions", () => {
   })
 })
 
-describe("profile checks", () => {
-  const ids = (p: Profile) => profileChecks(p).map((c) => c.id)
-
-  it("flag what needs no AI to spot", () => {
-    const p: Profile = {
-      ...profile,
-      headline: "",
-      experiences: [
-        exp({ id: "a", current: false, start: { month: 5, year: 2022 }, end: { month: 1, year: 2021 } }),
-        exp({ id: "b", bullets: [] }),
-        exp({ id: "c", bullets: ["Nessun numero qui.", "x".repeat(300), "Responsabile della migrazione su Databricks."] }),
-      ],
-      projects: [{ ...profile.projects[0], description: "" }],
-    }
-    expect(ids(p)).toEqual(["a:endBeforeStart", "b:bullets", "c:numbers", "c:long:1", "c:dup:2", "p1:description"])
-    expect(profileChecks(p)[0].target).toBe("entry-a")
-  })
-
-  it("stay quiet on a tidy profile", () => {
-    expect(ids(profile)).toEqual([])
+describe("date order", () => {
+  it("is checked by month when both have one, by year otherwise", () => {
+    expect(endsBefore({ month: 5, year: 2022 }, { month: 1, year: 2022 })).toBe(true)
+    expect(endsBefore({ month: 5, year: 2022 }, { month: 5, year: 2022 })).toBe(false)
+    expect(endsBefore({ month: 2, year: 2021 }, { month: null, year: 2021 })).toBe(false)
+    expect(endsBefore({ month: null, year: 2021 }, { month: 0, year: 2020 })).toBe(true)
+    expect(endsBefore(null, { month: 0, year: 2020 })).toBe(false)
+    expect(endsBefore({ month: 0, year: 2020 }, null)).toBe(false)
   })
 })

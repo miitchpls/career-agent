@@ -9,13 +9,13 @@ import { Card } from "@/components/ui/card"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import type { ReviewSuggestion } from "@/lib/api"
 import { intlTag, useT } from "@/lib/i18n"
-import { profileChecks, type Check } from "@/lib/profile-checks"
 import {
   applySuggestion,
   diffWords,
   fill,
   isStale,
   parts,
+  shownReview,
   useCancelReview,
   useReview,
   useSetSuggestion,
@@ -30,28 +30,14 @@ import { cn } from "@/lib/utils"
 const reviewable = (p: Profile) =>
   !!p.summary.trim() || p.experiences.some((e) => e.bullets.length) || p.projects.some((x) => x.description) || p.education.some((d) => d.description)
 
-/** Scroll to an entry on the page and flash it, after the sheet has closed. */
-function reveal(target: string) {
-  window.setTimeout(() => {
-    const el = document.getElementById(target)
-    if (!el) return
-    el.scrollIntoView({ behavior: "smooth", block: "center" })
-    el.animate(
-      [{ boxShadow: "0 0 0 2px color-mix(in oklab, var(--foreground) 35%, transparent)" }, { boxShadow: "0 0 0 2px transparent" }],
-      { duration: 1800, easing: "ease-out" },
-    )
-  }, 250)
-}
-
-/** Sidebar card: what the checks found, and the way into the review. */
+/** Sidebar card: the way into the review, and how many suggestions wait. */
 export function ReviewCard() {
   const t = useT().review
   const { profile } = useProfile()
   const review = useReview()
   const [open, setOpen] = useState(false)
-  const checks = useMemo(() => profileChecks(profile), [profile])
-  const pending = (review.data?.suggestions ?? []).filter((s) => s.state === "open" && !isStale(profile, s)).length
-  const running = review.data?.status === "running"
+  const pending = (shownReview(review.data)?.suggestions ?? []).filter((s) => s.state === "open" && !isStale(profile, s)).length
+  const running = review.data?.review?.status === "running"
 
   return (
     <Card className="gap-3 px-5 py-4">
@@ -59,74 +45,28 @@ export function ReviewCard() {
         <h2 className="text-sm font-medium">{t.card}</h2>
         {running && <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground" />}
       </div>
-      <p className="flex items-center gap-2 text-xs tabular-nums">
-        <span className={cn("size-1.5 shrink-0 rounded-full", checks.length || pending ? "bg-amber-500" : "bg-emerald-500")} />
-        {t.counts(checks.length, pending)}
-      </p>
+      {pending > 0 && (
+        <p className="flex items-center gap-2 text-xs tabular-nums">
+          <span className="size-1.5 shrink-0 rounded-full bg-amber-500" />
+          {t.counts(pending)}
+        </p>
+      )}
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
         <SparklesIcon />
         {pending || running ? t.open : t.start}
       </Button>
-      <ReviewSheet open={open} onOpenChange={setOpen} checks={checks} />
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-lg">
+          <SheetHeader className="border-b px-6 py-5">
+            <SheetTitle>{t.title}</SheetTitle>
+            <SheetDescription className="text-balance">{t.description}</SheetDescription>
+          </SheetHeader>
+          <div className="px-6 py-6">
+            <AiSection />
+          </div>
+        </SheetContent>
+      </Sheet>
     </Card>
-  )
-}
-
-function ReviewSheet({ open, onOpenChange, checks }: { open: boolean; onOpenChange: (o: boolean) => void; checks: Check[] }) {
-  const t = useT().review
-  const show = (target: string) => {
-    onOpenChange(false)
-    reveal(target)
-  }
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-lg">
-        <SheetHeader className="border-b px-6 py-5">
-          <SheetTitle>{t.title}</SheetTitle>
-          <SheetDescription className="text-balance">{t.description}</SheetDescription>
-        </SheetHeader>
-        <div className="space-y-8 px-6 py-6">
-          <AiSection />
-          <ChecksSection checks={checks} onShow={show} />
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-function SectionTitle({ title, hint }: { title: string; hint?: string }) {
-  return (
-    <div className="mb-3 space-y-0.5">
-      <h3 className="text-sm font-medium">{title}</h3>
-      {hint && <p className="text-xs text-pretty text-muted-foreground">{hint}</p>}
-    </div>
-  )
-}
-
-function ChecksSection({ checks, onShow }: { checks: Check[]; onShow: (target: string) => void }) {
-  const t = useT().review.checks
-  return (
-    <section>
-      <SectionTitle title={t.title} hint={t.hint} />
-      {checks.length === 0 ? (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <CheckIcon className="size-4 text-emerald-500" />
-          {t.none}
-        </p>
-      ) : (
-        <ul className="divide-y rounded-lg border">
-          {checks.map((c) => (
-            <li key={c.id} className="flex items-start gap-3 px-3 py-2.5">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
-              <span className="min-w-0 flex-1 text-sm text-pretty">{c.message}</span>
-              <Button variant="ghost" size="xs" className="-my-0.5 shrink-0" onClick={() => onShow(c.target)}>
-                {t.show}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   )
 }
 
@@ -149,8 +89,10 @@ function AiSection() {
   const cancel = useCancelReview()
   const engines = useAiEngines()
   const engine = activeEngine(engines.data)
-  const data = review.data
-  const items = data?.suggestions ?? []
+  const data = review.data?.review ?? null
+  // Suggestions of the last finished review stay while a newer one runs or after it fails.
+  const shown = shownReview(review.data)
+  const items = shown?.suggestions ?? []
   const open = items.filter((s) => s.state === "open")
   const applied = items.filter((s) => s.state === "applied").length
   const dismissed = items.filter((s) => s.state === "dismissed").length
@@ -176,38 +118,41 @@ function AiSection() {
     </p>
   )
 
+  const status =
+    data?.status === "running" ? (
+      <div className="space-y-3 rounded-lg border bg-card p-4 shadow-xs">
+        <div className="flex items-center gap-3 text-sm">
+          <LoaderCircleIcon className="size-4 shrink-0 animate-spin text-muted-foreground" />
+          <span className="text-shimmer min-w-0 flex-1">{t.running(engine?.provider.name ?? data.provider)}</span>
+          <Elapsed since={data.created_at} />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">{t.runningHint}</p>
+          <Button variant="ghost" size="xs" className="-mr-2 shrink-0" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
+            {t.cancel}
+          </Button>
+        </div>
+      </div>
+    ) : data?.status === "failed" ? (
+      <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+        <p className="text-sm font-medium">{t.failed}</p>
+        {data.error && <p className="text-xs text-pretty text-muted-foreground">{data.error}</p>}
+        {startButton(all.common.retry, "outline")}
+        {blockedNote}
+      </div>
+    ) : !data ? (
+      <div className="space-y-3 rounded-lg border border-dashed p-4">
+        <p className="text-sm text-pretty text-muted-foreground">{t.intro}</p>
+        {engine && <p className="text-xs text-muted-foreground">{t.engine(engine.provider.name, engine.model)}</p>}
+        {startButton(t.start)}
+        {blockedNote}
+      </div>
+    ) : null
+
   return (
-    <section>
-      <SectionTitle title={t.title} />
-      {data?.status === "running" ? (
-        <div className="space-y-3 rounded-lg border bg-card p-4 shadow-xs">
-          <div className="flex items-center gap-3 text-sm">
-            <LoaderCircleIcon className="size-4 shrink-0 animate-spin text-muted-foreground" />
-            <span className="text-shimmer min-w-0 flex-1">{t.running(engine?.provider.name ?? data.provider)}</span>
-            <Elapsed since={data.created_at} />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">{t.runningHint}</p>
-            <Button variant="ghost" size="xs" className="-mr-2 shrink-0" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
-              {t.cancel}
-            </Button>
-          </div>
-        </div>
-      ) : !data ? (
-        <div className="space-y-3 rounded-lg border border-dashed p-4">
-          <p className="text-sm text-pretty text-muted-foreground">{t.intro}</p>
-          {engine && <p className="text-xs text-muted-foreground">{t.engine(engine.provider.name, engine.model)}</p>}
-          {startButton(t.start)}
-          {blockedNote}
-        </div>
-      ) : data.status === "failed" ? (
-        <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-          <p className="text-sm font-medium">{t.failed}</p>
-          {data.error && <p className="text-xs text-pretty text-muted-foreground">{data.error}</p>}
-          {startButton(all.common.retry, "outline")}
-          {blockedNote}
-        </div>
-      ) : (
+    <section className="space-y-6">
+      {status}
+      {shown && (
         <div className="space-y-3">
           <AnimatePresence initial={false} mode="popLayout">
             {open.map((s) => (
@@ -229,12 +174,12 @@ function AiSection() {
             </p>
           )}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1 text-xs text-muted-foreground">
-            <span>{t.reviewedAt(new Date(data.created_at).toLocaleString(intlTag(), { dateStyle: "medium", timeStyle: "short" }))}</span>
+            <span>{t.reviewedAt(new Date(shown.created_at).toLocaleString(intlTag(), { dateStyle: "medium", timeStyle: "short" }))}</span>
             {(applied > 0 || dismissed > 0) && <span className="tabular-nums">{t.tally(applied, dismissed)}</span>}
-            <span className="ml-auto">{startButton(t.again, "outline")}</span>
+            {!status && <span className="ml-auto">{startButton(t.again, "outline")}</span>}
           </div>
-          {data.dropped > 0 && <p className="text-xs text-pretty text-muted-foreground">{t.dropped(data.dropped)}</p>}
-          {blockedNote}
+          {shown.dropped > 0 && <p className="text-xs text-pretty text-muted-foreground">{t.dropped(shown.dropped)}</p>}
+          {!status && blockedNote}
         </div>
       )}
     </section>

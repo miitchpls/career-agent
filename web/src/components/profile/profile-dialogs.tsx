@@ -31,6 +31,7 @@ import {
   EMPLOYMENT,
   LOCATION_TYPES,
   PROFICIENCY,
+  endsBefore,
   uid,
   type Certification,
   type Education,
@@ -218,7 +219,7 @@ export function ExperienceDialog({ open, onOpenChange, entry, profile, onSave, o
       onOpenChange={onOpenChange}
       wide
       title={entry ? t.editExperience : t.addExperience}
-      canSave={!!d.role.trim() && !!d.company.trim() && !!d.start}
+      canSave={!!d.role.trim() && !!d.company.trim() && !!d.start && !(!d.current && endsBefore(d.start, d.end))}
       onDelete={entry ? () => onDelete(entry) : undefined}
       onSave={() =>
         onSave({
@@ -290,9 +291,15 @@ export function ExperienceDialog({ open, onOpenChange, entry, profile, onSave, o
           <Switch checked={d.current} onCheckedChange={(c) => setD({ ...d, current: c })} />
           {t.currentRole}
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 items-start gap-3">
           <MonthYearField label={t.startDate} required value={d.start} onChange={(start) => setD({ ...d, start })} />
-          <MonthYearField label={t.endDate} value={d.current ? null : d.end} disabled={d.current} onChange={(end) => setD({ ...d, end })} />
+          <MonthYearField
+            label={t.endDate}
+            value={d.current ? null : d.end}
+            disabled={d.current}
+            onChange={(end) => setD({ ...d, end })}
+            error={!d.current && endsBefore(d.start, d.end) ? t.endBeforeStart : null}
+          />
         </div>
       </FormGroup>
 
@@ -342,7 +349,7 @@ export function EducationDialog({ open, onOpenChange, entry, profile, onSave, on
       onOpenChange={onOpenChange}
       wide
       title={entry ? t.editEducation : t.addEducation}
-      canSave={!!d.school.trim()}
+      canSave={!!d.school.trim() && !endsBefore(d.start, d.end)}
       onDelete={entry ? () => onDelete(entry) : undefined}
       onSave={() => onSave({ ...d, id: d.id || uid(), review: null })}
     >
@@ -358,9 +365,14 @@ export function EducationDialog({ open, onOpenChange, entry, profile, onSave, on
             <Input value={d.field} onChange={text("field")} placeholder={t.fieldPlaceholder} />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 items-start gap-3">
           <MonthYearField label={t.startDate} value={d.start} onChange={(start) => setD({ ...d, start })} />
-          <MonthYearField label={t.endDateExpected} value={d.end} onChange={(end) => setD({ ...d, end })} />
+          <MonthYearField
+            label={t.endDateExpected}
+            value={d.end}
+            onChange={(end) => setD({ ...d, end })}
+            error={endsBefore(d.start, d.end) ? t.endBeforeStart : null}
+          />
         </div>
         <Field label={t.grade} className="w-1/2 pr-1.5">
           <Input value={d.grade} onChange={text("grade")} placeholder={t.gradePlaceholder} />
@@ -494,7 +506,7 @@ export function CertificationDialog({ open, onOpenChange, entry, profile, onSave
       onOpenChange={onOpenChange}
       wide
       title={entry ? t.editCertification : t.addCertification}
-      canSave={!!d.name.trim() && !!d.issuer.trim()}
+      canSave={!!d.name.trim() && !!d.issuer.trim() && !endsBefore(d.issued, d.expires)}
       onDelete={entry ? () => onDelete(entry) : undefined}
       onSave={() => onSave({ ...d, id: d.id || uid(), review: null })}
     >
@@ -505,9 +517,14 @@ export function CertificationDialog({ open, onOpenChange, entry, profile, onSave
         <Field label={t.issuer} required>
           <Input value={d.issuer} onChange={text("issuer")} placeholder="Amazon Web Services" />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 items-start gap-3">
           <MonthYearField label={t.issued} value={d.issued} onChange={(issued) => setD({ ...d, issued })} />
-          <MonthYearField label={t.expires} value={d.expires} onChange={(expires) => setD({ ...d, expires })} />
+          <MonthYearField
+            label={t.expires}
+            value={d.expires}
+            onChange={(expires) => setD({ ...d, expires })}
+            error={endsBefore(d.issued, d.expires) ? t.expiresBeforeIssued : null}
+          />
         </div>
       </FormGroup>
 
@@ -559,7 +576,7 @@ export function ProjectDialog({ open, onOpenChange, entry, profile, onSave, onDe
       onOpenChange={onOpenChange}
       wide
       title={entry ? t.editProject : t.addProject}
-      canSave={!!d.name.trim()}
+      canSave={!!d.name.trim() && !(!d.current && endsBefore(d.start, d.end))}
       onDelete={entry ? () => onDelete(entry) : undefined}
       onSave={() => onSave({ ...d, id: d.id || uid(), review: null, end: d.current ? null : d.end })}
     >
@@ -610,9 +627,15 @@ export function ProjectDialog({ open, onOpenChange, entry, profile, onSave, onDe
           <Switch checked={d.current} onCheckedChange={(c) => setD({ ...d, current: c })} />
           {t.stillWorking}
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 items-start gap-3">
           <MonthYearField label={t.startDate} value={d.start} onChange={(start) => setD({ ...d, start })} />
-          <MonthYearField label={t.endDate} value={d.current ? null : d.end} disabled={d.current} onChange={(end) => setD({ ...d, end })} />
+          <MonthYearField
+            label={t.endDate}
+            value={d.current ? null : d.end}
+            disabled={d.current}
+            onChange={(end) => setD({ ...d, end })}
+            error={!d.current && endsBefore(d.start, d.end) ? t.endBeforeStart : null}
+          />
         </div>
       </FormGroup>
 

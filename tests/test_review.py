@@ -262,7 +262,7 @@ def test_review_runs_on_the_saved_profile_and_keeps_states(monkeypatch):
     )
     # Start over removes reviews with the profile.
     client.delete("/api/profile")
-    assert client.get("/api/profile/review").json() == {"review": None}
+    assert client.get("/api/profile/review").json() == {"review": None, "earlier": None}
 
 
 def test_review_failure_and_cancel(monkeypatch):
@@ -306,3 +306,55 @@ def test_no_review_while_an_import_draft_waits(monkeypatch):
     draft = db.create_draft(doc, "claude", None)
     db.update_draft(draft, status="ready", data="{}")
     assert client.post("/api/profile/review").status_code == 409
+
+
+def test_open_suggestions_outlive_a_failed_or_interrupted_review(monkeypatch):
+    client.put("/api/profile", json={"profile": PROFILE})
+    _engine(
+        monkeypatch,
+        answer={
+            "suggestions": [
+                s(),
+                s(
+                    index=1,
+                    before=PROFILE["experiences"][0]["bullets"][1],
+                    after="Costi del cluster -30% con Spark e Airflow.",
+                ),
+            ]
+        },
+    )
+    client.post("/api/profile/review")
+    first = _settled()
+    assert first["status"] == "ready"
+    assert (
+        client.get("/api/profile/review").json()["earlier"] is None
+    )  # nothing older to show
+
+    # A new review fails: the finished one comes back as "earlier", states and all.
+    _engine(monkeypatch, error="boom")
+    client.post("/api/profile/review")
+    _settled()
+    body = client.get("/api/profile/review").json()
+    assert body["review"]["status"] == "failed"
+    assert body["earlier"]["id"] == first["id"]
+    # Its suggestions can still be applied or dismissed.
+    sid = first["suggestions"][0]["id"]
+    body = client.patch(
+        f"/api/profile/review/suggestions/{sid}", json={"state": "applied"}
+    ).json()
+    assert body["earlier"]["suggestions"][0]["state"] == "applied"
+
+    # A restart during a review: the same.
+    db.create_review(db.latest_profile()["id"], "claude", None)
+    db.fail_running_reviews()
+    body = client.get("/api/profile/review").json()
+    assert (
+        body["review"]["error"] == "Revisione interrotta: il server è stato riavviato."
+    )
+    assert body["earlier"]["id"] == first["id"]
+
+    # A review that finishes replaces them.
+    _engine(monkeypatch, answer={"suggestions": []})
+    client.post("/api/profile/review")
+    assert _settled()["status"] == "ready"
+    assert client.get("/api/profile/review").json()["earlier"] is None
