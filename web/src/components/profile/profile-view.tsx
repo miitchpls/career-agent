@@ -10,6 +10,7 @@ import {
   LoaderCircleIcon,
   GraduationCapIcon,
   LanguagesIcon,
+  LayoutGridIcon,
   MailIcon,
   MapPinIcon,
   PencilIcon,
@@ -21,6 +22,7 @@ import {
 import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 
+import { StyleGallery } from "@/components/cv/style-gallery"
 import { MediaStrip, SkillLine } from "@/components/profile/fields"
 import {
   CertificationDialog,
@@ -71,7 +73,7 @@ import {
   type Profile,
   type Project,
 } from "@/lib/profile"
-import type { CvPrefs } from "@/lib/api"
+import { CV_TEMPLATES, type CvPrefs } from "@/lib/api"
 import { useGenerated } from "@/lib/cv-mock"
 import { useCvPrefs, useSaveCvPrefs } from "@/lib/cv-prefs"
 import { useT } from "@/lib/i18n"
@@ -905,7 +907,9 @@ function EngineCard({ generated }: { generated: number }) {
 
 /** How tailored CVs are written; saved as soon as a value changes. */
 function CvPrefsCard() {
-  const t = useT().profileView
+  const all = useT()
+  const t = all.profileView
+  const [gallery, setGallery] = useState(false)
   const prefs = useCvPrefs()
   const save = useSaveCvPrefs()
   const set = <K extends keyof CvPrefs>(key: K) => (value: string) => save.mutate({ ...prefs, [key]: value as CvPrefs[K] })
@@ -928,8 +932,13 @@ function CvPrefsCard() {
         label={t.style}
         value={prefs.style}
         onChange={set("style")}
-        options={[["modern", t.modern], ["classic", t.classic], ["compact", t.compact]]}
+        options={CV_TEMPLATES.map((id) => [id, all.cv.templates[id].name])}
       />
+      <Button variant="outline" size="sm" className="w-full" onClick={() => setGallery(true)}>
+        <LayoutGridIcon />
+        {t.compareStyles}
+      </Button>
+      <StyleGallery open={gallery} onOpenChange={setGallery} />
       <Pref
         label={t.photo}
         value={prefs.photo}

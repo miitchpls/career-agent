@@ -61,13 +61,6 @@ export function tailoredFor(title: string, company: string | null): Tailored {
   }
 }
 
-/** Section titles on the CV page: in the CV's language, not the UI's. */
-export const CV_HEADINGS = {
-  en: { profile: "Profile", experience: "Experience", skills: "Skills", education: "Education", languages: "Languages" },
-  it: { profile: "Profilo", experience: "Esperienza", skills: "Competenze", education: "Formazione", languages: "Lingue" },
-  de: { profile: "Profil", experience: "Berufserfahrung", skills: "Kenntnisse", education: "Ausbildung", languages: "Sprachen" },
-} as const
-
 // --- Which postings have a (mock) CV -----------------------------------------------------------
 
 let generated: ReadonlySet<string> = new Set()

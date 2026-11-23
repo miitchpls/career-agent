@@ -107,11 +107,35 @@ Set on the profile page and saved on the server. They decide how a tailored CV i
 |---|---|---|
 | Language | posting's language, Italian, English, German | Guessed from the posting's description; English when unclear |
 | Format | automatic, A4, Letter | Letter for jobs in the US and Canada, A4 elsewhere |
-| Style | modern, classic, compact | — |
+| Style | one of the career-ops templates below | — |
 | Photo | where usual, always, never | No photo for the US, Canada, the UK and Ireland, where CVs normally don't have one |
 
-The country comes from the end of the posting's location. The CV preview already follows these preferences
-(page size, style, photo, section titles); its content is still sample text.
+The country comes from the end of the posting's location.
+
+### CV templates
+
+The styles are [career-ops](https://github.com/career-ops-hq/career-ops)' HTML CV templates (MIT), copied unchanged
+into `src/career_agent/cv_templates/`. `cv_render.py` fills them as career-ops' `build-cv-html.mjs` does: same
+placeholders and section partials, contact row rebuilt from the fields present, empty sections removed. Profile
+text is HTML-escaped; links keep only `http(s)`/`mailto` schemes; the photo must be one of the app's uploads.
+
+| Template | Design | Suits |
+|---|---|---|
+| `standard` | career-ops' base: coloured headings, a rule under the header, sans-serif | Almost any application |
+| `modern` | Oversized name, accent-bar headings, tinted summary panel, accent-coloured role titles | Product and tech roles |
+| `compact` | Tight leading, small type, headings in a left column | Fitting a two-page history onto one page |
+| `executive` | Serif, centred header, ruled small-caps headings, no colour | Banks, funds, traditional companies |
+| `leadership` | Executive variant in sans-serif: name and companies in capitals | Senior and leadership applications |
+| `jake` | HTML port of the "Jake's Resume" LaTeX layout | Engineering roles expecting that format |
+| `ats` | One item per line, no grid, no photo | Boards that parse the CV |
+
+All are single-column, so applicant tracking systems read them in order. **Compare styles**, on the profile page,
+shows every template filled with your profile (or a sample) side by side; one opens large with its description
+and can be set as the default. Previews are rendered by the server and shown in sandboxed iframes, scaled from the
+real page size.
+
+Not filled from the profile, because it has no such data: core competencies, awards, interests, phone. Those
+sections are left out.
 
 ### AI engines
 
@@ -193,7 +217,9 @@ src/career_agent/
   db.py        SQLite schema and queries
   geo.py       City autocomplete and English names for the boards
   fx.py        ECB exchange rates
-  profile.py   Profile model, CV reading, import pipeline
+  profile.py   Profile model, CV reading, import pipeline, CV preferences
+  cv_render.py career-ops CV templates filled with the profile
+  cv_templates/ the templates, copied from career-ops
   ai.py        AI CLI detection, settings and isolated runs
   i18n.py      Server messages in it/en/de
 web/           React UI, see web/README.md
@@ -211,6 +237,7 @@ tests/
 | `GET /api/places?q=` | City suggestions |
 | `GET/PUT /api/ai` | AI engines found, saved choice |
 | `GET/PUT /api/cv/preferences` | CV language, format, style and photo |
+| `POST /api/cv/preview` | A CV template filled with a profile (or the sample), as HTML |
 | `GET/PUT/DELETE /api/profile` | Profile and open draft · save · delete everything |
 | `POST /api/profile/import` | Start an import (multipart: `file` or `text`) |
 | `PUT/DELETE /api/profile/draft` · `POST /api/profile/draft/confirm` · `POST /api/profile/draft/retry` | Review an import |
@@ -222,4 +249,5 @@ tests/
 - Importing a CV replaces the profile on confirm; it doesn't merge with what's there.
 - Only Claude Code and Codex are supported as AI engines.
 - Errors reported by the AI CLIs are shown in the CLI's language, usually English.
-- The tailored CV for a posting is a UI mock: its preview applies the CV preferences, but the text is a sample.
+- The tailored CV for a posting is a mock: the match analysis and the list of changes are sample text, and the
+  preview shows the profile as it is, in the chosen template. There is no PDF export yet.

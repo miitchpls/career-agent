@@ -170,7 +170,10 @@ class CvPrefs(_Model):
     format: Literal["auto", "a4", "letter"] = (
         "auto"  # auto: Letter in the US and Canada
     )
-    style: Literal["modern", "classic", "compact"] = "modern"
+    # career-ops' CV templates (cv_render.TEMPLATES)
+    style: Literal[
+        "standard", "modern", "compact", "executive", "leadership", "jake", "ats"
+    ] = "standard"
     photo: Literal["auto", "always", "never"] = (
         "auto"  # auto: where CVs usually have one
     )
@@ -182,8 +185,14 @@ _CV_PREFS_KEY = "cv_prefs"
 def cv_prefs() -> CvPrefs:
     raw = db.get_setting(_CV_PREFS_KEY)
     try:
-        return CvPrefs.model_validate_json(raw) if raw else CvPrefs()
-    except ValidationError:  # written by an older version: start from the defaults
+        data = json.loads(raw) if raw else {}
+        if not isinstance(data, dict):
+            return CvPrefs()
+        # Before career-ops' templates the styles were modern/classic/compact.
+        if data.get("style") == "classic":
+            data["style"] = "executive"
+        return CvPrefs.model_validate(data)
+    except ValueError:  # unreadable, or written by an older version: the defaults
         return CvPrefs()
 
 
@@ -584,17 +593,18 @@ def _decode(data: bytes) -> str:
 def _pdf_text(data: bytes) -> str:
     from pypdf import PdfReader
 
+    # pypdf raises many kinds of errors on broken files: all of them mean "can't read".
     try:
         reader = PdfReader(io.BytesIO(data))
-        if reader.is_encrypted and not reader.decrypt(""):
-            raise ValueError(t("import_unreadable"))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    except ValueError:
-        raise
-    except (
-        Exception
-    ) as e:  # pypdf raises many kinds on broken files: all mean "can't read"
+        locked = reader.is_encrypted and not reader.decrypt("")
+        text = (
+            None if locked else "\n".join(p.extract_text() or "" for p in reader.pages)
+        )
+    except Exception as e:
         raise ValueError(t("import_unreadable")) from e
+    if text is None:
+        raise ValueError(t("import_unreadable"))
+    return text
 
 
 def read_upload(filename: str | None, data: bytes) -> tuple[str, str, str]:

@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { api, type CvPrefs, type Job } from "@/lib/api"
 import { msgs } from "@/lib/i18n"
 
-export const DEFAULT_CV_PREFS: CvPrefs = { language: "job", format: "auto", style: "modern", photo: "auto" }
+export const DEFAULT_CV_PREFS: CvPrefs = { language: "job", format: "auto", style: "standard", photo: "auto" }
 
 export function useCvPrefs(): CvPrefs {
   const { data } = useQuery({ queryKey: ["cv-prefs"], queryFn: api.cv.prefs, staleTime: Infinity })
