@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react"
 import Markdown from "react-markdown"
-import { ArrowUpRightIcon, Building2Icon, FileUserIcon, MapPinIcon, SparklesIcon } from "lucide-react"
+import { ArrowUpRightIcon, Building2Icon, FilePenLineIcon, FileUserIcon, MapPinIcon } from "lucide-react"
 
 import { TailoredCv, type CvPhase } from "@/components/cv/tailored-cv"
 
@@ -100,7 +100,7 @@ function JobDetails({ job, onOpenProfile }: { job: Job; onOpenProfile: () => voi
           </Button>
           {phase === "idle" && (
             <Button variant="outline" size="sm" onClick={generate}>
-              <SparklesIcon />
+              <FilePenLineIcon />
               {t.generateCv}
             </Button>
           )}

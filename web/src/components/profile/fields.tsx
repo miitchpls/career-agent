@@ -23,12 +23,15 @@ export function Field({
   label,
   required,
   hint,
+  error,
   className,
   children,
 }: {
   label: string
   required?: boolean
   hint?: string
+  /** Shown instead of the hint, in the destructive colour. */
+  error?: string | null
   className?: string
   children: React.ReactNode
 }) {
@@ -39,7 +42,13 @@ export function Field({
         {required && <span className="text-muted-foreground">*</span>}
       </Label>
       {children}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {error ? (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      ) : (
+        hint && <p className="text-xs text-muted-foreground">{hint}</p>
+      )}
     </div>
   )
 }
@@ -134,23 +143,25 @@ export function MonthYearField({
   onChange,
   disabled,
   required,
+  error,
 }: {
   label: string
   value: MonthYear | null
   onChange: (v: MonthYear | null) => void
   disabled?: boolean
   required?: boolean
+  error?: string | null
 }) {
   const t = useT().profile
   return (
-    <Field label={label} required={required}>
+    <Field label={label} required={required} error={error}>
       <div className="grid grid-cols-[1fr_6.5rem] gap-2">
         <Select
           disabled={disabled || !value}
           value={value?.month == null ? NONE : String(value.month)}
           onValueChange={(m) => value && onChange({ ...value, month: m === NONE ? null : Number(m) })}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="w-full" aria-invalid={!!error || undefined}>
             <SelectValue placeholder={t.month} />
           </SelectTrigger>
           <SelectContent position="popper">
@@ -167,7 +178,7 @@ export function MonthYearField({
           value={value ? String(value.year) : NONE}
           onValueChange={(y) => onChange(y === NONE ? null : { month: value?.month ?? null, year: Number(y) })}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="w-full" aria-invalid={!!error || undefined}>
             <SelectValue placeholder={t.year} />
           </SelectTrigger>
           <SelectContent position="popper" className="max-h-64">

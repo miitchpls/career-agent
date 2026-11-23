@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, SearchXIcon, SparklesIcon } from "lucide-react"
+import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, InboxIcon, SearchXIcon, type LucideIcon } from "lucide-react"
 import { AnimatePresence, motion, type Variants } from "motion/react"
 
 import { CvMark } from "@/components/cv/tailored-cv"
@@ -29,7 +29,7 @@ function EmptyState({
   description,
   action,
 }: {
-  icon: typeof SparklesIcon
+  icon: LucideIcon
   title: string
   description: string
   action?: React.ReactNode
@@ -142,7 +142,7 @@ export function JobsTable({
   if (!jobs.length)
     return overall === 0 ? (
       <EmptyState
-        icon={SparklesIcon}
+        icon={InboxIcon}
         title={t.noneSaved}
         description={t.noneSavedHint}
         action={searchAction}
