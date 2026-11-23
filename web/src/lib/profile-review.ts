@@ -6,7 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { api, type ProfileReview, type ReviewSuggestion } from "@/lib/api"
+import { api, type ProfileReview, type ReviewState, type ReviewSuggestion } from "@/lib/api"
 import { msgs } from "@/lib/i18n"
 import { withSkills, type Profile } from "@/lib/profile"
 
@@ -126,20 +126,24 @@ export function diffWords(before: string, after: string): DiffPart[] {
 
 const KEY = ["profile-review"]
 
-/** The latest review; polled while it runs. */
+/** The review whose suggestions are on screen: the latest if it finished, else the last that did. */
+export const shownReview = (state: ReviewState | undefined): ProfileReview | null =>
+  state?.review?.status === "ready" ? state.review : (state?.earlier ?? null)
+
+/** The latest review (and the last finished one); polled while one runs. */
 export function useReview() {
   return useQuery({
     queryKey: KEY,
-    queryFn: async () => (await api.profile.review()).review,
-    refetchInterval: (q) => (q.state.data?.status === "running" ? 1500 : false),
+    queryFn: api.profile.review,
+    refetchInterval: (q) => (q.state.data?.review?.status === "running" ? 1500 : false),
   })
 }
 
-function useReviewMutation<A>(fn: (arg: A) => Promise<{ review: ProfileReview | null }>) {
+function useReviewMutation<A>(fn: (arg: A) => Promise<ReviewState>) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: fn,
-    onSuccess: ({ review }) => client.setQueryData(KEY, review),
+    onSuccess: (state) => client.setQueryData(KEY, state),
     onError: (e) => toast.error(e.message),
   })
 }
@@ -153,18 +157,16 @@ export function useSetSuggestion() {
   return useMutation({
     mutationFn: ({ id, state }: { id: string; state: ReviewSuggestion["state"] }) => api.profile.setSuggestion(id, state),
     onMutate: ({ id, state }) => {
-      const before = client.getQueryData<ProfileReview | null>(KEY)
-      if (before)
-        client.setQueryData(KEY, {
-          ...before,
-          suggestions: before.suggestions.map((s) => (s.id === id ? { ...s, state } : s)),
-        })
+      const before = client.getQueryData<ReviewState>(KEY)
+      const mark = (r: ProfileReview | null) =>
+        r && { ...r, suggestions: r.suggestions.map((s) => (s.id === id ? { ...s, state } : s)) }
+      if (before) client.setQueryData(KEY, { review: mark(before.review), earlier: mark(before.earlier) })
       return { before }
     },
     onError: (e, _v, ctx) => {
       client.setQueryData(KEY, ctx?.before)
       toast.error(msgs().review.saveFailed, { description: e.message })
     },
-    onSuccess: ({ review }) => client.setQueryData(KEY, review),
+    onSuccess: (state) => client.setQueryData(KEY, state),
   })
 }

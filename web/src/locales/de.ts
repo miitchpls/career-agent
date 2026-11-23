@@ -333,6 +333,8 @@ export const de: Messages = {
     currentRole: "Ich bin derzeit in dieser Position tätig",
     startDate: "Startdatum",
     endDate: "Enddatum",
+    endBeforeStart: "Das Enddatum liegt vor dem Startdatum.",
+    expiresBeforeIssued: "Das Ablaufdatum liegt vor dem Ausstellungsdatum.",
     whatYouDid: "Was du gemacht hast",
     results: "Ergebnisse",
     resultsHint: "Eins pro Zeile. Zahlen zählen: „p95 von 820 auf 490 ms“ wirkt mehr als „Performance verbessert“.",
@@ -594,27 +596,11 @@ export const de: Messages = {
 
   review: {
     card: "Prüfung",
-    counts: (checks, open) =>
-      [checks && `${checks} zu beheben`, open && (open === 1 ? "1 Vorschlag" : `${open} Vorschläge`)]
-        .filter(Boolean)
-        .join(" · ") || "Keine Probleme gefunden",
+    counts: (open) => (open === 1 ? "1 Vorschlag offen" : `${open} Vorschläge offen`),
     start: "Mit KI prüfen",
     open: "Prüfung öffnen",
     title: "Profilprüfung",
     description: "Die KI schlägt vor, du entscheidest: nichts ändert sich ohne deinen Klick.",
-    checks: {
-      title: "Zu beheben",
-      hint: "Ohne KI gefunden, aktualisiert sich, während du dein Profil bearbeitest.",
-      none: "Keine Probleme gefunden.",
-      show: "Zeigen",
-      endBeforeStart: (label) => `${label}: das Ende liegt vor dem Beginn.`,
-      future: (label) => `${label}: beginnt in der Zukunft.`,
-      noBullets: (label) => `${label}: keine Punkte dazu, was du gemacht hast.`,
-      noNumbers: (label) => `${label}: kein Ergebnis mit einer Zahl.`,
-      longBullet: (label, n) => `${label}: Punkt ${n} ist lang, teile ihn auf.`,
-      duplicate: (label, other) => `${label}: ein Punkt wiederholt einen aus ${other}.`,
-      noDescription: (label) => `${label}: die Beschreibung fehlt.`,
-    },
     ai: {
       title: "Vorschläge",
       intro:

@@ -333,6 +333,8 @@ export const ko: Messages = {
     currentRole: "현재 이 직무로 근무 중",
     startDate: "시작일",
     endDate: "종료일",
+    endBeforeStart: "종료일이 시작일보다 앞섭니다.",
+    expiresBeforeIssued: "만료일이 발급일보다 앞섭니다.",
     whatYouDid: "주요 업무",
     results: "성과",
     resultsHint: "한 줄에 하나씩. 수치가 중요합니다: “성능 개선”보다 “p95를 820ms에서 490ms로 단축”이 낫습니다.",
@@ -591,25 +593,11 @@ export const ko: Messages = {
 
   review: {
     card: "검토",
-    counts: (checks, open) =>
-      [checks && `수정할 항목 ${checks}개`, open && `제안 ${open}개`].filter(Boolean).join(" · ") || "문제가 없습니다",
+    counts: (open) => `확인할 제안 ${open}개`,
     start: "AI로 검토",
     open: "검토 열기",
     title: "프로필 검토",
     description: "AI가 제안하고 결정은 직접 합니다: 클릭하기 전에는 아무것도 바뀌지 않습니다.",
-    checks: {
-      title: "수정할 항목",
-      hint: "AI 없이 찾았으며, 프로필을 수정하면 바로 갱신됩니다.",
-      none: "문제가 없습니다.",
-      show: "보기",
-      endBeforeStart: (label) => `${label}: 종료일이 시작일보다 앞섭니다.`,
-      future: (label) => `${label}: 시작일이 미래입니다.`,
-      noBullets: (label) => `${label}: 한 일에 대한 항목이 없습니다.`,
-      noNumbers: (label) => `${label}: 수치로 된 성과가 없습니다.`,
-      longBullet: (label, n) => `${label}: ${n}번째 항목이 깁니다. 둘로 나누세요.`,
-      duplicate: (label, other) => `${label}: ${other}의 항목과 같은 항목이 있습니다.`,
-      noDescription: (label) => `${label}: 설명이 없습니다.`,
-    },
     ai: {
       title: "제안",
       intro:

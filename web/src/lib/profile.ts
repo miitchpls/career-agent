@@ -170,6 +170,16 @@ export function monthNames(width: "short" | "long"): string[] {
   return Array.from({ length: 12 }, (_, i) => f.format(new Date(2000, i, 1)))
 }
 
+/**
+ * Whether `end` comes before `start`. With a month missing on either side only the years are
+ * compared, so "2021" doesn't clash with "March 2021".
+ */
+export function endsBefore(start: MonthYear | null, end: MonthYear | null): boolean {
+  if (!start || !end) return false
+  if (start.month === null || end.month === null) return end.year < start.year
+  return end.year * 12 + end.month < start.year * 12 + start.month
+}
+
 /** "mar 2022", "Mar 2022", "2022년 3월": Intl puts month and year in the language's order. */
 export const fmtMonthYear = (d: MonthYear | null) =>
   d

@@ -305,10 +305,13 @@ def draft_delete():
 
 
 def _review_state() -> dict:
+    """The latest review, and while it runs or after it fails, the last finished one: its
+    open suggestions stay until a newer review finishes."""
     review = db.latest_review()
     if review and review["error"] == db.REVIEW_INTERRUPTED:
         review["error"] = t(db.REVIEW_INTERRUPTED)
-    return {"review": review}
+    earlier = db.last_ready_review() if review and review["status"] != "ready" else None
+    return {"review": review, "earlier": earlier}
 
 
 @app.get("/api/profile/review")
@@ -349,10 +352,10 @@ class SuggestionBody(BaseModel):
 def suggestion_set(suggestion_id: str, body: SuggestionBody):
     """Record that a suggestion was applied (the UI saved the profile) or dismissed."""
     try:
-        review = reviewer.set_state(suggestion_id, body.state)
+        reviewer.set_state(suggestion_id, body.state)
     except LookupError as e:
         raise HTTPException(404, str(e)) from e
-    return {"review": review}
+    return _review_state()
 
 
 @app.get("/api/cv/preferences")

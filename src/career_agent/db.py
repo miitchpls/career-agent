@@ -611,9 +611,18 @@ def update_review(review_id: int, when_status: str | None = None, **fields) -> b
 
 def latest_review() -> dict | None:
     """The last review that wasn't cancelled: running, ready or failed."""
+    return _review_row("status != 'cancelled'")
+
+
+def last_ready_review() -> dict | None:
+    """The last review that finished: the one whose suggestions the user works through."""
+    return _review_row("status = 'ready'")
+
+
+def _review_row(condition: str) -> dict | None:
     with connect() as conn:
         row = conn.execute(
-            "SELECT * FROM profile_reviews WHERE status != 'cancelled' ORDER BY id DESC LIMIT 1"
+            f"SELECT * FROM profile_reviews WHERE {condition} ORDER BY id DESC LIMIT 1"
         ).fetchone()
     if not row:
         return None

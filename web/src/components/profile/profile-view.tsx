@@ -203,14 +203,12 @@ function ReviewBanner() {
 }
 
 function Section({
-  id,
   icon: Icon,
   title,
   count,
   action,
   children,
 }: {
-  id?: string
   icon: typeof BriefcaseIcon
   title: string
   count?: number
@@ -218,7 +216,7 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <Card id={id} className="scroll-mt-24 gap-0 py-0">
+    <Card className="gap-0 py-0">
       <div className="flex items-center gap-2 px-5 pt-4 pb-3">
         <Icon className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">{title}</h2>
@@ -377,7 +375,7 @@ function Identity({ profile: p, onChange }: { profile: Profile; onChange: Change
   const [edit, setEdit] = useState(false)
   const blank = !p.name
   return (
-    <Card id="profile-identity" className="relative scroll-mt-24 flex-row items-center gap-5 px-5 py-5">
+    <Card className="relative flex-row items-center gap-5 px-5 py-5">
       <Photo profile={p} onChange={onChange} />
       <div className="min-w-0 flex-1 space-y-2 pr-24">
         {blank ? (
@@ -440,7 +438,6 @@ function Summary({ profile: p, onChange }: { profile: Profile; onChange: Change 
   const [edit, setEdit] = useState(false)
   return (
     <Section
-      id="profile-summary"
       icon={SparklesIcon}
       title={t.summary}
       action={
@@ -534,7 +531,7 @@ function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Cha
             if (g.length === 1) {
               const e = g[0]
               return (
-                <li key={e.id} id={`entry-${e.id}`} className="group relative scroll-mt-24 rounded-lg">
+                <li key={e.id} className="group relative">
                   {next && <Rail from={markNode(!!e.review)} to={head(next)} gap={GAP.entry} />}
                   {role(e, null)}
                 </li>
@@ -565,7 +562,7 @@ function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Cha
                 </div>
                 <ol className="mt-3 space-y-4">
                   {g.map((e, ri) => (
-                    <li key={e.id} id={`entry-${e.id}`} className="group relative scroll-mt-24 rounded-lg">
+                    <li key={e.id} className="group relative">
                       {ri < g.length - 1 ? (
                         <Rail from={dotNode(!!e.review)} to={dotNode(!!g[ri + 1].review)} gap={GAP.role} />
                       ) : (
@@ -650,7 +647,7 @@ function EducationSection({ profile: p, onChange }: { profile: Profile; onChange
       ) : (
         <ul className="space-y-5">
           {p.education.map((d) => (
-            <li key={d.id} id={`entry-${d.id}`} className="group scroll-mt-24 rounded-lg">
+            <li key={d.id} className="group">
               <EntryRow
                 mark={
                   <Mark>
@@ -846,7 +843,7 @@ function ProjectsSection({ profile: p, onChange }: { profile: Profile; onChange:
       ) : (
         <ul className="space-y-5">
           {p.projects.map((x) => (
-            <li key={x.id} id={`entry-${x.id}`} className="group scroll-mt-24 rounded-lg">
+            <li key={x.id} className="group">
               <EntryRow
                 mark={
                   <Mark>
