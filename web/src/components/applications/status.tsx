@@ -7,7 +7,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { applicationsStore, STATUSES, statusOf, type Application, type AppStatus } from "@/lib/applications-mock"
+import { STATUSES, statusOf, useSetStatus, type Application, type AppStatus } from "@/lib/applications"
 import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
@@ -31,6 +31,7 @@ export function StatusDot({ status, className }: { status: AppStatus; className?
 export function StatusMenu({ app, align = "start" }: { app: Application; align?: "start" | "end" }) {
   const t = useT().applications
   const current = statusOf(app)
+  const set = useSetStatus()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -48,7 +49,7 @@ export function StatusMenu({ app, align = "start" }: { app: Application; align?:
       <DropdownMenuContent align={align} className="w-48" onClick={(e) => e.stopPropagation()}>
         <DropdownMenuLabel className="text-xs text-muted-foreground">{t.changeStatus}</DropdownMenuLabel>
         {STATUSES.map((s) => (
-          <DropdownMenuItem key={s} onSelect={() => applicationsStore.setStatus(app.id, s)}>
+          <DropdownMenuItem key={s} onSelect={() => set.mutate({ id: app.id, status: s })}>
             <StatusDot status={s} />
             {t.statuses[s]}
             {s === current && <CheckIcon className="ml-auto" />}

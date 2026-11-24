@@ -261,6 +261,12 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "de": "Bestätige oder verwirf zuerst den aus dem Lebenslauf importierten Entwurf.",
         "ko": "먼저 이력서에서 가져온 초안을 확인하거나 버리세요.",
     },
+    "application_not_found": {
+        "it": "Questa candidatura non esiste più.",
+        "en": "This application no longer exists.",
+        "de": "Diese Bewerbung gibt es nicht mehr.",
+        "ko": "이 지원 내역은 더 이상 없습니다.",
+    },
     "score_no_job": {
         "it": "Questa offerta non è tra quelle salvate.",
         "en": "This posting isn't among the saved ones.",

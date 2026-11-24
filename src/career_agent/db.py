@@ -11,7 +11,7 @@ from . import fx
 from .query import Query, Sql, salary_in, where
 
 DB_PATH = Path("data/jobs.db")
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -124,6 +124,29 @@ CREATE TABLE IF NOT EXISTS job_scores (
     updated_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS job_scores_url ON job_scores(url, id);
+CREATE TABLE IF NOT EXISTS applications (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    key              TEXT,              -- applications.posting_key; NULL without a link
+    url              TEXT NOT NULL,     -- the board's canonical address, a page, or ""
+    site             TEXT NOT NULL,     -- linkedin | indeed | other
+    title            TEXT NOT NULL,
+    company          TEXT NOT NULL,
+    location         TEXT NOT NULL,
+    posting          TEXT,              -- the posting's text as it was when added
+    posting_saved_at TEXT,
+    notes            TEXT NOT NULL,     -- the user's own
+    cv               TEXT,              -- the CV template sent, if known
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS applications_key ON applications(key) WHERE key IS NOT NULL;
+CREATE TABLE IF NOT EXISTS application_events (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    status         TEXT NOT NULL,       -- applications.Status
+    at             TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS application_events_app ON application_events(application_id, id);
 CREATE TABLE IF NOT EXISTS profile_files (
     id          TEXT PRIMARY KEY,   -- random, used in the URL
     filename    TEXT,

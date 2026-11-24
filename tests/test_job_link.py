@@ -395,3 +395,17 @@ def test_pasted_text_fills_a_saved_posting_the_board_left_empty():
     again = paste(description="Altro testo.")
     assert again.json()["known"] is True
     assert again.json()["job"]["description"] == "Lavoro ibrido a Zurigo."
+
+
+def test_a_saved_posting_is_found_by_link_without_asking_the_board(monkeypatch):
+    monkeypatch.setattr(
+        boards, "open_linkedin", lambda *_: pytest.fail("asked LinkedIn")
+    )
+    get = lambda url: client.get("/api/jobs/saved", params={"url": url}).json()["job"]
+    assert get(CANONICAL) is None
+    assert paste().status_code == 200
+    assert (
+        get(f"https://it.linkedin.com/jobs/view/backend-{JOB_ID}?trk=x")["url"]
+        == CANONICAL
+    )
+    assert get("https://example.com/jobs/1") is None

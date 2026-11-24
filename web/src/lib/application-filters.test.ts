@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest"
 
-import { applyFilters, inPeriod, matches, NO_FILTERS, scoreBand, sentAt } from "@/lib/application-filters"
-import type { Application, AppStatus } from "@/lib/applications-mock"
+import { applyFilters, inPeriod, matches, NO_FILTERS, sentAt } from "@/lib/application-filters"
+import type { Application, AppStatus } from "@/lib/applications"
 
 const DAY = 86_400_000
 const NOW = Date.UTC(2026, 10, 24)
-const app = (id: string, o: Partial<Omit<Application, "events">> & { events?: [AppStatus, number][] } = {}): Application => ({
-  id,
+let next = 1
+/** An application named `name` (kept in `notes`, which the filters don't read). */
+const app = (name: string, o: Partial<Omit<Application, "events">> & { events?: [AppStatus, number][] } = {}): Application => ({
+  id: next++,
   title: "Backend Engineer",
   company: "Acme",
   location: "Zürich",
@@ -14,6 +16,8 @@ const app = (id: string, o: Partial<Omit<Application, "events">> & { events?: [A
   url: "",
   score: null,
   cv: null,
+  posting: null,
+  notes: name,
   ...o,
   events: (o.events ?? [["applied", 1]]).map(([status, d]) => ({ status, at: new Date(NOW - d * DAY).toISOString() })),
 })
@@ -36,16 +40,14 @@ describe("application filters", () => {
     expect(matches(a, "  ")).toBe(true)
   })
 
-  it("filters by source and score band, and sorts", () => {
+  it("sorts by activity, date sent or score", () => {
     const list = [
       app("hi", { score: { value: 4.4, decision: "apply" }, events: [["applied", 9]] }),
       app("mid", { score: { value: 3.2, decision: "consider" }, site: "indeed", events: [["applied", 2]] }),
       app("none", { site: "other", events: [["applied", 5]] }),
     ]
-    expect(scoreBand(list[0])).toBe("high")
-    expect(applyFilters(list, { ...NO_FILTERS, sources: ["indeed", "other"] }).map((a) => a.id)).toEqual(["mid", "none"])
-    expect(applyFilters(list, { ...NO_FILTERS, scores: ["none"] }).map((a) => a.id)).toEqual(["none"])
-    expect(applyFilters(list, { ...NO_FILTERS, sort: "score" }).map((a) => a.id)).toEqual(["hi", "mid", "none"])
-    expect(applyFilters(list, NO_FILTERS).map((a) => a.id)).toEqual(["mid", "none", "hi"])
+    expect(applyFilters(list, { ...NO_FILTERS, sort: "sent" }).map((a) => a.notes)).toEqual(["mid", "none", "hi"])
+    expect(applyFilters(list, { ...NO_FILTERS, sort: "score" }).map((a) => a.notes)).toEqual(["hi", "mid", "none"])
+    expect(applyFilters(list, NO_FILTERS).map((a) => a.notes)).toEqual(["mid", "none", "hi"])
   })
 })

@@ -47,5 +47,5 @@ export function postingKey(raw: string): string {
   if (!u) return raw.trim()
   const b = boardPosting(u)
   if (b) return `${b.site}:${b.id}`
-  return `${u.hostname.toLowerCase().replace(/^www\./, "")}${u.pathname.replace(/\/$/, "")}`
+  return `${u.hostname.toLowerCase().replace(/^www\./, "")}${u.pathname.replace(/\/+$/, "")}`
 }

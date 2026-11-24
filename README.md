@@ -105,6 +105,23 @@ City suggestions come from the [Open-Meteo geocoding API](https://open-meteo.com
 data, no key), through the backend. Only the typed text is sent. Names are shown in the UI's language and sent to
 the boards in English. When the API is unreachable, a small offline catalogue is used.
 
+## Applications
+
+**Applications**, beside Jobs and Profile, tracks the postings you apply to. **Add** takes a LinkedIn or Indeed
+link (read as when opening a posting) or a posting's text from any site; a posting is tracked once, whatever the
+form of its link. Each application keeps:
+
+- its history of statuses (to send, sent, first contact, interview, offer, rejected, no reply, withdrawn), changed
+  in place from the list or its sheet;
+- a **copy of the posting's text**, taken when it's added (from the text pasted, or the saved posting): it
+  survives the posting being taken down and the saved postings being cleared;
+- your notes, saved as you type;
+- the posting's fit score and the tailored CV, on the same tabs as a posting's sheet.
+
+At the top, the key numbers and a Sankey of the flow (sent → first contact → interview, then every ending in one
+column) for a period; a click on a node or a band filters the list below, which also has status groups, a search
+(position, company, place) and an order.
+
 ## Profile
 
 Optional: searching works without it. The profile follows LinkedIn's sections (experience, education, skills,
@@ -306,6 +323,7 @@ src/career_agent/
   profile.py   Profile model, CV reading, import pipeline, CV preferences
   review.py    AI review of the profile: prompt, schema, checks against new facts
   score.py     Fit score of a posting: preferences, prompt, schema, checks, bands
+  applications.py  Applications: posting keys, history, notes, posting copies
   runs.py      One background AI run at a time (import, review, score), cancellable
   cv_render.py career-ops CV templates filled with the profile
   cv_templates/ the templates, copied from career-ops
@@ -335,6 +353,8 @@ tests/
 | `POST /api/profile/files` · `GET /api/profile/files/{id}` | Photos and attachments |
 | `GET/POST/DELETE /api/profile/review` · `PATCH /api/profile/review/suggestions/{id}` | Latest AI review · start · cancel · mark a suggestion applied or dismissed |
 | `GET /api/jobs/score?url=` · `POST /api/jobs/score` · `DELETE /api/jobs/score?url=` | A posting's fit score (and the last finished one) · start · cancel |
+| `GET/POST /api/applications` · `PATCH/DELETE /api/applications/{id}` | Applications · track a posting (`created: false` when already tracked) · status, notes or posting copy · remove |
+| `GET /api/jobs/saved?url=` | A saved posting by its link, without asking the board |
 | `GET/PUT /api/score/preferences` | What the fit score reads whatever the search: dealbreakers and a note |
 | `POST /api/jobs/match` | How a saved posting meets each condition of a search |
 
