@@ -5,12 +5,12 @@ import {
   AlertCircleIcon,
   ArrowUpRightIcon,
   Building2Icon,
-  CheckIcon,
   CircleHelpIcon,
   ClipboardPasteIcon,
   FilePenLineIcon,
   FileUserIcon,
   GaugeIcon,
+  LoaderCircleIcon,
   MapPinIcon,
   XIcon,
 } from "lucide-react"
@@ -31,7 +31,7 @@ import { api, type Job, type PastedPosting, type Query } from "@/lib/api"
 import type { LinkSite } from "@/lib/job-link"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
 import { useT } from "@/lib/i18n"
-import { formatScore, shownScore, useScore } from "@/lib/job-score"
+import { formatScore, shownScore, useCanScore, useScore, useStartScore } from "@/lib/job-score"
 import { describe } from "@/lib/search-match"
 import { cn } from "@/lib/utils"
 import { parseStoredJobTypes } from "@/lib/job-types"
@@ -41,7 +41,6 @@ import { hasProfile, useProfile } from "@/lib/profile"
 type Tab = "job" | "fit" | "cv"
 
 const MATCH_ICON = {
-  ok: { icon: CheckIcon, className: "text-emerald-600 dark:text-emerald-400" },
   unknown: { icon: CircleHelpIcon, className: "text-muted-foreground" },
   no: { icon: XIcon, className: "text-red-600 dark:text-red-400" },
 }
@@ -159,24 +158,54 @@ function JobDetails({
   const state = useProfile()
   const already = useGenerated().has(job.url)
   const [tab, setTab] = useState<Tab>("job")
-  const fit = shownScore(useScore(job.url).data)
+  const scoreState = useScore(job.url).data
+  const fit = shownScore(scoreState)
+  const scoring = scoreState?.score?.status === "running"
+  const startScore = useStartScore(job.url)
+  const canScore = useCanScore(job)
+  // Score first, then the CV if it's worth it: the header offers the next step, not both.
+  const scoreFirst = !fit
+  const score = () => {
+    setTab("fit")
+    // What's missing (profile, engine, text) the tab says.
+    if (canScore && !scoring && !startScore.isPending) startScore.mutate()
+  }
   const [phase, setPhase] = useState<CvPhase>(already ? "done" : "idle")
   const generate = () => {
     setTab("cv")
     if (hasProfile(state)) setPhase("generating")
   }
   const done = useCallback(() => setPhase("done"), [])
-  // Gone to the board's page: on coming back, ask whether the user applied.
+  // Gone to the board's page: on coming back, ask whether the user applied. Only once the page
+  // was really left (another tab or window) and is back: a posting opened in a background tab
+  // leaves nothing to come back from, and a later unrelated return shouldn't ask.
   const [away, setAway] = useState(false)
   const [nudge, setNudge] = useState(false)
   useEffect(() => {
     if (!away) return
+    let left = document.visibilityState === "hidden" || !document.hasFocus()
+    const leave = () => {
+      left = true
+    }
     const back = () => {
+      if (!left) return
       setAway(false)
       setNudge(true)
     }
-    window.addEventListener("focus", back, { once: true })
-    return () => window.removeEventListener("focus", back)
+    const visibility = () => (document.visibilityState === "hidden" ? leave() : back())
+    // Still here a moment after the click: the posting opened behind, nothing to ask.
+    const stay = window.setTimeout(() => {
+      if (!left) setAway(false)
+    }, 1500)
+    window.addEventListener("blur", leave)
+    window.addEventListener("focus", back)
+    document.addEventListener("visibilitychange", visibility)
+    return () => {
+      window.clearTimeout(stay)
+      window.removeEventListener("blur", leave)
+      window.removeEventListener("focus", back)
+      document.removeEventListener("visibilitychange", visibility)
+    }
   }, [away])
 
   return (
@@ -212,11 +241,18 @@ function JobDetails({
               <ArrowUpRightIcon />
             </a>
           </Button>
-          {phase === "idle" && (
-            <Button variant="outline" size="sm" onClick={generate}>
-              <FilePenLineIcon />
-              {t.generateCv}
+          {scoreFirst ? (
+            <Button variant="outline" size="sm" onClick={score}>
+              {scoring || startScore.isPending ? <LoaderCircleIcon className="animate-spin" /> : <GaugeIcon />}
+              {t.scoreFit}
             </Button>
+          ) : (
+            phase === "idle" && (
+              <Button variant="outline" size="sm" onClick={generate}>
+                <FilePenLineIcon />
+                {t.generateCv}
+              </Button>
+            )
           )}
           <ApplyControl job={job} onOpenApplication={onOpenApplication} />
         </div>

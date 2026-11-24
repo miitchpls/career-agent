@@ -35,7 +35,7 @@ import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { api, type Job } from "@/lib/api"
-import { useDeleteApplication, useUpdateApplication, type Application } from "@/lib/applications"
+import { cvName, useDeleteApplication, useUpdateApplication, type Application } from "@/lib/applications"
 import { DEFAULT_CURRENCY } from "@/lib/currencies"
 import { useGenerated } from "@/lib/cv-mock"
 import { intlTag, useT } from "@/lib/i18n"
@@ -220,7 +220,7 @@ function Progress({ app }: { app: Application }) {
         <p className="flex items-center gap-2 text-sm">
           <FileUserIcon className="size-4 text-muted-foreground" />
           <span className="text-muted-foreground">{t.cv}</span>
-          <span className="ml-auto">{app.cv}</span>
+          <span className="ml-auto">{cvName(app.cv)}</span>
         </p>
       )}
       <ol className="relative space-y-5 border-l pl-5">

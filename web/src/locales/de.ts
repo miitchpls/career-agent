@@ -206,6 +206,7 @@ export const de: Messages = {
     noCompany: "Unternehmen nicht angegeben",
     openPosting: "Anzeige öffnen",
     generateCv: "Lebenslauf erstellen",
+    scoreFit: "Passung bewerten",
     tabPosting: "Anzeige",
     tabFit: "Passung",
     scoreColumn: "Wert",
@@ -825,13 +826,12 @@ export const de: Messages = {
 
   match: {
     title: "Deine Suche",
-    hint: "Wie die Stelle die Filter der aktiven Suche erfüllt. Ein Fragezeichen: die Anzeige sagt es nicht.",
+    hint: "Wo die Stelle von den Filtern der aktiven Suche abweicht oder zu wenig sagt, um es zu wissen. Was passt, wird nicht gezeigt.",
     placeUnknown: "Ort nicht prüfbar",
     placeNo: "Außerhalb der gesuchten Orte",
     modeUnknown: "Arbeitsmodell nicht angegeben",
     modeNo: (mode, wanted) => `${mode}, du suchst ${wanted}`,
     salaryUnknown: (min) => `Gehalt nicht angegeben, du suchst ab ${min}`,
-    salaryOk: (amount) => `${amount}`,
     salaryNo: (amount, min) => `${amount}, du suchst ab ${min}`,
     typeUnknown: "Anstellungsart nicht angegeben",
     typeNo: (type, wanted) => `${type}, du suchst ${wanted}`,

@@ -206,6 +206,7 @@ export const ko: Messages = {
     noCompany: "회사 미명시",
     openPosting: "채용공고 열기",
     generateCv: "이력서 생성",
+    scoreFit: "적합도 평가",
     tabPosting: "채용공고",
     tabFit: "적합도",
     scoreColumn: "점수",
@@ -821,13 +822,12 @@ export const ko: Messages = {
 
   match: {
     title: "내 검색",
-    hint: "현재 검색 필터와 공고가 얼마나 맞는지 보여 줍니다. 물음표는 공고에 정보가 없다는 뜻입니다.",
+    hint: "공고가 현재 검색 필터와 다르거나 판단할 정보가 없는 항목입니다. 일치하는 항목은 표시하지 않습니다.",
     placeUnknown: "지역 확인 불가",
     placeNo: "검색한 지역이 아님",
     modeUnknown: "근무 형태 미기재",
     modeNo: (mode, wanted) => `${mode}, 검색 조건: ${wanted}`,
     salaryUnknown: (min) => `연봉 미기재, 검색 조건: ${min} 이상`,
-    salaryOk: (amount) => `${amount}`,
     salaryNo: (amount, min) => `${amount}, 검색 조건: ${min} 이상`,
     typeUnknown: "고용 형태 미기재",
     typeNo: (type, wanted) => `${type}, 검색 조건: ${wanted}`,
