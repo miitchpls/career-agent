@@ -4,7 +4,7 @@
  * named once. An application still waiting has no band out of the step it's at: that part
  * of the step's bar simply doesn't continue.
  */
-import { statusOf, visited, wasSent, type Application } from "@/lib/applications-mock"
+import { statusOf, visited, wasSent, type Application } from "@/lib/applications"
 import { msgs } from "@/lib/i18n"
 
 /** The steps drawn as columns; an application past the last one got an offer. */

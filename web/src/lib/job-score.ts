@@ -34,7 +34,7 @@ export function useScore(url: string) {
       const before = client.getQueryData<ScoreState>(key(url))
       const now = await api.score.get(url)
       if (before?.score?.status === "running" && now.score?.status !== "running")
-        void client.invalidateQueries({ queryKey: ["jobs"] })
+        for (const key of ["jobs", "applications"]) void client.invalidateQueries({ queryKey: [key] })
       return now
     },
     refetchInterval: (q) => (q.state.data?.score?.status === "running" ? 1500 : false),

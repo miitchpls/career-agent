@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react"
 
-import { wasSent, type Application } from "@/lib/applications-mock"
+import { wasSent, type Application } from "@/lib/applications"
 import { useT } from "@/lib/i18n"
 import {
   flows,

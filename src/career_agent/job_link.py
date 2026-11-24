@@ -116,6 +116,12 @@ def _host(url: str) -> str:
     return (urlparse(url).hostname or "").lower()
 
 
+def saved_job(raw: str, currency: str) -> dict | None:
+    """The saved posting behind a LinkedIn or Indeed link, if any. Never asks the board."""
+    link = parse(raw)
+    return db.find_job(link.site, link.key, currency) if link else None
+
+
 def paste_job(
     raw: str,
     title: str,

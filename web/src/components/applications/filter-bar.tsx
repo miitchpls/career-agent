@@ -1,32 +1,18 @@
-import { ArrowUpDownIcon, ChevronDownIcon, SearchIcon, XIcon } from "lucide-react"
+import { ArrowUpDownIcon, SearchIcon, XIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  filtersActive,
-  NO_FILTERS,
-  PERIODS,
-  SCORE_BANDS,
-  SORTS,
-  SOURCES,
-  type ListFilters,
-  type Period,
-  type SortKey,
-} from "@/lib/application-filters"
+import { PERIODS, SORTS, type Period, type SortKey } from "@/lib/application-filters"
 import { useT } from "@/lib/i18n"
-import { cn } from "@/lib/utils"
 
 const periodKey = (p: Period) => (p === null ? "all" : String(p)) as "7" | "30" | "90" | "365" | "all"
 
@@ -50,116 +36,77 @@ export function PeriodSelect({ value, onChange }: { value: Period; onChange: (p:
   )
 }
 
-/** Search, board, score and order, in one row above the list. */
-export function FilterBar({ value, onChange }: { value: ListFilters; onChange: (f: ListFilters) => void }) {
+/** The list's search: position, company or place. */
+export function SearchBox({ value, onChange }: { value: string; onChange: (q: string) => void }) {
   const t = useT().applications.filters
-  const set = <K extends keyof ListFilters>(k: K, v: ListFilters[K]) => onChange({ ...value, [k]: v })
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <InputGroup className="h-8 w-full sm:w-72">
-        <InputGroupAddon>
-          <SearchIcon />
+    <InputGroup className="h-8 w-full sm:w-64">
+      <InputGroupAddon>
+        <SearchIcon />
+      </InputGroupAddon>
+      <InputGroupInput
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && onChange("")}
+        placeholder={t.search}
+        aria-label={t.search}
+      />
+      {value && (
+        <InputGroupAddon align="inline-end">
+          <InputGroupButton size="icon-xs" aria-label={t.clear} onClick={() => onChange("")}>
+            <XIcon />
+          </InputGroupButton>
         </InputGroupAddon>
-        <InputGroupInput
-          value={value.q}
-          onChange={(e) => set("q", e.target.value)}
-          onKeyDown={(e) => e.key === "Escape" && set("q", "")}
-          placeholder={t.search}
-          aria-label={t.search}
-          className="text-sm"
-        />
-        {value.q && (
-          <InputGroupAddon align="inline-end">
-            <InputGroupButton size="icon-xs" aria-label={t.clear} onClick={() => set("q", "")}>
-              <XIcon />
-            </InputGroupButton>
-          </InputGroupAddon>
-        )}
-      </InputGroup>
-      <Multi
-        label={t.source}
-        options={SOURCES.map((s) => [s, t.sources[s]])}
-        value={value.sources}
-        onChange={(v) => set("sources", v as ListFilters["sources"])}
-      />
-      <Multi
-        label={t.score}
-        options={SCORE_BANDS.map((s) => [s, t.scores[s]])}
-        value={value.scores}
-        onChange={(v) => set("scores", v as ListFilters["scores"])}
-      />
-      {filtersActive(value) && (
-        <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => onChange({ ...NO_FILTERS, sort: value.sort })}>
-          {t.clear}
-        </Button>
       )}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="ml-auto text-muted-foreground">
-            <ArrowUpDownIcon />
-            {t.sorts[value.sort]}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuLabel className="text-xs text-muted-foreground">{t.sort}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={value.sort} onValueChange={(v) => set("sort", v as SortKey)}>
-            {SORTS.map((s) => (
-              <DropdownMenuRadioItem key={s} value={s}>
-                {t.sorts[s]}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    </InputGroup>
   )
 }
 
-/** A filter with several choices: the button says what's on ("Board: Indeed", "Score · 2"). */
-function Multi({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string
-  options: [string, string][]
-  value: string[]
-  onChange: (v: string[]) => void
-}) {
+export function SortMenu({ value, onChange }: { value: SortKey; onChange: (s: SortKey) => void }) {
   const t = useT().applications.filters
-  const on = options.filter(([k]) => value.includes(k))
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className={cn("gap-1.5", on.length && "border-foreground/30 bg-muted")}>
-          {label}
-          {on.length === 1 && <span className="font-normal text-muted-foreground">{on[0][1]}</span>}
-          {on.length > 1 && <span className="rounded bg-background px-1 text-xs tabular-nums">{on.length}</span>}
-          <ChevronDownIcon className="text-muted-foreground" />
+        <Button variant="outline" size="sm" aria-label={`${t.sort}: ${t.sorts[value]}`}>
+          <ArrowUpDownIcon />
+          {t.sorts[value]}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48">
-        {options.map(([k, name]) => (
-          <DropdownMenuCheckboxItem
-            key={k}
-            checked={value.includes(k)}
-            // Stay open: several can be picked in a row.
-            onSelect={(e) => e.preventDefault()}
-            onCheckedChange={(c) => onChange(c ? [...value, k] : value.filter((x) => x !== k))}
-          >
-            {name}
-          </DropdownMenuCheckboxItem>
-        ))}
-        {value.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-xs text-muted-foreground" onSelect={() => onChange([])}>
-              {t.clear}
-            </DropdownMenuItem>
-          </>
-        )}
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuLabel className="text-xs text-muted-foreground">{t.sort}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={value} onValueChange={(v) => onChange(v as SortKey)}>
+          {SORTS.map((s) => (
+            <DropdownMenuRadioItem key={s} value={s}>
+              {t.sorts[s]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/** Something narrowing the list, said in full and removable: the chart's pick. */
+export function Chip({
+  children,
+  onRemove,
+  label,
+}: {
+  children: React.ReactNode
+  onRemove: () => void
+  label: string
+}) {
+  return (
+    <span className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-muted/60 pr-0.5 pl-2.5 text-sm">
+      {children}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={label}
+        className="grid size-7 place-items-center rounded text-muted-foreground hover:bg-background hover:text-foreground"
+      >
+        <XIcon className="size-3.5" />
+      </button>
+    </span>
   )
 }

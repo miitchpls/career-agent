@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { api, type Job } from "@/lib/api"
-import { applicationsStore, STATUSES, type AppStatus } from "@/lib/applications-mock"
+import { STATUSES, useAddApplication, type AppStatus, type NewApplication } from "@/lib/applications"
 import { DEFAULT_CURRENCY } from "@/lib/currencies"
 import { useT } from "@/lib/i18n"
 import { recognize } from "@/lib/job-link"
@@ -38,7 +38,7 @@ interface Draft {
 const EMPTY: Draft = { url: "", title: "", company: "", location: "", description: "" }
 
 /** "+ Add" in the page header: a posting found anywhere, from its link or its text. */
-export function AddApplication({ onAdded }: { onAdded: (id: string) => void }) {
+export function AddApplication({ onAdded }: { onAdded: (id: number) => void }) {
   const t = useT().applications.add
   const [open, setOpen] = useState(false)
   return (
@@ -64,7 +64,7 @@ export function AddApplication({ onAdded }: { onAdded: (id: string) => void }) {
   )
 }
 
-function AddForm({ onCancel, onAdded }: { onCancel: () => void; onAdded: (id: string) => void }) {
+function AddForm({ onCancel, onAdded }: { onCancel: () => void; onAdded: (id: number) => void }) {
   const all = useT()
   const t = all.applications.add
   const id = useId()
@@ -76,7 +76,7 @@ function AddForm({ onCancel, onAdded }: { onCancel: () => void; onAdded: (id: st
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [status, setStatus] = useState<AppStatus>("applied")
-  const [saving, setSaving] = useState(false)
+  const add = useAddApplication()
 
   const known = recognize(link)
   const wrong = !!link.trim() && !known
@@ -112,67 +112,39 @@ function AddForm({ onCancel, onAdded }: { onCancel: () => void; onAdded: (id: st
     setMode("text")
   }
 
-  /** The application already following this link: said, offered to open, nothing added. */
-  const duplicate = (url: string) => {
-    const dup = applicationsStore.byUrl(url)
-    if (dup) toast(t.duplicate, { description: dup.title, action: { label: t.open, onClick: () => onAdded(dup.id) } })
-    return !!dup
-  }
-
-  const finish = (a: Parameters<typeof applicationsStore.add>[0]) => {
-    if (duplicate(a.url)) return
-    const newId = applicationsStore.add(a, status)
-    toast(t.added, { description: a.title })
-    onAdded(newId)
-  }
-
-  const submit = async () => {
-    if (mode === "link") {
-      if (!job) return
-      finish({
-        title: job.title,
-        company: job.company ?? "",
-        location: job.location ?? "",
-        site: job.site,
-        url: job.url,
-        score: job.score,
-        cv: null,
-      })
-      return
-    }
-    const url = draft.url.trim()
-    // Before saving anything on the server.
-    if (duplicate(url)) return
-    const board = recognize(url)
-    let saved: Job | null = null
-    // A LinkedIn or Indeed posting with its text is saved like one opened from a link, so it
-    // can be scored; anything else stays in the list only.
-    if (board && draft.description.trim()) {
-      setSaving(true)
-      try {
-        const r = await api.pasteJob(url, draft, DEFAULT_CURRENCY)
-        saved = r.job
-        if (!r.known) {
-          void client.invalidateQueries({ queryKey: ["jobs"] })
-          void client.invalidateQueries({ queryKey: ["job-match", r.job.url] })
-        }
-      } catch (e) {
-        setError((e as Error).message)
-        setSaving(false)
-        return
+  /**
+   * The server keeps it: from a board link it takes the saved posting's text (and saves pasted
+   * text as a posting, to be scored); a posting already tracked comes back instead.
+   */
+  const save = async (a: Omit<NewApplication, "status">) => {
+    setError(null)
+    try {
+      const { application, created } = await add.mutateAsync({ ...a, status })
+      if (created) {
+        toast(t.added, { description: application.title })
+        onAdded(application.id)
+      } else {
+        toast(t.duplicate, {
+          description: application.title,
+          action: { label: t.open, onClick: () => onAdded(application.id) },
+        })
       }
-      setSaving(false)
+    } catch (e) {
+      setError((e as Error).message)
     }
-    finish({
-      title: saved?.title ?? draft.title.trim(),
-      company: saved?.company ?? draft.company.trim(),
-      location: saved?.location ?? draft.location.trim(),
-      site: saved?.site ?? board?.site ?? "other",
-      url: saved?.url ?? url,
-      score: saved?.score ?? null,
-      cv: null,
-    })
   }
+
+  const submit = () =>
+    mode === "link"
+      ? job &&
+        save({
+          url: job.url,
+          title: job.title,
+          company: job.company ?? "",
+          location: job.location ?? "",
+          description: job.description ?? "",
+        })
+      : save({ ...draft, url: draft.url.trim(), title: draft.title.trim() })
 
   const ready = mode === "link" ? !!job : !!draft.title.trim()
 
@@ -333,8 +305,8 @@ function AddForm({ onCancel, onAdded }: { onCancel: () => void; onAdded: (id: st
           <Button variant="outline" onClick={onCancel}>
             {all.common.cancel}
           </Button>
-          <Button disabled={!ready || saving} onClick={() => void submit()}>
-            {saving && <LoaderCircleIcon className="animate-spin" />}
+          <Button disabled={!ready || add.isPending} onClick={() => void submit()}>
+            {add.isPending && <LoaderCircleIcon className="animate-spin" />}
             {t.submit}
           </Button>
         </div>

@@ -1,3 +1,4 @@
+import type { Application, AppStatus, NewApplication } from "@/lib/applications"
 import { getLocale, msgs } from "@/lib/i18n"
 
 export type WorkMode = "onsite" | "hybrid" | "remote" | "unknown"
@@ -388,6 +389,16 @@ export const api = {
     post<JobsPage>("/api/jobs", { query, sort, direction, offset, limit, as_of: asOf }),
   /** One posting from a pasted link: from the database when saved, else read from the board. */
   openLink: (url: string, currency: string) => post<{ job: Job; known: boolean }>("/api/jobs/open", { url, currency }),
+  applications: {
+    list: () => request<Application[]>("/api/applications"),
+    add: (a: NewApplication) => post<{ application: Application; created: boolean }>("/api/applications", a),
+    update: (id: number, patch: { status?: AppStatus; notes?: string; posting?: string }) =>
+      request<Application>(`/api/applications/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    remove: (id: number) => del<{ ok: true }>(`/api/applications/${id}`),
+  },
+  /** A saved posting by its link, or null: never asks the board. */
+  savedJob: (url: string, currency: string) =>
+    request<{ job: Job | null }>(`/api/jobs/saved?url=${encodeURIComponent(url)}&currency=${currency}`),
   /** A posting the board wouldn't show, from the text the user copied: no request is made. */
   pasteJob: (url: string, posting: PastedPosting, currency: string) =>
     post<{ job: Job; known: boolean }>("/api/jobs/paste", { url, ...posting, currency }),

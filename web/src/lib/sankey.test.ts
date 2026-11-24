@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest"
 
-import { example, summary, type Application, type AppStatus } from "@/lib/applications-mock"
+import { summary, type Application, type AppStatus } from "@/lib/applications"
 import { flows, layout, passes, pickName } from "@/lib/sankey"
 import { setLocale } from "@/lib/i18n"
 
+let next = 1
 const app = (...statuses: AppStatus[]): Application => ({
-  id: statuses.join("-"),
+  id: next++,
   title: "t",
   company: "c",
   location: "l",
@@ -13,6 +14,8 @@ const app = (...statuses: AppStatus[]): Application => ({
   url: "u",
   score: null,
   cv: null,
+  posting: null,
+  notes: "",
   events: statuses.map((status, i) => ({ status, at: new Date(2026, 0, i + 1).toISOString() })),
 })
 
@@ -64,8 +67,21 @@ describe("applications flow", () => {
     expect(pickName({ source: "interview", target: "rejected" })).toBe("Colloquio → Rifiutata")
   })
 
+  // A spread like a real search: waiting, rejected at each step, ghosted, withdrawn, offers.
+  const sample = () => [
+    ...Array.from({ length: 3 }, () => app("applied")),
+    ...Array.from({ length: 3 }, () => app("applied", "rejected")),
+    ...Array.from({ length: 3 }, () => app("applied", "ghosted")),
+    ...Array.from({ length: 2 }, () => app("applied", "screening")),
+    ...Array.from({ length: 3 }, () => app("applied", "screening", "rejected")),
+    app("applied", "screening", "withdrawn"),
+    ...Array.from({ length: 2 }, () => app("applied", "screening", "interview", "rejected")),
+    ...Array.from({ length: 2 }, () => app("applied", "screening", "interview", "offer")),
+    app("saved"),
+  ]
+
   it("keeps a band as thick at both ends and never overlaps nodes in a column", () => {
-    const laid = layout(flows(example()), 800, 300)
+    const laid = layout(flows(sample()), 800, 300)
     for (const l of laid.links) expect(l.sy1 - l.sy0).toBeCloseTo(l.ty1 - l.ty0)
     const cols = new Map<number, typeof laid.nodes>()
     for (const n of laid.nodes) cols.set(n.col, [...(cols.get(n.col) ?? []), n])
@@ -77,9 +93,7 @@ describe("applications flow", () => {
   })
 
   it("counts what the header shows", () => {
-    const s = summary(example())
-    expect(s.sent).toBe(19)
-    expect(s.offers).toBe(2)
-    expect(s.answered).toBeGreaterThan(s.interviews)
+    const s = summary(sample())
+    expect(s).toEqual({ sent: 19, answered: 13, interviews: 4, offers: 2 }) // 10 past sending + 3 rejected at once
   })
 })

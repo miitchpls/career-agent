@@ -277,7 +277,7 @@ export default function App() {
 
       {view === "candidature" ? (
         <main className="flex-1">
-          <ApplicationsPage />
+          <ApplicationsPage onOpenProfile={openProfile} />
         </main>
       ) : view === "profilo" ? (
         <main className="flex-1">
