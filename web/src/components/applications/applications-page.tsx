@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { parseAsInteger, useQueryState } from "nuqs"
 
 import { AddApplication } from "@/components/applications/add-application"
 import { PeriodSelect } from "@/components/applications/filter-bar"
@@ -26,7 +27,8 @@ export function ApplicationsPage({ onOpenProfile }: { onOpenProfile: () => void 
   const s = summary(apps)
   const [group, setGroup] = useState<AppGroup>("all")
   const [pick, setPick] = useState<FlowPick | null>(null)
-  const [openId, setOpenId] = useState<number | null>(null)
+  // In the URL (?app=…): a posting's sheet can open its application here, and back works.
+  const [openId, setOpenId] = useQueryState("app", parseAsInteger.withOptions({ history: "push" }))
   const stats = [
     { label: t.stats.sent, value: s.sent, sub: null },
     { label: t.stats.answered, value: s.answered, sub: t.of(s.answered, s.sent) },

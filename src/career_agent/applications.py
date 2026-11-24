@@ -34,6 +34,9 @@ class NewApplication(BaseModel):
     location: str = Field("", max_length=300)
     description: str = Field("", max_length=50_000)
     status: Status = "applied"
+    cv: str | None = Field(
+        None, max_length=100
+    )  # the CV template sent, if one was generated
 
     @field_validator("title")
     @classmethod
@@ -100,7 +103,7 @@ def add(body: NewApplication, currency: str = "CHF") -> tuple[dict, bool]:
     now = _now()
     try:
         app_id = _insert(
-            key, url, site, title, company, location, text, body.status, now
+            key, url, site, title, company, location, text, body.status, body.cv, now
         )
     except sqlite3.IntegrityError:
         # Added at the same moment by another request: that one stands.
@@ -111,12 +114,12 @@ def add(body: NewApplication, currency: str = "CHF") -> tuple[dict, bool]:
     return get(app_id), True
 
 
-def _insert(key, url, site, title, company, location, text, status, now) -> int:
+def _insert(key, url, site, title, company, location, text, status, cv, now) -> int:
     with db.connect() as conn:
         cur = conn.execute(
             "INSERT INTO applications (key, url, site, title, company, location, posting, "
-            "posting_saved_at, notes, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)",
+            "posting_saved_at, notes, cv, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)",
             (
                 key,
                 url,
@@ -126,6 +129,7 @@ def _insert(key, url, site, title, company, location, text, status, now) -> int:
                 location,
                 text or None,
                 now if text else None,
+                cv,
                 now,
                 now,
             ),

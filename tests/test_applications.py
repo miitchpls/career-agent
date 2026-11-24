@@ -180,3 +180,8 @@ def test_two_adds_of_one_posting_at_once_give_one_application(monkeypatch):
     r = add(url="careers.acme.ch/jobs/42")
     assert r.status_code == 200
     assert r.json()["created"] is False and r.json()["application"]["id"] == first["id"]
+
+
+def test_the_cv_sent_is_kept():
+    assert add(cv="Modern").json()["application"]["cv"] == "Modern"
+    assert add().json()["application"]["cv"] is None
