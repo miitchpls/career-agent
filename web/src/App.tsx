@@ -8,6 +8,7 @@ import { MainNav } from "@/components/profile/main-nav"
 import { ProfilePage } from "@/components/profile/profile-page"
 import { JobSheet, type PendingJob } from "@/components/jobs/job-sheet"
 import { OpenLink } from "@/components/jobs/open-link"
+import { ApplicationsPage } from "@/components/applications/applications-page"
 import { JobsTable } from "@/components/jobs/jobs-table"
 import { RunProgress } from "@/components/run/run-progress"
 import { PreferencesDialog } from "@/components/settings/preferences-dialog"
@@ -184,13 +185,17 @@ export default function App() {
   }
   // Results show only after the user runs the query; a shared link with filters opens straight on them.
   const [submitted, setSubmitted] = useState(() => hasQuery(filters))
-  // The profile is a separate page in the URL (?view=profilo), so back and forward work.
-  const [view, setView] = useQueryState("view", parseAsStringLiteral(["profilo"] as const).withOptions({ history: "push" }))
-  const openProfile = () => {
+  // Profile and applications are separate pages in the URL (?view=…), so back and forward work.
+  const [view, setView] = useQueryState(
+    "view",
+    parseAsStringLiteral(["profilo", "candidature"] as const).withOptions({ history: "push" }),
+  )
+  const openSection = (v: "profilo" | "candidature") => {
     closeSheet()
-    setView("profilo")
+    setView(v)
     window.scrollTo({ top: 0 })
   }
+  const openProfile = () => openSection("profilo")
 
   // Emptying the query sends the bar back to the middle of the page
   // (state adjusted during render, React's pattern for "reset state when a value changes").
@@ -245,7 +250,7 @@ export default function App() {
             <span className="text-sm font-medium">career-agent</span>
           </button>
           <div className="ml-auto flex items-center gap-1">
-            <MainNav view={view ?? "offerte"} onChange={(v) => (v === "profilo" ? openProfile() : setView(null))} />
+            <MainNav view={view ?? "offerte"} onChange={(v) => (v === "offerte" ? setView(null) : openSection(v))} />
             <span className="mx-2 h-5 w-px bg-border" aria-hidden />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -270,7 +275,11 @@ export default function App() {
         </div>
       </header>
 
-      {view === "profilo" ? (
+      {view === "candidature" ? (
+        <main className="flex-1">
+          <ApplicationsPage />
+        </main>
+      ) : view === "profilo" ? (
         <main className="flex-1">
           <ProfilePage />
         </main>
