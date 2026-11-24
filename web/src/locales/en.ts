@@ -206,6 +206,7 @@ export const en: Messages = {
     noCompany: "Company not stated",
     openPosting: "Open posting",
     generateCv: "Generate CV",
+    scoreFit: "Score fit",
     tabPosting: "Posting",
     tabFit: "Fit",
     scoreColumn: "Score",
@@ -823,13 +824,12 @@ export const en: Messages = {
 
   match: {
     title: "Your search",
-    hint: "How the posting meets the active search's filters. A question mark: the posting doesn't say.",
+    hint: "Where the posting departs from the active search's filters, or doesn't say enough to tell. What matches isn't shown.",
     placeUnknown: "Place can't be checked",
     placeNo: "Outside the places searched",
     modeUnknown: "Work mode not stated",
     modeNo: (mode, wanted) => `${mode}, you search ${wanted}`,
     salaryUnknown: (min) => `Pay not stated, you search from ${min}`,
-    salaryOk: (amount) => `${amount}`,
     salaryNo: (amount, min) => `${amount}, you search from ${min}`,
     typeUnknown: "Employment type not stated",
     typeNo: (type, wanted) => `${type}, you search ${wanted}`,

@@ -195,13 +195,14 @@ export default function App() {
   const openApplication = (id: number) => {
     closeSheet()
     void setView("candidature")
-    void setAppParam(id)
+    // One step back from the application returns to the posting: the view's push is the entry.
+    void setAppParam(id, { history: "replace" })
     window.scrollTo({ top: 0 })
   }
   const openSection = (v: "profilo" | "candidature") => {
     closeSheet()
     setView(v)
-    void setAppParam(null)
+    void setAppParam(null, { history: "replace" })
     window.scrollTo({ top: 0 })
   }
   const openProfile = () => openSection("profilo")
@@ -232,6 +233,7 @@ export default function App() {
 
   const loadSaved = (s: SavedSearch) => {
     setView(null)
+    void setAppParam(null, { history: "replace" })
     setFilters({ ...fromQuery(s.query), sort: filters.sort, dir: filters.dir })
     setSubmitted(true)
   }
@@ -241,6 +243,7 @@ export default function App() {
   }
   const goHome = () => {
     setView(null)
+    void setAppParam(null, { history: "replace" })
     setFilters({ ...CLEARED, q: null })
     setSubmitted(false)
   }
@@ -262,7 +265,7 @@ export default function App() {
             <MainNav view={view ?? "offerte"} onChange={(v) => {
                 if (v !== "offerte") return openSection(v)
                 void setView(null)
-                void setAppParam(null)
+                void setAppParam(null, { history: "replace" })
               }} />
             <span className="mx-2 h-5 w-px bg-border" aria-hidden />
             <DropdownMenu>

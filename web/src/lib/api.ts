@@ -392,7 +392,7 @@ export const api = {
   applications: {
     list: () => request<Application[]>("/api/applications"),
     add: (a: NewApplication) => post<{ application: Application; created: boolean }>("/api/applications", a),
-    update: (id: number, patch: { status?: AppStatus; notes?: string; posting?: string }) =>
+    update: (id: number, patch: { status?: AppStatus; notes?: string; posting?: string; cv?: string }) =>
       request<Application>(`/api/applications/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
     remove: (id: number) => del<{ ok: true }>(`/api/applications/${id}`),
   },

@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { api, type JobScore, type ScoreDecision, type ScorePrefs, type ScoreState } from "@/lib/api"
+import { api, type Job, type JobScore, type ScoreDecision, type ScorePrefs, type ScoreState } from "@/lib/api"
 import { intlTag, msgs } from "@/lib/i18n"
+import { hasProfile, useProfile } from "@/lib/profile"
+import { activeEngine, useAiEngines } from "@/lib/use-ai"
 
 /** 4.2 → "4,2" in Italian, "4.2" in English: always one decimal, as career-ops writes it. */
 export const formatScore = (n: number) =>
@@ -75,4 +77,10 @@ export function useSaveScorePrefs() {
     },
     onError: (e) => toast.error(msgs().profile.saveFailed, { description: e.message }),
   })
+}
+
+/** Whether a score can start: a profile, an AI engine and the posting's text. */
+export function useCanScore(job: Job): boolean {
+  const engine = activeEngine(useAiEngines().data)
+  return hasProfile(useProfile()) && !!engine && !!job.description?.trim()
 }

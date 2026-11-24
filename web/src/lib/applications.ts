@@ -2,11 +2,12 @@
  * Applications, stored by the server (career_agent.applications): the postings followed or
  * applied to, each with its history of statuses, the user's notes and a copy of the posting.
  */
-import { useMemo } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { api, type ScoreDecision, type Site } from "@/lib/api"
+import { api, type CvTemplate, type ScoreDecision, type Site } from "@/lib/api"
+import { useGenerated } from "@/lib/cv-mock"
+import { useCvPrefs } from "@/lib/cv-prefs"
 import { msgs } from "@/lib/i18n"
 import { postingKey } from "@/lib/job-link"
 
@@ -102,14 +103,44 @@ export function useApplications() {
   return useQuery({ queryKey: KEY, queryFn: api.applications.list })
 }
 
-/** Applications by posting key: whether a posting is tracked, whatever form its link takes. */
-export function useApplicationIndex(): Map<string, Application> {
-  const { data } = useApplications()
-  return useMemo(() => new Map((data ?? []).filter((a) => a.url).map((a) => [postingKey(a.url), a])), [data])
+// One index per list, however many rows ask: built once, dropped with the list.
+const indexes = new WeakMap<Application[], Map<string, Application>>()
+const NO_APPS: Application[] = []
+
+function indexOf(list: Application[]): Map<string, Application> {
+  let index = indexes.get(list)
+  if (!index) {
+    index = new Map(list.filter((a) => a.url).map((a) => [postingKey(a.url), a]))
+    indexes.set(list, index)
+  }
+  return index
 }
 
-/** The application tracking this posting, if any. */
-export const useApplicationFor = (url: string) => useApplicationIndex().get(postingKey(url))
+/** Applications by posting key: whether a posting is tracked, whatever form its link takes. */
+export function useApplicationIndex(): Map<string, Application> {
+  return indexOf(useApplications().data ?? NO_APPS)
+}
+
+/**
+ * The application tracking this posting, if any; `known`: whether the list has arrived, so
+ * that "not tracked" is an answer and not just a list still loading (or failed).
+ */
+export function useApplicationFor(url: string): { application: Application | undefined; known: boolean } {
+  const { data } = useApplications()
+  return { application: data ? indexOf(data).get(postingKey(url)) : undefined, known: !!data }
+}
+
+const ADD_KEY = ["applications", "add"]
+
+/** Whether this posting is being added, from wherever it was asked (sheet button, nudge). */
+export function useAdding(url: string): boolean {
+  const key = postingKey(url)
+  const pending = useMutationState({
+    filters: { mutationKey: ADD_KEY, status: "pending" },
+    select: (m) => (m.state.variables as NewApplication | undefined)?.url ?? "",
+  })
+  return pending.some((u) => postingKey(u) === key)
+}
 
 /** Replace one application in the cached list. */
 function useReplace() {
@@ -121,6 +152,7 @@ function useReplace() {
 export function useAddApplication() {
   const client = useQueryClient()
   return useMutation({
+    mutationKey: ADD_KEY,
     mutationFn: api.applications.add,
     onSuccess: ({ application, created }) => {
       if (created) client.setQueryData<Application[]>(KEY, (list) => [application, ...(list ?? [])])
@@ -130,12 +162,16 @@ export function useAddApplication() {
   })
 }
 
-/** A new status, shown at once; put back if the server refuses. */
+/**
+ * A new status, shown at once; put back if the server refuses. `cv`: the CV sent with it, for
+ * one followed first and sent now (the server keeps the first one it's told).
+ */
 export function useSetStatus() {
   const client = useQueryClient()
   const replace = useReplace()
   return useMutation({
-    mutationFn: ({ id, status }: { id: number; status: AppStatus }) => api.applications.update(id, { status }),
+    mutationFn: ({ id, status, cv }: { id: number; status: AppStatus; cv?: string | null }) =>
+      api.applications.update(id, cv ? { status, cv } : { status }),
     onMutate: async ({ id, status }) => {
       // A refetch landing now would put the old status back.
       await client.cancelQueries({ queryKey: KEY })
@@ -172,4 +208,19 @@ export function useDeleteApplication() {
     onSuccess: (id) => client.setQueryData<Application[]>(KEY, (list) => list?.filter((a) => a.id !== id)),
     onError: (e) => toast.error(e.message),
   })
+}
+
+// --- The CV sent ---------------------------------------------------------------------------
+
+/** The CV template (its id) to record as sent with this posting: the one generated for it. */
+export function useCvToSend(url: string): CvTemplate | null {
+  const generated = useGenerated().has(url)
+  const style = useCvPrefs().style
+  return generated ? style : null
+}
+
+/** The CV sent, by name in the current language; one recorded by name (older ones) as it is. */
+export function cvName(cv: string): string {
+  const templates = msgs().cv.templates as Record<string, { name: string } | undefined>
+  return templates[cv]?.name ?? cv
 }

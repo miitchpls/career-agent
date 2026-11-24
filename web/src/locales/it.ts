@@ -208,6 +208,7 @@ export const it = {
     noCompany: "Azienda non indicata",
     openPosting: "Apri annuncio",
     generateCv: "Genera CV",
+    scoreFit: "Valuta compatibilità",
     tabPosting: "Annuncio",
     tabFit: "Compatibilità",
     scoreColumn: "Voto",
@@ -833,13 +834,12 @@ export const it = {
 
   match: {
     title: "La tua ricerca",
-    hint: "Come l'offerta rispetta i filtri della ricerca attiva. Il punto di domanda: l'annuncio non lo dice.",
+    hint: "Dove l'offerta si scosta dai filtri della ricerca attiva, o non dice abbastanza per saperlo. Ciò che combacia non è mostrato.",
     placeUnknown: "Luogo non verificabile",
     placeNo: "Fuori dai luoghi cercati",
     modeUnknown: "Modalità non indicata",
     modeNo: (mode: string, wanted: string) => `${mode}, cerchi ${wanted}`,
     salaryUnknown: (min: string) => `Stipendio non indicato, cerchi da ${min}`,
-    salaryOk: (amount: string) => `${amount}`,
     salaryNo: (amount: string, min: string) => `${amount}, cerchi da ${min}`,
     typeUnknown: "Tipo di impiego non indicato",
     typeNo: (type: string, wanted: string) => `${type}, cerchi ${wanted}`,

@@ -8,26 +8,30 @@ import type { Job } from "@/lib/api"
 import {
   statusOf,
   useAddApplication,
+  useAdding,
   useApplicationFor,
+  useCvToSend,
   useDeleteApplication,
   type AppStatus,
 } from "@/lib/applications"
-import { useCvPrefs } from "@/lib/cv-prefs"
-import { useGenerated } from "@/lib/cv-mock"
 import { msgs, useT } from "@/lib/i18n"
 
 /**
  * Track a posting from its sheet, in one click: the server takes the saved posting's text, so
- * there is nothing to fill in. Says so with a toast that can undo it or open it.
+ * there is nothing to fill in. Says so with a toast that can undo it or open it; one already
+ * tracked (added meanwhile elsewhere) is only pointed to: undoing would remove it.
  */
 export function useApply(job: Job, onOpenApplication: (id: number) => void) {
-  const application = useApplicationFor(job.url)
+  const { application, known } = useApplicationFor(job.url)
   const add = useAddApplication()
   const remove = useDeleteApplication()
-  const generated = useGenerated().has(job.url)
-  const prefs = useCvPrefs()
+  // Shared by every control for this posting, so the nudge and the button can't add it twice.
+  const pending = useAdding(job.url)
+  const cv = useCvToSend(job.url)
   const apply = (status: AppStatus) => {
-    const t = msgs().applications.apply
+    if (pending) return
+    const all = msgs().applications
+    const t = all.apply
     add.mutate(
       {
         url: job.url,
@@ -37,20 +41,26 @@ export function useApply(job: Job, onOpenApplication: (id: number) => void) {
         description: job.description ?? "",
         status,
         // The CV generated for this posting is the one sent.
-        cv: generated && status !== "saved" ? msgs().cv.templates[prefs.style].name : null,
+        cv: status !== "saved" ? cv : null,
       },
       {
-        onSuccess: ({ application: a }) =>
-          toast(status === "saved" ? t.savedForLater : t.added, {
-            description: a.title,
-            action: { label: t.open, onClick: () => onOpenApplication(a.id) },
-            cancel: { label: t.undo, onClick: () => remove.mutate(a.id) },
-          }),
+        onSuccess: ({ application: a, created }) =>
+          created
+            ? toast(status === "saved" ? t.savedForLater : t.added, {
+                description: a.title,
+                action: { label: t.open, onClick: () => onOpenApplication(a.id) },
+                cancel: { label: t.undo, onClick: () => remove.mutate(a.id) },
+              })
+            : toast(all.add.duplicate, {
+                description: a.title,
+                action: { label: t.open, onClick: () => onOpenApplication(a.id) },
+              }),
         onError: (e) => toast.error(e.message),
       },
     )
   }
-  return { application, apply, pending: add.isPending }
+  // Until the list arrives, "not tracked" isn't known: no offer to apply meanwhile.
+  return { application, known, apply, pending }
 }
 
 /**
@@ -59,7 +69,7 @@ export function useApply(job: Job, onOpenApplication: (id: number) => void) {
  */
 export function ApplyControl({ job, onOpenApplication }: { job: Job; onOpenApplication: (id: number) => void }) {
   const t = useT().applications.apply
-  const { application, apply, pending } = useApply(job, onOpenApplication)
+  const { application, known, apply, pending } = useApply(job, onOpenApplication)
 
   if (application)
     return (
@@ -73,7 +83,7 @@ export function ApplyControl({ job, onOpenApplication }: { job: Job; onOpenAppli
     )
   return (
     <div className="inline-flex">
-      <Button size="sm" className="rounded-r-none" disabled={pending} onClick={() => apply("applied")}>
+      <Button size="sm" className="rounded-r-none" disabled={pending || !known} onClick={() => apply("applied")}>
         {pending ? <LoaderCircleIcon className="animate-spin" /> : <CheckIcon />}
         {t.applied}
       </Button>
@@ -82,7 +92,7 @@ export function ApplyControl({ job, onOpenApplication }: { job: Job; onOpenAppli
           <Button
             size="icon-sm"
             className="rounded-l-none border-l border-background/20"
-            disabled={pending}
+            disabled={pending || !known}
             aria-label={t.more}
           >
             <ChevronDownIcon />
@@ -115,8 +125,8 @@ export function ApplyNudge({
   onOpenApplication: (id: number) => void
 }) {
   const t = useT().applications.apply
-  const { application, apply, pending } = useApply(job, onOpenApplication)
-  if (!shown || application) return null
+  const { application, known, apply, pending } = useApply(job, onOpenApplication)
+  if (!shown || !known || application) return null
   return (
     <div className="flex items-center gap-3 border-t bg-muted/50 px-6 py-2.5 text-sm">
       <span className="min-w-0 flex-1 text-pretty">{t.nudge}</span>
@@ -139,7 +149,7 @@ export function ApplyNudge({
 /** Beside a posting's title in the list: where its application stands, if it's tracked. */
 export function ApplicationMark({ url }: { url: string }) {
   const t = useT().applications
-  const application = useApplicationFor(url)
+  const { application } = useApplicationFor(url)
   if (!application) return null
   const status = statusOf(application)
   return (

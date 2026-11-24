@@ -7,7 +7,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { STATUSES, statusOf, useSetStatus, type Application, type AppStatus } from "@/lib/applications"
+import { STATUSES, statusOf, useCvToSend, useSetStatus, type Application, type AppStatus } from "@/lib/applications"
 import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
@@ -32,6 +32,8 @@ export function StatusMenu({ app, align = "start" }: { app: Application; align?:
   const t = useT().applications
   const current = statusOf(app)
   const set = useSetStatus()
+  // Followed, now sent: with the CV generated for it meanwhile, if any.
+  const cv = useCvToSend(app.url)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -49,7 +51,12 @@ export function StatusMenu({ app, align = "start" }: { app: Application; align?:
       <DropdownMenuContent align={align} className="w-48" onClick={(e) => e.stopPropagation()}>
         <DropdownMenuLabel className="text-xs text-muted-foreground">{t.changeStatus}</DropdownMenuLabel>
         {STATUSES.map((s) => (
-          <DropdownMenuItem key={s} onSelect={() => set.mutate({ id: app.id, status: s })}>
+          <DropdownMenuItem
+            key={s}
+            onSelect={() =>
+              set.mutate({ id: app.id, status: s, cv: current === "saved" && s !== "saved" && !app.cv ? cv : null })
+            }
+          >
             <StatusDot status={s} />
             {t.statuses[s]}
             {s === current && <CheckIcon className="ml-auto" />}

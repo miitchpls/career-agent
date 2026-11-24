@@ -183,5 +183,13 @@ def test_two_adds_of_one_posting_at_once_give_one_application(monkeypatch):
 
 
 def test_the_cv_sent_is_kept():
-    assert add(cv="Modern").json()["application"]["cv"] == "Modern"
-    assert add().json()["application"]["cv"] is None
+    assert add(cv="modern").json()["application"]["cv"] == "modern"
+    saved = add(status="saved").json()["application"]
+    assert saved["cv"] is None
+    # Sent later, with the CV generated meanwhile; a later one doesn't replace it.
+    url = f"/api/applications/{saved['id']}"
+    assert (
+        client.patch(url, json={"status": "applied", "cv": "standard"}).json()["cv"]
+        == "standard"
+    )
+    assert client.patch(url, json={"cv": "modern"}).json()["cv"] == "standard"

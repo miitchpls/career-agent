@@ -51,6 +51,7 @@ class ApplicationPatch(BaseModel):
     status: Status | None = None
     notes: str | None = Field(None, max_length=20_000)
     posting: str | None = Field(None, max_length=50_000)
+    cv: str | None = Field(None, max_length=100)  # the CV template sent, once it is
 
 
 def _now() -> str:
@@ -143,7 +144,8 @@ def _insert(key, url, site, title, company, location, text, status, cv, now) -> 
 
 
 def update(app_id: int, patch: ApplicationPatch) -> dict | None:
-    """A new status (dated now; the same one again changes nothing), notes, or a posting copy."""
+    """A new status (dated now; the same one again changes nothing), notes, a posting copy, or
+    the CV sent (kept once known: a later one doesn't replace it)."""
     app = get(app_id)
     if app is None:
         return None
@@ -157,6 +159,10 @@ def update(app_id: int, patch: ApplicationPatch) -> dict | None:
         if patch.notes is not None:
             conn.execute(
                 "UPDATE applications SET notes = ? WHERE id = ?", (patch.notes, app_id)
+            )
+        if patch.cv and not app["cv"]:
+            conn.execute(
+                "UPDATE applications SET cv = ? WHERE id = ?", (patch.cv, app_id)
             )
         if patch.posting is not None:
             text = patch.posting.strip()
