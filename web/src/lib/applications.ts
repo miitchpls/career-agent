@@ -2,11 +2,13 @@
  * Applications, stored by the server (career_agent.applications): the postings followed or
  * applied to, each with its history of statuses, the user's notes and a copy of the posting.
  */
+import { useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 import { api, type ScoreDecision, type Site } from "@/lib/api"
 import { msgs } from "@/lib/i18n"
+import { postingKey } from "@/lib/job-link"
 
 /** Where an application stands. `saved`: followed, not sent yet. */
 export type AppStatus = "saved" | "applied" | "screening" | "interview" | "offer" | "rejected" | "ghosted" | "withdrawn"
@@ -61,6 +63,8 @@ export interface NewApplication {
   location: string
   description: string
   status: AppStatus
+  /** The CV template sent, when one was generated for the posting. */
+  cv?: string | null
 }
 
 export const statusOf = (a: Application): AppStatus => a.events[a.events.length - 1].status
@@ -97,6 +101,15 @@ const KEY = ["applications"]
 export function useApplications() {
   return useQuery({ queryKey: KEY, queryFn: api.applications.list })
 }
+
+/** Applications by posting key: whether a posting is tracked, whatever form its link takes. */
+export function useApplicationIndex(): Map<string, Application> {
+  const { data } = useApplications()
+  return useMemo(() => new Map((data ?? []).filter((a) => a.url).map((a) => [postingKey(a.url), a])), [data])
+}
+
+/** The application tracking this posting, if any. */
+export const useApplicationFor = (url: string) => useApplicationIndex().get(postingKey(url))
 
 /** Replace one application in the cached list. */
 function useReplace() {

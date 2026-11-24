@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import Markdown from "react-markdown"
 import {
@@ -17,6 +17,7 @@ import {
 
 import { TailoredCv, type CvPhase } from "@/components/cv/tailored-cv"
 
+import { ApplyControl, ApplyNudge } from "@/components/jobs/apply-control"
 import { PastePosting } from "@/components/jobs/paste-posting"
 import { ScorePanel } from "@/components/jobs/score-panel"
 import { SiteMark, WorkModeBadge } from "@/components/jobs/work-mode-badge"
@@ -105,7 +106,10 @@ export function JobSheet({
   onClose,
   onPaste,
   onOpenProfile,
+  onOpenApplication,
 }: {
+  /** Opens a tracked posting's application, on the Applications page. */
+  onOpenApplication: (id: number) => void
   job: Job | null
   pending?: PendingJob | null
   /** The search the sheet was opened from, to check the posting against; null: none. */
@@ -122,7 +126,14 @@ export function JobSheet({
       <SheetContent className="flex flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl data-[side=right]:lg:max-w-3xl">
         {/* Keyed by posting: tab and CV state start over for each one. */}
         {job ? (
-          <JobDetails key={job.url} job={job} query={query} onOpenProfile={onOpenProfile} onPaste={onPaste} />
+          <JobDetails
+            key={job.url}
+            job={job}
+            query={query}
+            onOpenProfile={onOpenProfile}
+            onPaste={onPaste}
+            onOpenApplication={onOpenApplication}
+          />
         ) : (
           pending && <PendingDetails key={pending.url} pending={pending} onClose={onClose} onPaste={onPaste} />
         )}
@@ -136,7 +147,9 @@ function JobDetails({
   query,
   onOpenProfile,
   onPaste,
+  onOpenApplication,
 }: {
+  onOpenApplication: (id: number) => void
   job: Job
   query: Query | null
   onOpenProfile: () => void
@@ -153,6 +166,18 @@ function JobDetails({
     if (hasProfile(state)) setPhase("generating")
   }
   const done = useCallback(() => setPhase("done"), [])
+  // Gone to the board's page: on coming back, ask whether the user applied.
+  const [away, setAway] = useState(false)
+  const [nudge, setNudge] = useState(false)
+  useEffect(() => {
+    if (!away) return
+    const back = () => {
+      setAway(false)
+      setNudge(true)
+    }
+    window.addEventListener("focus", back, { once: true })
+    return () => window.removeEventListener("focus", back)
+  }, [away])
 
   return (
     <>
@@ -180,9 +205,9 @@ function JobDetails({
           )}
         </SheetDescription>
         {query && <SearchMatch url={job.url} query={query} />}
-        <div className="flex items-center gap-2 pt-1">
-          <Button asChild size="sm">
-            <a href={job.url} target="_blank" rel="noreferrer">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <Button asChild size="sm" variant="outline">
+            <a href={job.url} target="_blank" rel="noreferrer" onClick={() => setAway(true)}>
               {t.openPosting}
               <ArrowUpRightIcon />
             </a>
@@ -193,9 +218,12 @@ function JobDetails({
               {t.generateCv}
             </Button>
           )}
+          <ApplyControl job={job} onOpenApplication={onOpenApplication} />
         </div>
       </SheetHeader>
 
+      {/* Right under the actions it answers to. */}
+      <ApplyNudge job={job} shown={nudge} onDismiss={() => setNudge(false)} onOpenApplication={onOpenApplication} />
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-10 w-full justify-start gap-4 border-b px-6">
           <TabsTrigger value="job" className="flex-none px-0">

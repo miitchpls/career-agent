@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertCircleIcon, MoreHorizontalIcon, Settings2Icon } from "lucide-react"
-import { parseAsStringLiteral, useQueryState } from "nuqs"
+import { parseAsInteger, parseAsStringLiteral, useQueryState } from "nuqs"
 import { AnimatePresence, motion, type Transition } from "motion/react"
 
 import { Composer } from "@/components/composer/composer"
@@ -190,9 +190,18 @@ export default function App() {
     "view",
     parseAsStringLiteral(["profilo", "candidature"] as const).withOptions({ history: "push" }),
   )
+  // The application whose sheet is open on the Applications page (?app=…).
+  const [, setAppParam] = useQueryState("app", parseAsInteger.withOptions({ history: "push" }))
+  const openApplication = (id: number) => {
+    closeSheet()
+    void setView("candidature")
+    void setAppParam(id)
+    window.scrollTo({ top: 0 })
+  }
   const openSection = (v: "profilo" | "candidature") => {
     closeSheet()
     setView(v)
+    void setAppParam(null)
     window.scrollTo({ top: 0 })
   }
   const openProfile = () => openSection("profilo")
@@ -250,7 +259,11 @@ export default function App() {
             <span className="text-sm font-medium">career-agent</span>
           </button>
           <div className="ml-auto flex items-center gap-1">
-            <MainNav view={view ?? "offerte"} onChange={(v) => (v === "offerte" ? setView(null) : openSection(v))} />
+            <MainNav view={view ?? "offerte"} onChange={(v) => {
+                if (v !== "offerte") return openSection(v)
+                void setView(null)
+                void setAppParam(null)
+              }} />
             <span className="mx-2 h-5 w-px bg-border" aria-hidden />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -365,6 +378,7 @@ export default function App() {
         onClose={closeSheet}
         onPaste={pasteJob}
         onOpenProfile={openProfile}
+        onOpenApplication={openApplication}
       />
     </div>
   )
