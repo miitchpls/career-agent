@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import ai, cv_render, db, fx, geo, job_link, score
+from . import ai, applications, cv_render, db, fx, geo, job_link, score
 from .i18n import LOCALE, parse_accept_language, t
 from .profile import (
     MAX_UPLOAD_MB,
@@ -81,6 +81,12 @@ def jobs_open(body: OpenLinkRequest):
     return {"job": job, "known": known}
 
 
+@app.get("/api/jobs/saved")
+def jobs_saved(url: str, currency: str = "CHF"):
+    """A posting already saved, by its link: no request to the board (null when not saved)."""
+    return {"job": job_link.saved_job(url, currency)}
+
+
 class PasteJobRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2000)
     title: str = Field(min_length=1, max_length=300)
@@ -120,6 +126,40 @@ def jobs_match(body: MatchRequest):
         raise HTTPException(404, t("score_no_job"))
     _, rates = fx.rates()
     return {"checks": match(body.query, job, db.hit_places(body.url), rates)}
+
+
+# --- Applications -------------------------------------------------------------------------------
+
+
+@app.get("/api/applications")
+def applications_list():
+    """Every application, newest first, with its events and its posting's last score."""
+    return applications.all_()
+
+
+@app.post("/api/applications")
+def applications_add(body: applications.NewApplication):
+    """Track a posting; `created` is False when it was already tracked (that one comes back)."""
+    try:
+        app_, created = applications.add(body)
+    except job_link.LinkError as e:
+        raise HTTPException(e.status, str(e)) from e
+    return {"application": app_, "created": created}
+
+
+@app.patch("/api/applications/{app_id}")
+def applications_update(app_id: int, body: applications.ApplicationPatch):
+    app_ = applications.update(app_id, body)
+    if app_ is None:
+        raise HTTPException(404, t("application_not_found"))
+    return app_
+
+
+@app.delete("/api/applications/{app_id}")
+def applications_delete(app_id: int):
+    if not applications.delete(app_id):
+        raise HTTPException(404, t("application_not_found"))
+    return {"ok": True}
 
 
 # --- Fit score ---------------------------------------------------------------------------------

@@ -1,22 +1,23 @@
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import Markdown from "react-markdown"
 import {
   AlertCircleIcon,
   ArrowUpRightIcon,
   Building2Icon,
-  CheckIcon,
   CircleHelpIcon,
   ClipboardPasteIcon,
   FilePenLineIcon,
   FileUserIcon,
   GaugeIcon,
+  LoaderCircleIcon,
   MapPinIcon,
   XIcon,
 } from "lucide-react"
 
 import { TailoredCv, type CvPhase } from "@/components/cv/tailored-cv"
 
+import { ApplyControl, ApplyNudge } from "@/components/jobs/apply-control"
 import { PastePosting } from "@/components/jobs/paste-posting"
 import { ScorePanel } from "@/components/jobs/score-panel"
 import { SiteMark, WorkModeBadge } from "@/components/jobs/work-mode-badge"
@@ -30,7 +31,7 @@ import { api, type Job, type PastedPosting, type Query } from "@/lib/api"
 import type { LinkSite } from "@/lib/job-link"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
 import { useT } from "@/lib/i18n"
-import { formatScore, shownScore, useScore } from "@/lib/job-score"
+import { formatScore, shownScore, useCanScore, useScore, useStartScore } from "@/lib/job-score"
 import { describe } from "@/lib/search-match"
 import { cn } from "@/lib/utils"
 import { parseStoredJobTypes } from "@/lib/job-types"
@@ -40,7 +41,6 @@ import { hasProfile, useProfile } from "@/lib/profile"
 type Tab = "job" | "fit" | "cv"
 
 const MATCH_ICON = {
-  ok: { icon: CheckIcon, className: "text-emerald-600 dark:text-emerald-400" },
   unknown: { icon: CircleHelpIcon, className: "text-muted-foreground" },
   no: { icon: XIcon, className: "text-red-600 dark:text-red-400" },
 }
@@ -105,7 +105,10 @@ export function JobSheet({
   onClose,
   onPaste,
   onOpenProfile,
+  onOpenApplication,
 }: {
+  /** Opens a tracked posting's application, on the Applications page. */
+  onOpenApplication: (id: number) => void
   job: Job | null
   pending?: PendingJob | null
   /** The search the sheet was opened from, to check the posting against; null: none. */
@@ -122,7 +125,14 @@ export function JobSheet({
       <SheetContent className="flex flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl data-[side=right]:lg:max-w-3xl">
         {/* Keyed by posting: tab and CV state start over for each one. */}
         {job ? (
-          <JobDetails key={job.url} job={job} query={query} onOpenProfile={onOpenProfile} onPaste={onPaste} />
+          <JobDetails
+            key={job.url}
+            job={job}
+            query={query}
+            onOpenProfile={onOpenProfile}
+            onPaste={onPaste}
+            onOpenApplication={onOpenApplication}
+          />
         ) : (
           pending && <PendingDetails key={pending.url} pending={pending} onClose={onClose} onPaste={onPaste} />
         )}
@@ -136,7 +146,9 @@ function JobDetails({
   query,
   onOpenProfile,
   onPaste,
+  onOpenApplication,
 }: {
+  onOpenApplication: (id: number) => void
   job: Job
   query: Query | null
   onOpenProfile: () => void
@@ -146,13 +158,55 @@ function JobDetails({
   const state = useProfile()
   const already = useGenerated().has(job.url)
   const [tab, setTab] = useState<Tab>("job")
-  const fit = shownScore(useScore(job.url).data)
+  const scoreState = useScore(job.url).data
+  const fit = shownScore(scoreState)
+  const scoring = scoreState?.score?.status === "running"
+  const startScore = useStartScore(job.url)
+  const canScore = useCanScore(job)
+  // Score first, then the CV if it's worth it: the header offers the next step, not both.
+  const scoreFirst = !fit
+  const score = () => {
+    setTab("fit")
+    // What's missing (profile, engine, text) the tab says.
+    if (canScore && !scoring && !startScore.isPending) startScore.mutate()
+  }
   const [phase, setPhase] = useState<CvPhase>(already ? "done" : "idle")
   const generate = () => {
     setTab("cv")
     if (hasProfile(state)) setPhase("generating")
   }
   const done = useCallback(() => setPhase("done"), [])
+  // Gone to the board's page: on coming back, ask whether the user applied. Only once the page
+  // was really left (another tab or window) and is back: a posting opened in a background tab
+  // leaves nothing to come back from, and a later unrelated return shouldn't ask.
+  const [away, setAway] = useState(false)
+  const [nudge, setNudge] = useState(false)
+  useEffect(() => {
+    if (!away) return
+    let left = document.visibilityState === "hidden" || !document.hasFocus()
+    const leave = () => {
+      left = true
+    }
+    const back = () => {
+      if (!left) return
+      setAway(false)
+      setNudge(true)
+    }
+    const visibility = () => (document.visibilityState === "hidden" ? leave() : back())
+    // Still here a moment after the click: the posting opened behind, nothing to ask.
+    const stay = window.setTimeout(() => {
+      if (!left) setAway(false)
+    }, 1500)
+    window.addEventListener("blur", leave)
+    window.addEventListener("focus", back)
+    document.addEventListener("visibilitychange", visibility)
+    return () => {
+      window.clearTimeout(stay)
+      window.removeEventListener("blur", leave)
+      window.removeEventListener("focus", back)
+      document.removeEventListener("visibilitychange", visibility)
+    }
+  }, [away])
 
   return (
     <>
@@ -180,22 +234,32 @@ function JobDetails({
           )}
         </SheetDescription>
         {query && <SearchMatch url={job.url} query={query} />}
-        <div className="flex items-center gap-2 pt-1">
-          <Button asChild size="sm">
-            <a href={job.url} target="_blank" rel="noreferrer">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <Button asChild size="sm" variant="outline">
+            <a href={job.url} target="_blank" rel="noreferrer" onClick={() => setAway(true)}>
               {t.openPosting}
               <ArrowUpRightIcon />
             </a>
           </Button>
-          {phase === "idle" && (
-            <Button variant="outline" size="sm" onClick={generate}>
-              <FilePenLineIcon />
-              {t.generateCv}
+          {scoreFirst ? (
+            <Button variant="outline" size="sm" onClick={score}>
+              {scoring || startScore.isPending ? <LoaderCircleIcon className="animate-spin" /> : <GaugeIcon />}
+              {t.scoreFit}
             </Button>
+          ) : (
+            phase === "idle" && (
+              <Button variant="outline" size="sm" onClick={generate}>
+                <FilePenLineIcon />
+                {t.generateCv}
+              </Button>
+            )
           )}
+          <ApplyControl job={job} onOpenApplication={onOpenApplication} />
         </div>
       </SheetHeader>
 
+      {/* Right under the actions it answers to. */}
+      <ApplyNudge job={job} shown={nudge} onDismiss={() => setNudge(false)} onOpenApplication={onOpenApplication} />
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-10 w-full justify-start gap-4 border-b px-6">
           <TabsTrigger value="job" className="flex-none px-0">

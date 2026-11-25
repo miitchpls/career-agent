@@ -2,41 +2,45 @@ import type { JobType, MatchCheck, WorkMode } from "@/lib/api"
 import { compact } from "@/lib/format"
 import { msgs } from "@/lib/i18n"
 
-/** One condition of the search, as the posting's sheet shows it. */
+/** One condition of the search the posting departs from, as its sheet shows it. */
 export interface MatchLine {
-  state: MatchCheck["state"]
+  state: Exclude<MatchCheck["state"], "ok">
   text: string
 }
 
 const list = (items: string[]) => items.join(msgs().match.or)
 const money = (n: number, cur: string) => `${cur} ${compact(n)}`
 
-/** The sheet's words for one check; null for one met that adds nothing (a recent posting). */
+/**
+ * The sheet's words for one check: what departs from the search, or can't be told. A met one
+ * is null: the posting was found by the search, so saying it matches ("✓ Lugano") is noise.
+ */
 export function describe(c: MatchCheck): MatchLine | null {
+  const state = c.state
+  if (state === "ok") return null
   const m = msgs()
   const t = m.match
-  const line = (text: string) => ({ state: c.state, text })
+  const line = (text: string): MatchLine => ({ state, text })
+  const unknown = state === "unknown"
   switch (c.kind) {
     case "place":
-      return line(c.state === "ok" ? String(c.value ?? m.common.anywhere) : c.state === "unknown" ? t.placeUnknown : t.placeNo)
+      return line(unknown ? t.placeUnknown : t.placeNo)
     case "mode": {
+      if (unknown) return line(t.modeUnknown)
       const wanted = list(((c.expected as string[]) ?? []).map((x) => m.modes[x as WorkMode]))
-      const mode = m.modes[(c.value as WorkMode) ?? "unknown"]
-      return line(c.state === "ok" ? mode : c.state === "unknown" ? t.modeUnknown : t.modeNo(mode, wanted))
+      return line(t.modeNo(m.modes[(c.value as WorkMode) ?? "unknown"], wanted))
     }
     case "salary": {
       const cur = c.currency ?? ""
       const min = money(Number(c.expected), cur)
-      if (c.state === "unknown") return line(t.salaryUnknown(min))
-      const amount = money(Number(c.value), cur)
-      return line(c.state === "ok" ? t.salaryOk(amount) : t.salaryNo(amount, min))
+      return line(unknown ? t.salaryUnknown(min) : t.salaryNo(money(Number(c.value), cur), min))
     }
     case "job_type": {
+      if (unknown) return line(t.typeUnknown)
       const types = (v: unknown) => list(((v as string[]) ?? []).map((x) => m.jobTypes[x as JobType] ?? x))
-      if (c.state === "unknown") return line(t.typeUnknown)
-      return line(c.state === "ok" ? types(c.value) : t.typeNo(types(c.value), types(c.expected)))
+      return line(t.typeNo(types(c.value), types(c.expected)))
     }
     case "posted":
-      return c.state === "ok" ? null : line(c.state === "unknown" ? t.postedUnknown : t.postedNo)
+      return line(unknown ? t.postedUnknown : t.postedNo)
   }
 }
