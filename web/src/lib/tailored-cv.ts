@@ -85,14 +85,14 @@ export const NO_OVERRIDES: CvOverrides = {
   format: null,
   style: null,
   photo: null,
-  photoStyle: null,
   footer: null,
   locked: null,
   notes: "",
 }
 
 /** The settings that replace a default for this posting (the footer and the notes work apart). */
-const REPLACING = ["language", "format", "style", "photo", "photoStyle", "locked"] as const
+// The photo's shape isn't one: it's the photo's own, the same on every CV.
+const REPLACING = ["language", "format", "style", "photo", "locked"] as const
 
 /** The defaults with the posting's own settings applied, as the server applies them: the
  * footer on (wherever the posting is) or off; the notes stay apart. */

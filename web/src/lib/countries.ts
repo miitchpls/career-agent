@@ -64,11 +64,19 @@ const ALIASES: Record<string, string> = {
   svizzera: "ch",
 }
 
+// "Boston, MA": with no country after it, a US state or Canadian province code, as Indeed writes
+// them, not the country with that code (Morocco). Only provinces whose codes no country has.
+const US_STATES = new Set(
+  "al ak az ar ca co ct de dc fl ga hi id il in ia ks ky la me md ma mi mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt va wa wv wi wy".split(" "),
+)
+const CA_PROVINCES = new Set("ab bc mb nb ns nt nu on qc yt".split(" "))
+
 let byName: Map<string, string> | null = null
 
 function nameIndex(): Map<string, string> {
   if (byName) return byName
-  const index = new Map<string, string>(Object.entries(ALIASES))
+  // Folded like what they're compared with (NFKD splits Hangul into jamo, for one).
+  const index = new Map<string, string>(Object.entries(ALIASES).map(([k, v]) => [fold(k), v]))
   for (const lang of NAME_LANGUAGES) {
     const names = new Intl.DisplayNames([lang], { type: "region", fallback: "none" })
     for (const code of countryCodes()) {
@@ -82,8 +90,8 @@ function nameIndex(): Map<string, string> {
 
 /**
  * The country at the end of a board's location ("Zurich, ZH, Switzerland", "Milano, Italia",
- * "Austin, TX, US"), by name in any of the boards' languages or by its code; null when the
- * location doesn't say ("Remote").
+ * "Austin, TX, US", "Boston, MA"), by name in any of the boards' languages or by its code; null
+ * when the location doesn't say ("Remote").
  */
 export function countryOf(location: string | null): string | null {
   const parts = (location ?? "").split(",").map(fold).filter(Boolean)
@@ -92,6 +100,8 @@ export function countryOf(location: string | null): string | null {
   const named = nameIndex().get(last)
   if (named) return named
   // A two-letter code, but only after a comma: "Remote" alone isn't Romania's "ro".
-  if (parts.length > 1 && /^[a-z]{2}$/.test(last) && countryCodes().includes(last)) return last
-  return null
+  if (parts.length < 2 || !/^[a-z]{2}$/.test(last)) return null
+  if (parts.length === 2 && US_STATES.has(last)) return "us"
+  if (parts.length === 2 && CA_PROVINCES.has(last)) return "ca"
+  return countryCodes().includes(last) ? last : null
 }

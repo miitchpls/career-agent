@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { DEFAULT_CV_PREFS, jobCountry, postingLanguage, resolveCv } from "@/lib/cv-prefs"
+import { DEFAULT_CV_PREFS, jobCountry, postingLanguage, resolveCv, STOPWORDS } from "@/lib/cv-prefs"
 
 describe("cv preferences", () => {
   it("reads the country at the end of a board location", () => {
@@ -17,6 +17,9 @@ describe("cv preferences", () => {
   it("guesses the posting's language from its common words", () => {
     expect(postingLanguage("Wir suchen eine Person mit Erfahrung und Freude an der Arbeit für das Team")).toBe("de")
     expect(postingLanguage("Cerchiamo una persona con esperienza per il team della piattaforma")).toBe("it")
+    expect(postingLanguage("Siamo alla ricerca di un ingegnere di software in grado di gestire progetti di sviluppo")).toBe("it")
+    expect(postingLanguage("Buscamos desarrollador de software de backend en Madrid")).toBe("es")
+    expect(postingLanguage("Wij zoeken developers en testers en designers voor ons team")).toBe("nl")
     expect(postingLanguage("You will join the team and work with our engineers")).toBe("en")
     expect(postingLanguage("백엔드 개발자를 모집합니다. Python 및 FastAPI 경험이 있는 분을 찾습니다.")).toBe("ko")
     // An English posting with a Korean company name stays English.
@@ -81,5 +84,10 @@ describe("posting language, in every language a CV can be written in", () => {
     expect(postingLanguage("Wij zoeken een collega met ervaring voor het team van de afdeling")).toBe("nl")
     expect(postingLanguage("Ekibimiz için deneyimli bir yazılım geliştirici arıyoruz ve bu iş")).toBe("tr")
     expect(postingLanguage("Kami mencari kandidat dengan pengalaman untuk tim yang dinamis dan")).toBe("id")
+  })
+
+  it("keeps each language's common words to itself", () => {
+    const all = Object.values(STOPWORDS).flat()
+    expect(new Set(all).size).toBe(all.length)
   })
 })
