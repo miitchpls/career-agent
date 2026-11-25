@@ -55,6 +55,8 @@ export interface Experience {
   start: MonthYear | null
   end: MonthYear | null
   current: boolean
+  /** One line about the employer (sector, size, stage), printed under the role. */
+  context?: string
   bullets: string[]
   skills: string[]
   media: Media[]
@@ -80,6 +82,8 @@ export interface Education {
 export interface Skill {
   name: string
   inferred?: boolean
+  /** The CV line it goes on ("Frontend", "Cloud"); empty for the general one. */
+  category?: string
 }
 
 /** Either a CEFR level, for certified languages, or LinkedIn's self-assessed proficiency. */
@@ -113,6 +117,16 @@ export interface Certification {
   review?: string | null
 }
 
+/** An honour or a competition placing. */
+export interface Award {
+  id: string
+  title: string
+  issuer: string
+  date: MonthYear | null
+  description: string
+  review?: string | null
+}
+
 export interface Project {
   id: string
   name: string
@@ -134,6 +148,7 @@ export interface Profile {
   headline: string
   location: string
   email: string
+  phone: string
   links: Link[]
   summary: string
   experiences: Experience[]
@@ -142,6 +157,8 @@ export interface Profile {
   languages: Language[]
   projects: Project[]
   certifications: Certification[]
+  awards: Award[]
+  interests: string[]
 }
 
 export const uid = () => crypto.randomUUID()
@@ -152,6 +169,7 @@ export const EMPTY_PROFILE: Profile = {
   headline: "",
   location: "",
   email: "",
+  phone: "",
   links: [],
   summary: "",
   experiences: [],
@@ -160,6 +178,8 @@ export const EMPTY_PROFILE: Profile = {
   languages: [],
   projects: [],
   certifications: [],
+  awards: [],
+  interests: [],
 }
 
 // --- Formatting ------------------------------------------------------------------------------
@@ -243,6 +263,40 @@ export function removeSkill(p: Profile, name: string): Profile {
   }
 }
 
+/** The skill lines a CV prints, in the order they first appear; "" (no category) not included. */
+export function skillCategories(p: Profile): string[] {
+  return [...new Set(p.skills.map((s) => s.category?.trim() ?? "").filter(Boolean))]
+}
+
+/** Move a skill to a line ("" for none). */
+export function setSkillCategory(p: Profile, name: string, category: string): Profile {
+  return { ...p, skills: p.skills.map((s) => (s.name === name ? { ...s, category: category.trim() } : s)) }
+}
+
+/** Rename a line, or dissolve it with "": every skill on it moves. Joining another line merges them. */
+export function renameCategory(p: Profile, from: string, to: string): Profile {
+  return { ...p, skills: p.skills.map((s) => ((s.category ?? "") === from ? { ...s, category: to.trim() } : s)) }
+}
+
+/**
+ * A skill line saved from its dialog: `skills` end up on `name`. Skills new to the profile join
+ * it; ones taken off the edited line stay, with no category. `from`: the line's name before (null
+ * for a new one), so renaming moves it. A name another line already has merges the two.
+ */
+export function saveCategory(p: Profile, from: string | null, name: string, skills: string[]): Profile {
+  const line = name.trim()
+  const chosen = new Set(skills.map((s) => s.toLowerCase()))
+  const out = p.skills.map((s) => {
+    const cat = s.category?.trim() ?? ""
+    if (chosen.has(s.name.toLowerCase())) return { ...s, category: line }
+    // Skills taken off the edited line; another line with the same name merges, keeping its own.
+    return from !== null && cat === from ? { ...s, category: "" } : s
+  })
+  const known = new Set(p.skills.map((s) => s.name.toLowerCase()))
+  const added = skills.filter((s) => !known.has(s.toLowerCase())).map((name) => ({ name, category: line }))
+  return { ...p, skills: [...out, ...added] }
+}
+
 /** Insert or replace an entry by id, newest first. */
 export function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   return list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [item, ...list]
@@ -255,6 +309,7 @@ export function reviewCount(p: Profile): number {
     p.education.filter((e) => e.review).length +
     p.projects.filter((x) => x.review).length +
     p.certifications.filter((c) => c.review).length +
+    p.awards.filter((a) => a.review).length +
     p.skills.filter((s) => s.inferred).length
   )
 }
@@ -267,6 +322,7 @@ export function withoutReview(p: Profile): Profile {
     education: p.education.map((e) => ({ ...e, review: null })),
     projects: p.projects.map((x) => ({ ...x, review: null })),
     certifications: p.certifications.map((c) => ({ ...c, review: null })),
+    awards: p.awards.map((a) => ({ ...a, review: null })),
     skills: p.skills.map((s) => ({ ...s, inferred: false })),
   }
 }
@@ -312,9 +368,12 @@ function set(patch: Partial<State>) {
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : msgs().common.invalidRequest)
 
+/** A profile from the server with every field: a draft saved by an older version may lack some. */
+export const withDefaults = (p: unknown): Profile => ({ ...EMPTY_PROFILE, ...(p as Partial<Profile>) })
+
 /** The server's view, merged with what only the browser knows (a blank profile in progress). */
 function apply(s: ProfileState) {
-  const saved = (s.profile as Profile | null) ?? null
+  const saved = s.profile ? withDefaults(s.profile) : null
   const draft = s.draft
   const blank = state.blank && !saved
   let stage: Stage
@@ -323,7 +382,7 @@ function apply(s: ProfileState) {
   else if (draft?.status === "ready") stage = "review"
   else stage = saved || blank ? "ready" : "empty"
   const profile =
-    stage === "review" && draft?.data ? (draft.data as Profile) : (saved ?? (blank ? state.profile : EMPTY_PROFILE))
+    stage === "review" && draft?.data ? withDefaults(draft.data) : (saved ?? (blank ? state.profile : EMPTY_PROFILE))
   set({ stage, profile, saved, savedAt: s.saved_at, draft, blank })
   if (stage === "importing") poll()
 }
@@ -384,7 +443,9 @@ function saver(send: (p: Profile) => Promise<ProfileState>, onSaved: (s: Profile
   }
 }
 
-const profileSaver = saver(api.profile.save, (s) => set({ saved: (s.profile as Profile) ?? null, savedAt: s.saved_at, blank: false }))
+const profileSaver = saver(api.profile.save, (s) =>
+  set({ saved: s.profile ? withDefaults(s.profile) : null, savedAt: s.saved_at, blank: false }),
+)
 // Typing in the review dialogs shouldn't hit the server on every change.
 const draftSaver = saver(api.profile.saveDraft, () => {})
 

@@ -33,6 +33,7 @@ import {
   PROFICIENCY,
   endsBefore,
   uid,
+  type Award,
   type Certification,
   type Education,
   type Experience,
@@ -72,7 +73,7 @@ export function IdentityDialog({
   const all = useT()
   const t = all.profile
   const [d, setD] = useDraft(open, profile)
-  const text = (k: "name" | "headline" | "location" | "email") => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const text = (k: "name" | "headline" | "location" | "email" | "phone") => (e: React.ChangeEvent<HTMLInputElement>) =>
     setD({ ...d, [k]: e.target.value })
   const setLink = (id: string, patch: Partial<Profile["links"][number]>) =>
     setD({ ...d, links: d.links.map((l) => (l.id === id ? { ...l, ...patch } : l)) })
@@ -103,6 +104,9 @@ export function IdentityDialog({
             <Input type="email" value={d.email} onChange={text("email")} />
           </Field>
         </div>
+        <Field label={t.phone} hint={t.phoneHint}>
+          <Input type="tel" value={d.phone} onChange={text("phone")} placeholder="+41 76 123 45 67" className="w-1/2" />
+        </Field>
       </FormGroup>
 
       <FormGroup title={t.links} description={t.linksHint}>
@@ -210,7 +214,7 @@ export function ExperienceDialog({ open, onOpenChange, entry, profile, onSave, o
   const source = entry ?? NEW_EXPERIENCE
   const [d, setD] = useDraft(open, source)
   const [bullets, setBullets] = useDraft(open, source.bullets.join("\n"))
-  const text = (k: "role" | "company" | "location") => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const text = (k: "role" | "company" | "location" | "context") => (e: React.ChangeEvent<HTMLInputElement>) =>
     setD({ ...d, [k]: e.target.value })
 
   return (
@@ -284,6 +288,9 @@ export function ExperienceDialog({ open, onOpenChange, entry, profile, onSave, o
             </Select>
           </Field>
         </div>
+        <Field label={t.context} hint={t.contextHint}>
+          <Input value={d.context ?? ""} onChange={text("context")} placeholder={t.contextPlaceholder} maxLength={160} />
+        </Field>
       </FormGroup>
 
       <FormGroup title={t.period}>
@@ -436,10 +443,7 @@ export function LanguageDialog({ open, onOpenChange, entry, profile, onSave, onD
           ))}
         </div>
       )}
-      <Field
-        label={t.level}
-        hint={cefr ? t.levelCefrHint : t.levelSelfHint}
-      >
+      <Field label={t.level}>
         <Select value={d.level} onValueChange={(v) => setD({ ...d, level: v as LanguageLevel })}>
           <SelectTrigger className="w-full">
             <SelectValue />
@@ -545,6 +549,101 @@ export function CertificationDialog({ open, onOpenChange, entry, profile, onSave
 
       <FormGroup title={t.media}>
         <MediaEditor value={d.media} onChange={(media) => setD({ ...d, media })} />
+      </FormGroup>
+    </FormDialog>
+  )
+}
+
+// --- Award -----------------------------------------------------------------------------------
+
+const NEW_AWARD: Award = { id: "", title: "", issuer: "", date: null, description: "" }
+
+export function AwardDialog({ open, onOpenChange, entry, onSave, onDelete }: EntryDialog<Award>) {
+  const all = useT()
+  const t = all.profile
+  const [d, setD] = useDraft(open, entry ?? NEW_AWARD)
+  const text = (k: "title" | "issuer") => (e: React.ChangeEvent<HTMLInputElement>) => setD({ ...d, [k]: e.target.value })
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={entry ? t.editAward : t.addAward}
+      canSave={!!d.title.trim()}
+      onDelete={entry ? () => onDelete(entry) : undefined}
+      onSave={() => onSave({ ...d, id: d.id || uid(), review: null, title: d.title.trim(), issuer: d.issuer.trim() })}
+    >
+      <FormGroup title={t.award}>
+        <Field label={t.awardTitle} required>
+          <Input value={d.title} onChange={text("title")} placeholder={t.awardTitlePlaceholder} />
+        </Field>
+        <div className="grid grid-cols-2 items-start gap-3">
+          <Field label={t.awardIssuer}>
+            <Input value={d.issuer} onChange={text("issuer")} placeholder="Open Source Summit" />
+          </Field>
+          <MonthYearField label={t.awardDate} value={d.date} onChange={(date) => setD({ ...d, date })} />
+        </div>
+        <Field label={t.description}>
+          <Textarea
+            value={d.description}
+            onChange={(e) => setD({ ...d, description: e.target.value })}
+            maxLength={600}
+            className="min-h-20"
+          />
+        </Field>
+      </FormGroup>
+    </FormDialog>
+  )
+}
+
+// --- Skill lines -----------------------------------------------------------------------------
+
+/**
+ * Skills added in one step, picked from the profile's or typed new: at least one, with a
+ * category name or without (they stay ungrouped). Editing a line renames it, changes what's on
+ * it, or deletes it (its skills stay, ungrouped). Saving a name another line has merges the two.
+ */
+export function CategoryDialog({
+  open,
+  onOpenChange,
+  initial,
+  skills,
+  known,
+  taken,
+  onSave,
+  onDelete,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  /** The line's name; "" for a new one. */
+  initial: string
+  /** What's on it when the dialog opens. */
+  skills: string[]
+  /** Every skill of the profile, to pick from. */
+  known: string[]
+  /** The other lines' names, to say a rename merges. */
+  taken: string[]
+  onSave: (name: string, skills: string[]) => void
+  onDelete?: () => void
+}) {
+  const t = useT().profile
+  const [name, setName] = useDraft(open, initial)
+  const [picked, setPicked] = useDraft(open, skills)
+  const merges = !!name.trim() && name.trim() !== initial && taken.includes(name.trim())
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={initial ? t.editCategory : t.addSkills}
+      canSave={picked.length > 0}
+      onDelete={onDelete}
+      onSave={() => onSave(name.trim(), picked)}
+    >
+      <Field label={t.categoryName} hint={merges ? t.categoryMerges : undefined}>
+        <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder="Cloud & DevOps" />
+      </Field>
+      <FormGroup title={t.skills} required>
+        <SkillPicker value={picked} onChange={setPicked} known={known} />
       </FormGroup>
     </FormDialog>
   )

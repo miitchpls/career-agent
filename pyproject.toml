@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Local job search over LinkedIn and Indeed, with a CV-based profile"
 readme = "README.md"
 authors = [
-    { name = "miitchpls", email = "51779074+miitchpls@users.noreply.github.com" }
+    { name = "miitchpls" }
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -27,3 +27,9 @@ dev = [
     "httpx2>=2.16.0",
     "pytest>=9.2.0",
 ]
+
+
+[tool.ruff.lint.per-file-ignores]
+# Pydantic models (through schema.Model, which ruff can't follow across modules): their
+# list defaults are copied per instance, not shared.
+"src/career_agent/profile.py" = ["RUF012"]

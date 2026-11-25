@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import Markdown from "react-markdown"
 import {
@@ -15,7 +15,7 @@ import {
 } from "lucide-react"
 
 import { StatusDot, StatusMenu } from "@/components/applications/status"
-import { TailoredCv, type CvPhase } from "@/components/cv/tailored-cv"
+import { TailoredCv } from "@/components/cv/tailored-cv"
 import { ScorePanel } from "@/components/jobs/score-panel"
 import { SiteMark } from "@/components/jobs/work-mode-badge"
 import {
@@ -37,14 +37,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { api, type Job } from "@/lib/api"
 import { cvName, useDeleteApplication, useUpdateApplication, type Application } from "@/lib/applications"
 import { DEFAULT_CURRENCY } from "@/lib/currencies"
-import { useGenerated } from "@/lib/cv-mock"
 import { intlTag, useT } from "@/lib/i18n"
 import { DECISION_DOT, formatScore } from "@/lib/job-score"
 import { hostOf } from "@/lib/job-link"
-import { hasProfile, useProfile } from "@/lib/profile"
+import type { AppTab } from "@/lib/routes"
+import { shownCv, useTailoredCv } from "@/lib/tailored-cv"
 import { cn } from "@/lib/utils"
 
-type Tab = "progress" | "fit" | "notes" | "posting" | "cv"
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString(intlTag(), { day: "numeric", month: "short", year: "numeric" })
@@ -61,38 +60,21 @@ export function Source({ app }: { app: Application }) {
   )
 }
 
-/** The application as a posting, for the CV generation (which reads its title and text). */
-function asJob(app: Application): Job {
-  return {
-    url: app.url || `application:${app.id}`,
-    site: app.site === "other" ? "linkedin" : app.site,
-    title: app.title,
-    company: app.company || null,
-    location: app.location || null,
-    work_mode: "unknown",
-    job_type: null,
-    date_posted: null,
-    min_amount: null,
-    max_amount: null,
-    currency: null,
-    description: app.posting?.description ?? null,
-    first_seen: app.events[0].at,
-    salary_converted: null,
-    hits: [],
-    score: app.score,
-  }
-}
-
 /**
  * One application in a wide side panel: how it's going (the default), the user's notes, the
  * posting as saved when it was added, and the CV generated for it.
  */
 export function ApplicationSheet({
   app,
+  tab,
+  onTab: setTab,
   onOpenProfile,
   onRemoved,
 }: {
   app: Application
+  /** The tab shown, from the address. */
+  tab: AppTab
+  onTab: (tab: AppTab) => void
   onOpenProfile: () => void
   onRemoved: () => void
 }) {
@@ -100,16 +82,8 @@ export function ApplicationSheet({
   const remove = useDeleteApplication()
   const [confirm, setConfirm] = useState(false)
   const t = all.applications.sheet
-  const job = useMemo(() => asJob(app), [app])
-  const generated = useGenerated().has(job.url)
-  const profile = useProfile()
-  const [tab, setTab] = useState<Tab>("progress")
-  const [phase, setPhase] = useState<CvPhase>(generated ? "done" : "idle")
-  const generate = () => {
-    setTab("cv")
-    if (hasProfile(profile)) setPhase("generating")
-  }
-  const done = useCallback(() => setPhase("done"), [])
+  // A CV is written for the saved posting, like the score: only LinkedIn and Indeed ones.
+  const generated = !!shownCv(useTailoredCv(app.url, app.site !== "other" && !!app.url).data)
 
   return (
     <>
@@ -159,7 +133,7 @@ export function ApplicationSheet({
         </AlertDialogContent>
       </AlertDialog>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-h-0 flex-1 gap-0">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as AppTab)} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-10 w-full justify-start gap-5 border-b px-6">
           <TabsTrigger value="progress" className="flex-none px-0">
             {t.progress}
@@ -203,7 +177,7 @@ export function ApplicationSheet({
             <Posting app={app} />
           </TabsContent>
           <TabsContent value="cv">
-            <TailoredCv job={job} phase={phase} onGenerate={generate} onDone={done} onOpenProfile={onOpenProfile} />
+            <Cv app={app} onOpenProfile={onOpenProfile} />
           </TabsContent>
         </ScrollArea>
       </Tabs>
@@ -293,6 +267,33 @@ function Fit({ app, onOpenProfile }: { app: Application; onOpenProfile: () => vo
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
       <p className="max-w-sm text-sm text-pretty text-muted-foreground">{board ? t.fitNotSaved : t.fitOther}</p>
+      {board && (
+        <Button size="sm" disabled={reading} onClick={() => void read()}>
+          {reading ? <LoaderCircleIcon className="animate-spin" /> : <ArrowDownToLineIcon />}
+          {t.read}
+        </Button>
+      )}
+      {error && <p className="max-w-sm text-xs text-pretty text-destructive">{error}</p>}
+    </div>
+  )
+}
+
+/** The CV for the saved posting, as on a posting's sheet; like the score, it needs one. */
+function Cv({ app, onOpenProfile }: { app: Application; onOpenProfile: () => void }) {
+  const t = useT().applications.sheet
+  const { board, saved, read, reading, error } = useSavedJob(app)
+
+  if (board && saved.isPending)
+    return (
+      <div className="space-y-3 px-6 py-8">
+        <Skeleton className="h-4 w-48" />
+        <Skeleton className="h-3 w-2/3" />
+      </div>
+    )
+  if (board && saved.data?.job) return <TailoredCv job={saved.data.job} onOpenProfile={onOpenProfile} />
+  return (
+    <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+      <p className="max-w-sm text-sm text-pretty text-muted-foreground">{board ? t.cvNotSaved : t.cvOther}</p>
       {board && (
         <Button size="sm" disabled={reading} onClick={() => void read()}>
           {reading ? <LoaderCircleIcon className="animate-spin" /> : <ArrowDownToLineIcon />}

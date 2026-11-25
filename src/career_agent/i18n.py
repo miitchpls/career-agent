@@ -1,6 +1,6 @@
 """User-facing server messages in the UI's languages.
 
-The UI sends its language as `Accept-Language` ("it", "en", "de", "ko"); an app-wide dependency
+The UI sends its language as `Accept-Language` ("it", "en", "ja"…); an app-wide dependency
 puts it in `LOCALE` for the request. A search runs in a background thread, which keeps the language
 of the request that started it.
 """
@@ -8,8 +8,10 @@ of the request that started it.
 from contextvars import ContextVar
 from typing import Literal
 
-Locale = Literal["it", "en", "de", "ko"]
-LOCALES: tuple[Locale, ...] = ("it", "en", "de", "ko")
+Locale = Literal[
+    "it", "en", "de", "ko", "zh", "es", "fr", "ja", "pt", "ru", "id", "nl", "tr"
+]  # fmt: skip
+LOCALES: tuple[Locale, ...] = Locale.__args__
 DEFAULT: Locale = "it"
 
 LOCALE: ContextVar[Locale] = ContextVar("locale", default=DEFAULT)
@@ -303,6 +305,61 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "de": "Bewertung unterbrochen: der Server wurde neu gestartet.",
         "ko": "평가가 중단되었습니다: 서버가 다시 시작되었습니다.",
     },
+    # Tailored CVs (tailor.py, pdf.py)
+    "cv_no_description": {
+        "it": "L'annuncio non ha un testo su cui adattare il CV.",
+        "en": "The posting has no text to tailor the CV to.",
+        "de": "Die Anzeige hat keinen Text, auf den der Lebenslauf zugeschnitten werden kann.",
+        "ko": "이력서를 맞출 공고 내용이 없습니다.",
+    },
+    "cv_no_profile": {
+        "it": "Serve un profilo salvato per generare il CV.",
+        "en": "A saved profile is needed to generate the CV.",
+        "de": "Für den Lebenslauf wird ein gespeichertes Profil benötigt.",
+        "ko": "이력서를 만들려면 저장된 프로필이 필요합니다.",
+    },
+    "cv_thin_profile": {
+        "it": "Il profilo non ha ancora esperienze, riepilogo o progetti: aggiungine prima qualcuno.",
+        "en": "The profile has no experience, summary or project yet: add some first.",
+        "de": "Das Profil hat noch keine Erfahrung, Zusammenfassung oder Projekte: füge zuerst etwas hinzu.",
+        "ko": "프로필에 아직 경력, 자기소개, 프로젝트가 없습니다. 먼저 추가하세요.",
+    },
+    "cv_busy": {
+        "it": "Il CV per questa offerta è già in preparazione",
+        "en": "The CV for this posting is already being written",
+        "de": "Der Lebenslauf für diese Stelle wird bereits erstellt",
+        "ko": "이 채용공고의 이력서를 이미 작성 중입니다",
+    },
+    "cv_busy_many": {
+        "it": "Ci sono già tre CV in preparazione: aspetta che uno finisca.",
+        "en": "Three CVs are already being written: wait for one to finish.",
+        "de": "Es werden bereits drei Lebensläufe erstellt: warte, bis einer fertig ist.",
+        "ko": "이미 세 건의 이력서를 작성 중입니다. 하나가 끝날 때까지 기다리세요.",
+    },
+    "cv_interrupted": {
+        "it": "Generazione interrotta: il server è stato riavviato.",
+        "en": "Generation interrupted: the server was restarted.",
+        "de": "Erstellung unterbrochen: der Server wurde neu gestartet.",
+        "ko": "작성이 중단되었습니다: 서버가 다시 시작되었습니다.",
+    },
+    "cv_not_found": {
+        "it": "Non c'è ancora un CV pronto per questa offerta.",
+        "en": "There's no finished CV for this posting yet.",
+        "de": "Für diese Stelle gibt es noch keinen fertigen Lebenslauf.",
+        "ko": "이 채용공고에 완성된 이력서가 아직 없습니다.",
+    },
+    "pdf_no_browser": {
+        "it": "Per il PDF serve Chrome, Chromium o Edge su questo computer.",
+        "en": "The PDF needs Chrome, Chromium or Edge on this computer.",
+        "de": "Für das PDF wird Chrome, Chromium oder Edge auf diesem Computer benötigt.",
+        "ko": "PDF를 만들려면 이 컴퓨터에 Chrome, Chromium 또는 Edge가 필요합니다.",
+    },
+    "pdf_failed": {
+        "it": "Il PDF non si è potuto creare: {why}",
+        "en": "The PDF couldn't be made: {why}",
+        "de": "Das PDF konnte nicht erstellt werden: {why}",
+        "ko": "PDF를 만들 수 없습니다: {why}",
+    },
     "review_interrupted": {
         "it": "Revisione interrotta: il server è stato riavviato.",
         "en": "Review interrupted: the server was restarted.",
@@ -347,6 +404,17 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "ko": "파일을 찾을 수 없습니다",
     },
 }
+
+
+def _merge_extra() -> None:
+    from .i18n_extra import EXTRA
+
+    for lang, messages in EXTRA.items():
+        for key, text in messages.items():
+            MESSAGES[key][lang] = text  # type: ignore[index]
+
+
+_merge_extra()
 
 
 def t(key: str, **params: object) -> str:

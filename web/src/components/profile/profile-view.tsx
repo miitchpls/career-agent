@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   AlertTriangleIcon,
   AlignLeftIcon,
@@ -6,27 +6,38 @@ import {
   AwardIcon,
   BriefcaseIcon,
   CameraIcon,
+  Trash2Icon,
   CheckIcon,
+  ChevronDownIcon,
   FolderGitIcon,
   GraduationCapIcon,
+  HeartIcon,
+  InfoIcon,
   LanguagesIcon,
   LayoutGridIcon,
   LoaderCircleIcon,
   MailIcon,
   MapPinIcon,
   PencilIcon,
+  PhoneIcon,
   PlusIcon,
+  TrophyIcon,
   WrenchIcon,
   XIcon,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 
+import { useCvChoices } from "@/components/cv/cv-settings"
 import { StyleGallery } from "@/components/cv/style-gallery"
-import { MediaStrip, SkillLine } from "@/components/profile/fields"
+import { CountryPicker } from "@/components/cv/country-picker"
+import { LinkButton } from "@/components/link-button"
+import { Field, FormDialog, FormGroup, MediaStrip, SkillLine } from "@/components/profile/fields"
 import { ScorePrefsCard } from "@/components/profile/score-prefs"
 import { ReviewCard } from "@/components/profile/review-panel"
 import {
+  AwardDialog,
+  CategoryDialog,
   CertificationDialog,
   EducationDialog,
   ExperienceDialog,
@@ -50,10 +61,24 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { countryName } from "@/lib/countries"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   completeness,
@@ -65,23 +90,29 @@ import {
   levelLabel,
   profileStore,
   removeSkill,
+  renameCategory,
   reviewCount,
+  saveCategory,
+  setSkillCategory,
+  skillCategories,
   skillUses,
   upsert,
   useProfile,
   withSkills,
   withoutLegalForm,
+  type Award,
   type Certification,
   type Education,
   type Experience,
   type Language,
   type Profile,
   type Project,
+  type Skill,
 } from "@/lib/profile"
-import { CV_TEMPLATES, type CvPrefs } from "@/lib/api"
-import { useGenerated } from "@/lib/cv-mock"
-import { useCvPrefs, useSaveCvPrefs } from "@/lib/cv-prefs"
-import { useT } from "@/lib/i18n"
+import { LOCKED_SECTIONS, type CvPrefs } from "@/lib/api"
+import { useCvCount } from "@/lib/tailored-cv"
+import { useCvPrefs, useCvPrefsReady, useSaveCvPrefs } from "@/lib/cv-prefs"
+import { intlTag, useT } from "@/lib/i18n"
 import { openPreferences } from "@/lib/preferences"
 import { activeEngine, useAiEngines } from "@/lib/use-ai"
 import { cn } from "@/lib/utils"
@@ -127,6 +158,8 @@ export function ProfileView() {
           <LanguagesSection profile={profile} onChange={update} />
           <ProjectsSection profile={profile} onChange={update} />
           <Certifications profile={profile} onChange={update} />
+          <Awards profile={profile} onChange={update} />
+          <Interests profile={profile} onChange={update} />
         </div>
         <Aside profile={profile} />
       </div>
@@ -325,32 +358,116 @@ function Mark({ children }: { children: React.ReactNode }) {
 // --- Identity --------------------------------------------------------------------------------
 
 /** The avatar is the photo picker: hover shows a camera, click opens the system file dialog. */
+// The photo's shape on the CV, previewed by the avatar itself.
+const SHAPE: Record<CvPrefs["photoStyle"], string> = {
+  circle: "rounded-full",
+  square: "rounded-md",
+}
+
+/**
+ * The avatar is the photo. With none, a click opens the system file dialog; with one, its
+ * pencil opens what can be done with it: replace it, pick its shape on the CV, remove it.
+ */
 function Photo({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
   const all = useT()
   const t = all.profileView
   const input = useRef<HTMLInputElement>(null)
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => input.current?.click()}
-        aria-label={p.photo ? t.changePhoto : t.addPhoto}
-        className="group/photo relative block shrink-0 self-start rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+  const prefs = useCvPrefs()
+  const prefsReady = useCvPrefsReady()
+  const save = useSaveCvPrefs()
+  // The photo and its shape show together: a round skeleton until both the saved shape and the
+  // image itself are in, so neither appears in a guess first.
+  const [loaded, setLoaded] = useState<string | null>(null)
+  const ready = prefsReady && (!p.photo || loaded === p.photo)
+  // The shape animates only once shown: the first frame draws it as it is, with no morph.
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    if (!ready || settled) return
+    const id = requestAnimationFrame(() => setSettled(true))
+    return () => cancelAnimationFrame(id)
+  }, [ready, settled])
+  // With no photo yet there is no shape to show: the empty avatar is a circle.
+  const shape = p.photo ? SHAPE[prefs.photoStyle] : SHAPE.circle
+  const pick = () => input.current?.click()
+  const avatar = (
+    <span className="relative block">
+      <Avatar
+        className={cn(
+          "size-24 shadow-xs",
+          !ready && "invisible",
+          settled && "transition-[border-radius] duration-300 ease-out",
+          shape,
+          "*:rounded-[inherit] after:rounded-[inherit]",
+        )}
       >
-        <Avatar className="size-24 border shadow-xs transition-transform duration-300 ease-out group-hover/photo:scale-[1.04]">
-          {p.photo && <AvatarImage src={p.photo} alt="" className="object-cover" />}
-          <AvatarFallback className="text-2xl font-medium">{initials(p.name)}</AvatarFallback>
-        </Avatar>
-        <span className="absolute inset-0 flex scale-95 flex-col items-center justify-center gap-0.5 rounded-full bg-black/60 text-white opacity-0 backdrop-blur-[2px] transition-all duration-300 ease-out group-hover/photo:scale-100 group-hover/photo:opacity-100 group-focus-visible/photo:scale-100 group-focus-visible/photo:opacity-100">
-          <CameraIcon className="size-4 transition-transform duration-300 group-hover/photo:-translate-y-0.5" />
-          <span className="text-[10px] font-medium">{p.photo ? t.change : all.common.add}</span>
-        </span>
-        {!p.photo && (
-          <span className="absolute right-0.5 bottom-0.5 grid size-7 place-items-center rounded-full border-2 border-card bg-foreground text-background transition-opacity group-hover/photo:opacity-0">
+        {p.photo && (
+          <AvatarImage
+            src={p.photo}
+            alt=""
+            className="object-cover"
+            onLoadingStatusChange={(s) => s !== "loading" && setLoaded(p.photo)}
+          />
+        )}
+        <AvatarFallback className="rounded-[inherit] text-2xl font-medium">{initials(p.name)}</AvatarFallback>
+      </Avatar>
+      {!ready && <Skeleton className="absolute inset-0 rounded-full" />}
+    </span>
+  )
+  const badge = "absolute -right-1 -bottom-1 grid size-7 place-items-center rounded-full border-2 border-card bg-foreground text-background shadow-xs"
+  return (
+    <div className="relative shrink-0 self-start">
+      {p.photo ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={t.photoMenu}
+              className={cn("group/photo block outline-none focus-visible:ring-3 focus-visible:ring-ring/50", shape)}
+            >
+              {avatar}
+              <span className={cn(badge, "transition-transform group-hover/photo:scale-110")}>
+                <PencilIcon className="size-3" />
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuItem onSelect={pick}>
+              <CameraIcon />
+              {t.changePhoto}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs text-muted-foreground">{t.photoShape}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={prefs.photoStyle}
+              onValueChange={(v) => save.mutate({ photoStyle: v as CvPrefs["photoStyle"] })}
+            >
+              {(["circle", "square"] as const).map((v) => (
+                <DropdownMenuRadioItem key={v} value={v} onSelect={(e) => e.preventDefault()}>
+                  <span className={cn("size-3.5 border border-current", SHAPE[v])} aria-hidden />
+                  {{ circle: t.photoCircle, square: t.photoSquare }[v]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={() => onChange({ ...p, photo: null })}>
+              <Trash2Icon />
+              {t.removePhoto}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <button
+          type="button"
+          onClick={pick}
+          aria-label={t.addPhoto}
+          className={cn("group/photo block outline-none focus-visible:ring-3 focus-visible:ring-ring/50", shape)}
+        >
+          {avatar}
+          <span className={cn(badge, "transition-transform group-hover/photo:scale-110")}>
             <PlusIcon className="size-3" />
           </span>
-        )}
-      </button>
+        </button>
+      )}
       <input
         ref={input}
         type="file"
@@ -366,7 +483,7 @@ function Photo({ profile: p, onChange }: { profile: Profile; onChange: Change })
             .catch((err: Error) => toast.error(all.profile.uploadFailed, { description: err.message }))
         }}
       />
-    </>
+    </div>
   )
 }
 
@@ -401,6 +518,12 @@ function Identity({ profile: p, onChange }: { profile: Profile; onChange: Change
                 <span className="inline-flex items-center gap-1.5">
                   <MailIcon className="size-3.5" />
                   {p.email}
+                </span>
+              )}
+              {p.phone && (
+                <span className="inline-flex items-center gap-1.5 tabular-nums">
+                  <PhoneIcon className="size-3.5" />
+                  {p.phone}
                 </span>
               )}
             </div>
@@ -559,6 +682,9 @@ function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Cha
                         .join(" · ")}
                     </p>
                     {where.length > 0 && <p className="text-xs text-muted-foreground">{where.join(" · ")}</p>}
+                    {g.find((r) => r.context)?.context && (
+                      <p className="mt-0.5 text-xs text-pretty text-muted-foreground italic">{g.find((r) => r.context)?.context}</p>
+                    )}
                   </div>
                 </div>
                 <ol className="mt-3 space-y-4">
@@ -616,6 +742,7 @@ function ExperienceBody({
           {sub.length > 0 && <p className="text-sm text-muted-foreground">{sub.join(" · ")}</p>}
           <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{fmtRange(e.start, e.end, e.current)}</p>
           {where.length > 0 && <p className="text-xs text-muted-foreground">{where.join(" · ")}</p>}
+          {company && e.context && <p className="mt-0.5 text-xs text-pretty text-muted-foreground italic">{e.context}</p>}
         </div>
         <EditButton label={t.editExperience} onClick={onEdit} />
       </div>
@@ -696,92 +823,85 @@ function EducationSection({ profile: p, onChange }: { profile: Profile; onChange
   )
 }
 
+/** The skill line the category dialog edits: a new one (maybe with a skill already on it),
+ * or an existing one. */
+const NO_SKILLS: string[] = []
+// The line's skills are taken when the dialog opens, so a re-render can't reset what's picked.
+type CategoryEdit = { from: string | null; skills: string[] } | null
+
 function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
   const all = useT()
   const t = all.profileView
-  const [draft, setDraft] = useState("")
   const [removing, setRemoving] = useState<string | null>(null)
+  const [naming, setNaming] = useState<CategoryEdit>(null)
   const inferred = p.skills.filter((s) => s.inferred).length
-  const add = () => {
-    const name = draft.trim()
-    if (name) onChange(withSkills(p, [name]))
-    setDraft("")
-  }
+  const categories = skillCategories(p)
+  const lineOf = (s: Skill) => s.category?.trim() ?? ""
+  // One line per category, in the order they first appear; the uncategorised last.
+  const rows: [string, Skill[]][] = categories.length
+    ? [...categories.map((c): [string, Skill[]] => [c, p.skills.filter((s) => lineOf(s) === c)]), ["", p.skills.filter((s) => !lineOf(s))]]
+    : [["", p.skills]]
   const remove = (name: string) => (skillUses(p, name).length ? setRemoving(name) : onChange(removeSkill(p, name)))
+  const add = (name: string, category: string) => {
+    const known = p.skills.find((s) => s.name.toLowerCase() === name.toLowerCase())
+    if (known) onChange(setSkillCategory(p, known.name, category))
+    else onChange({ ...p, skills: [...p.skills, { name, category }] })
+  }
 
   return (
-    <Section icon={WrenchIcon} title={t.skills} count={p.skills.length}>
-      <div className="flex flex-wrap gap-1.5">
-        <AnimatePresence initial={false}>
-          {p.skills.map((s) => {
-            const uses = skillUses(p, s.name)
-            return (
-              <motion.span
-                key={s.name}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.12 } }}
-                className={cn(
-                  "group inline-flex h-7 items-center gap-1 rounded-full border pr-1 pl-2.5 text-xs",
-                  s.inferred && "border-dashed border-amber-500/50 bg-amber-500/5",
-                )}
-              >
-                {s.name}
-                {uses.length > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="grid h-4 min-w-4 cursor-default place-items-center rounded-full bg-secondary px-1 text-[10px] text-muted-foreground tabular-nums">
-                        {uses.length}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="mb-1 font-medium">{t.usedIn}</p>
-                      {uses.map((u) => (
-                        <p key={u.id}>{u.label}</p>
-                      ))}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                {s.inferred && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label={t.confirmSkill(s.name)}
-                        className="grid size-5 place-items-center rounded-full text-amber-600 hover:bg-amber-500/15 dark:text-amber-400"
-                        onClick={() => onChange({ ...p, skills: p.skills.map((x) => (x.name === s.name ? { name: x.name } : x)) })}
-                      >
-                        <CheckIcon className="size-3" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>{t.inferred}</TooltipContent>
-                  </Tooltip>
-                )}
-                <button
-                  type="button"
-                  aria-label={t.removeSkill(s.name)}
-                  className="grid size-5 place-items-center rounded-full text-muted-foreground opacity-50 transition-opacity group-hover:opacity-100 hover:bg-muted"
-                  onClick={() => remove(s.name)}
-                >
-                  <XIcon className="size-3" />
-                </button>
-              </motion.span>
-            )
-          })}
-        </AnimatePresence>
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          onBlur={add}
-          placeholder={t.addSkill}
-          className="h-7 w-28 rounded-full border-dashed px-2.5 text-xs shadow-none"
-        />
+    <Section
+      icon={WrenchIcon}
+      title={t.skills}
+      count={p.skills.length}
+      action={<AddButton label={t.addSkills} onClick={() => setNaming({ from: null, skills: [] })} />}
+    >
+      <div className="space-y-3">
+        {rows.map(([category, skills]) =>
+          categories.length && !category && !skills.length ? null : (
+            <div key={category || "-"} className="space-y-1.5">
+              {categories.length > 0 && (
+                <div className="flex h-5 items-center">
+                  {category ? (
+                    // The line's name opens it: rename, change what's on it, delete it.
+                    <button
+                      type="button"
+                      aria-label={t.renameCategory(category)}
+                      onClick={() => setNaming({ from: category, skills: p.skills.filter((x) => lineOf(x) === category).map((x) => x.name) })}
+                      className="group/line -mx-1.5 inline-flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      {category}
+                      <PencilIcon className="size-3 text-muted-foreground opacity-0 transition-opacity group-hover/line:opacity-100 group-focus-visible/line:opacity-100" />
+                    </button>
+                  ) : (
+                    <span className="text-xs font-medium text-muted-foreground">{t.noCategory}</span>
+                  )}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                <AnimatePresence initial={false}>
+                  {skills.map((s) => (
+                    <SkillChip
+                      key={s.name}
+                      skill={s}
+                      profile={p}
+                      categories={categories}
+                      onMove={(c) => onChange(setSkillCategory(p, s.name, c))}
+                      onNewCategory={() => setNaming({ from: null, skills: [s.name] })}
+                      onConfirm={() => onChange({ ...p, skills: p.skills.map((x) => (x.name === s.name ? { ...x, inferred: false } : x)) })}
+                      onRemove={() => remove(s.name)}
+                    />
+                  ))}
+                </AnimatePresence>
+                <AddSkill onAdd={(name) => add(name, category)} />
+              </div>
+            </div>
+          ),
+        )}
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">
+      <p className="mt-3 text-xs text-pretty text-muted-foreground">
         {t.skillsHint}
         {inferred > 0 && t.skillsInferredHint}
+        {t.skillsCategoryHint}
       </p>
       <RemoveSkillDialog
         skill={removing}
@@ -789,7 +909,148 @@ function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }
         onOpenChange={(o) => !o && setRemoving(null)}
         onConfirm={() => removing && onChange(removeSkill(p, removing))}
       />
+      <CategoryDialog
+        open={naming !== null}
+        onOpenChange={(o) => !o && setNaming(null)}
+        initial={naming?.from ?? ""}
+        skills={naming?.skills ?? NO_SKILLS}
+        known={p.skills.map((s) => s.name)}
+        taken={categories}
+        onSave={(name, skills) => {
+          onChange(saveCategory(p, naming?.from ?? null, name, skills))
+          setNaming(null)
+        }}
+        onDelete={naming?.from ? () => onChange(renameCategory(p, naming.from as string, "")) : undefined}
+      />
     </Section>
+  )
+}
+
+/** A skill: its name opens the menu that moves it to another line. */
+function SkillChip({
+  skill: s,
+  profile: p,
+  categories,
+  onMove,
+  onNewCategory,
+  onConfirm,
+  onRemove,
+}: {
+  skill: Skill
+  profile: Profile
+  categories: string[]
+  onMove: (category: string) => void
+  onNewCategory: () => void
+  onConfirm: () => void
+  onRemove: () => void
+}) {
+  const t = useT().profileView
+  const uses = skillUses(p, s.name)
+  const NONE = "\u0000"
+  return (
+    <motion.span
+      layout
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.12 } }}
+      className={cn(
+        "group inline-flex h-7 items-center gap-1 rounded-full border pr-1 pl-1 text-xs",
+        s.inferred && "border-dashed border-amber-500/50 bg-amber-500/5",
+      )}
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={t.skillMenu(s.name)}
+            className="h-5 rounded-full px-1.5 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:bg-muted"
+          >
+            {s.name}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-52">
+          <DropdownMenuLabel className="text-xs text-muted-foreground">{t.moveTo}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={s.category?.trim() || NONE} onValueChange={(v) => onMove(v === NONE ? "" : v)}>
+            {categories.map((c) => (
+              <DropdownMenuRadioItem key={c} value={c} className="text-xs">
+                {c}
+              </DropdownMenuRadioItem>
+            ))}
+            <DropdownMenuRadioItem value={NONE} className="text-xs text-muted-foreground">
+              {t.noCategory}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-xs" onSelect={onNewCategory}>
+            <PlusIcon />
+            {t.newCategory}
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" className="text-xs" onSelect={onRemove}>
+            <XIcon />
+            {t.removeSkill(s.name)}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {uses.length > 0 && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="grid h-4 min-w-4 cursor-default place-items-center rounded-full bg-secondary px-1 text-[10px] text-muted-foreground tabular-nums">
+              {uses.length}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="mb-1 font-medium">{t.usedIn}</p>
+            {uses.map((u) => (
+              <p key={u.id}>{u.label}</p>
+            ))}
+          </TooltipContent>
+        </Tooltip>
+      )}
+      {s.inferred && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={t.confirmSkill(s.name)}
+              className="grid size-5 place-items-center rounded-full text-amber-600 hover:bg-amber-500/15 dark:text-amber-400"
+              onClick={onConfirm}
+            >
+              <CheckIcon className="size-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{t.inferred}</TooltipContent>
+        </Tooltip>
+      )}
+      <button
+        type="button"
+        aria-label={t.removeSkill(s.name)}
+        className="grid size-5 place-items-center rounded-full text-muted-foreground opacity-50 transition-opacity group-hover:opacity-100 hover:bg-muted"
+        onClick={onRemove}
+      >
+        <XIcon className="size-3" />
+      </button>
+    </motion.span>
+  )
+}
+
+/** "+ Add" at the end of a line: Enter or leaving the field adds what's typed. */
+function AddSkill({ onAdd, placeholder }: { onAdd: (name: string) => void; placeholder?: string }) {
+  const t = useT().profileView
+  const [draft, setDraft] = useState("")
+  const add = () => {
+    const name = draft.trim()
+    if (name) onAdd(name)
+    setDraft("")
+  }
+  return (
+    <Input
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => e.key === "Enter" && add()}
+      onBlur={add}
+      placeholder={placeholder ?? t.addSkill}
+      className="h-7 w-28 rounded-full border-dashed px-2.5 text-xs shadow-none"
+    />
   )
 }
 
@@ -965,13 +1226,100 @@ function Certifications({ profile: p, onChange }: { profile: Profile; onChange: 
   )
 }
 
+function Awards({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
+  const all = useT()
+  const t = all.profileView
+  const ed = useEditing<Award>()
+  return (
+    <Section icon={TrophyIcon} title={t.awards} count={p.awards.length} action={<AddButton label={t.addAward} onClick={ed.add} />}>
+      {p.awards.length === 0 ? (
+        <EmptyHint onClick={ed.add}>{t.firstAward}</EmptyHint>
+      ) : (
+        <ul className="space-y-5">
+          {p.awards.map((a) => (
+            <li key={a.id} className="group">
+              <EntryRow
+                mark={
+                  <Mark>
+                    <TrophyIcon className="size-4" />
+                  </Mark>
+                }
+                note={a.review}
+                onConfirm={() => onChange({ ...p, awards: upsert(p.awards, { ...a, review: null }) })}
+                onEdit={() => ed.edit(a)}
+              >
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{a.title}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {[a.issuer, a.date && fmtMonthYear(a.date)].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <EditButton label={t.editAward} onClick={() => ed.edit(a)} />
+                </div>
+                {a.description && <p className="mt-1.5 text-sm text-pretty">{a.description}</p>}
+              </EntryRow>
+            </li>
+          ))}
+        </ul>
+      )}
+      <AwardDialog
+        open={ed.open}
+        onOpenChange={ed.onOpenChange}
+        entry={ed.entry}
+        profile={p}
+        onSave={(a) => onChange({ ...p, awards: upsert(p.awards, a) })}
+        onDelete={(a) => onChange({ ...p, awards: p.awards.filter((x) => x.id !== a.id) })}
+      />
+    </Section>
+  )
+}
+
+/** Short phrases, printed on one line by the templates that have the section. */
+function Interests({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
+  const t = useT().profileView
+  const add = (name: string) => {
+    if (!p.interests.some((x) => x.toLowerCase() === name.toLowerCase())) onChange({ ...p, interests: [...p.interests, name] })
+  }
+  return (
+    <Section icon={HeartIcon} title={t.interests} count={p.interests.length}>
+      <div className="flex flex-wrap gap-1.5">
+        <AnimatePresence initial={false}>
+          {p.interests.map((x) => (
+            <motion.span
+              key={x}
+              layout
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.12 } }}
+              className="group inline-flex h-7 items-center gap-1 rounded-full border pr-1 pl-2.5 text-xs"
+            >
+              {x}
+              <button
+                type="button"
+                aria-label={t.removeInterest(x)}
+                className="grid size-5 place-items-center rounded-full text-muted-foreground opacity-50 transition-opacity group-hover:opacity-100 hover:bg-muted"
+                onClick={() => onChange({ ...p, interests: p.interests.filter((y) => y !== x) })}
+              >
+                <XIcon className="size-3" />
+              </button>
+            </motion.span>
+          ))}
+        </AnimatePresence>
+        <AddSkill onAdd={add} placeholder={t.addInterest} />
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">{t.interestsHint}</p>
+    </Section>
+  )
+}
+
 // --- Sidebar ---------------------------------------------------------------------------------
 
 function Aside({ profile }: { profile: Profile }) {
   const all = useT()
   const t = all.profileView
   const { score, missing } = completeness(profile)
-  const generated = useGenerated()
+  const generated = useCvCount()
   return (
     <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
       <Card className="gap-3 px-5 py-4">
@@ -1003,7 +1351,7 @@ function Aside({ profile }: { profile: Profile }) {
 
       <CvPrefsCard />
 
-      <EngineCard generated={generated.size} />
+      <EngineCard generated={generated} />
     </aside>
   )
 }
@@ -1051,61 +1399,241 @@ function CvPrefsCard() {
   const all = useT()
   const t = all.profileView
   const [gallery, setGallery] = useState(false)
+  const choices = useCvChoices()
   const prefs = useCvPrefs()
   const save = useSaveCvPrefs()
-  const set = <K extends keyof CvPrefs>(key: K) => (value: string) => save.mutate({ ...prefs, [key]: value as CvPrefs[K] })
+  const set = <K extends keyof CvPrefs>(key: K) => (value: string) => save.mutate({ [key]: value as CvPrefs[K] })
   return (
     <Card className="gap-3 px-5 py-4">
       <h2 className="text-sm font-medium">{t.cvPrefs}</h2>
-      <Pref
-        label={t.language}
-        value={prefs.language}
-        onChange={set("language")}
-        options={[["job", t.languageJob], ["it", t.languageIt], ["en", t.languageEn], ["de", t.languageDe], ["ko", t.languageKo]]}
-      />
-      <Pref
-        label={t.format}
-        value={prefs.format}
-        onChange={set("format")}
-        options={[["auto", t.formatAuto], ["a4", "A4"], ["letter", "Letter"]]}
-      />
-      <Pref
-        label={t.style}
-        value={prefs.style}
-        onChange={set("style")}
-        options={CV_TEMPLATES.map((id) => [id, all.cv.templates[id].name])}
-      />
-      <Button variant="outline" size="sm" className="w-full" onClick={() => setGallery(true)}>
-        <LayoutGridIcon />
-        {t.compareStyles}
-      </Button>
+      {/* One grid: every label in one column, every control the same width in the other. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_8.75rem] items-center gap-x-3 gap-y-2">
+        <Pref label={t.language} value={prefs.language} onChange={set("language")} options={choices.language} />
+        <Pref label={t.format} value={prefs.format} onChange={set("format")} options={choices.format} />
+        <Pref label={t.style} value={prefs.style} onChange={set("style")} options={choices.style} />
+        <LinkButton
+          onClick={() => setGallery(true)}
+          className="col-start-2 -mt-1 inline-flex items-center gap-1 justify-self-start text-xs text-muted-foreground hover:text-foreground"
+        >
+          <LayoutGridIcon className="size-3" />
+          {t.compareStyles}
+        </LinkButton>
+        <Pref label={t.photo} value={prefs.photo} onChange={set("photo")} options={choices.photo} />
+        <FooterPref prefs={prefs} onSave={(footer, footerCountries) => save.mutate({ footer, footerCountries })} />
+        <LockedPref prefs={prefs} onChange={(locked) => save.mutate({ locked })} />
+        <GuidancePref prefs={prefs} onSave={(guidance) => save.mutate({ guidance })} />
+      </div>
       <StyleGallery open={gallery} onOpenChange={setGallery} />
-      <Pref
-        label={t.photo}
-        value={prefs.photo}
-        onChange={set("photo")}
-        options={[["auto", t.photoAuto], ["always", t.photoAlways], ["never", t.photoNever]]}
-      />
     </Card>
+  )
+}
+
+/** A control of the preferences grid that opens something: same size as the selects. */
+function PrefButton({ empty, children, ...props }: { empty?: boolean } & React.ComponentProps<typeof Button>) {
+  return (
+    <Button variant="outline" size="sm" className="h-7 w-full justify-between gap-1 px-2.5 text-xs font-normal" {...props}>
+      <span className={cn("truncate", empty && "text-muted-foreground")}>{children}</span>
+      <ChevronDownIcon className="text-muted-foreground" />
+    </Button>
+  )
+}
+
+/**
+ * The line the CV ends with, in the user's words: a data-processing consent (Italy), a work
+ * permit, whatever their markets expect. On every CV, or only for postings in the countries
+ * picked: no country's rules are built in.
+ */
+function FooterPref({
+  prefs,
+  onSave,
+}: {
+  prefs: CvPrefs
+  onSave: (footer: string, countries: string[]) => void
+}) {
+  const all = useT()
+  const t = all.profileView
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState(prefs.footer)
+  const [scope, setScope] = useState<"all" | "some">("all")
+  const [countries, setCountries] = useState(prefs.footerCountries)
+  const summary = !prefs.footer
+    ? t.footerNone
+    : prefs.footerCountries.length
+      ? prefs.footerCountries.map((c) => countryName(c, intlTag())).join(", ")
+      : t.footerEverywhere
+  return (
+    <>
+      <PrefLabel label={t.footer} hint={t.footerHint} />
+      <PrefButton
+        empty={!prefs.footer}
+        onClick={() => {
+          setText(prefs.footer)
+          setCountries(prefs.footerCountries)
+          setScope(prefs.footerCountries.length ? "some" : "all")
+          setOpen(true)
+        }}
+      >
+        {summary}
+      </PrefButton>
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={t.footer}
+        description={t.footerDialogHint}
+        footnote={<span />}
+        canSave={scope === "all" || countries.length > 0 || !text.trim()}
+        onSave={() => onSave(text.trim(), text.trim() && scope === "some" ? countries : [])}
+      >
+        <Field label={t.footerText}>
+          <Textarea
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={600}
+            placeholder={t.footerPlaceholder}
+            className="min-h-24"
+          />
+        </Field>
+        <FormGroup title={t.footerWhere}>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={scope}
+            onValueChange={(v) => v && setScope(v as "all" | "some")}
+            disabled={!text.trim()}
+            className="w-fit"
+          >
+            <ToggleGroupItem value="all" className="px-3 text-xs">
+              {t.footerEverywhere}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="some" className="px-3 text-xs">
+              {t.footerSome}
+            </ToggleGroupItem>
+          </ToggleGroup>
+          {scope === "some" && text.trim() && (
+            <div className="space-y-2">
+              <CountryPicker value={countries} onChange={setCountries} />
+              <p className="text-xs text-pretty text-muted-foreground">{t.footerSomeHint}</p>
+            </div>
+          )}
+        </FormGroup>
+      </FormDialog>
+    </>
+  )
+}
+
+/** Sections a tailored CV copies from the profile as they are. */
+function LockedPref({ prefs, onChange }: { prefs: CvPrefs; onChange: (locked: CvPrefs["locked"]) => void }) {
+  const t = useT().profileView
+  const n = prefs.locked.length
+  return (
+    <>
+      <PrefLabel label={t.locked} hint={t.lockedHint} />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <PrefButton empty={!n}>{n ? t.lockedSome(n) : t.lockedNone}</PrefButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {LOCKED_SECTIONS.map((section) => (
+            <DropdownMenuCheckboxItem
+              key={section}
+              className="text-xs"
+              checked={prefs.locked.includes(section)}
+              onSelect={(e) => e.preventDefault()}
+              onCheckedChange={(on) =>
+                onChange(on ? [...prefs.locked, section] : prefs.locked.filter((x) => x !== section))
+              }
+            >
+              {t.sections[section]}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  )
+}
+
+/** The story and house rules every tailored CV follows (career-ops' _profile.md and _custom.md). */
+function GuidancePref({ prefs, onSave }: { prefs: CvPrefs; onSave: (guidance: string) => void }) {
+  const all = useT()
+  const t = all.profileView
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState(prefs.guidance)
+  return (
+    <>
+      <PrefLabel label={t.guidance} hint={t.guidanceHint} />
+      <PrefButton
+        empty={!prefs.guidance}
+        onClick={() => {
+          setText(prefs.guidance)
+          setOpen(true)
+        }}
+      >
+        {prefs.guidance || t.guidanceNone}
+      </PrefButton>
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={t.guidance}
+        description={t.guidanceDialogHint}
+        footnote={<span />}
+        onSave={() => onSave(text.trim())}
+      >
+        <Field label={t.guidance}>
+          <Textarea
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={3000}
+            placeholder={t.guidancePlaceholder}
+            className="min-h-48"
+          />
+        </Field>
+        <p className="-mt-3 text-right text-xs text-muted-foreground tabular-nums">{text.length} / 3000</p>
+      </FormDialog>
+    </>
+  )
+}
+
+/** A row's label; a hint, when there is one, behind a small (i), the same on every row: at the
+ * column's edge, so the (i)s line up however the labels wrap. */
+function PrefLabel({ label, hint }: { label: string; hint?: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1 text-xs leading-tight text-pretty text-muted-foreground">
+      <span className="min-w-0 flex-1">{label}</span>
+      {hint && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" aria-label={hint} className="shrink-0 rounded-full text-muted-foreground/60 hover:text-foreground">
+              <InfoIcon className="size-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-60">{hint}</TooltipContent>
+        </Tooltip>
+      )}
+    </span>
   )
 }
 
 function Pref({
   label,
+  hint,
   value,
   onChange,
   options,
 }: {
   label: string
+  hint?: string
   value: string
   onChange: (v: string) => void
   options: [string, string][]
 }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
+    <>
+      <PrefLabel label={label} hint={hint} />
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger size="sm" className="h-7 w-40 text-xs" aria-label={label}>
+        <SelectTrigger size="sm" className="h-7 w-full text-xs" aria-label={label}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent align="end">
@@ -1116,6 +1644,6 @@ function Pref({
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </>
   )
 }

@@ -31,7 +31,9 @@ TEMPLATES: dict[str, Path] = {
     "jake": ROOT / "cv-template.jake.html",
     "ats": ROOT / "ats" / "cv-template.ats.html",
 }
-CvLanguage = Literal["it", "en", "de", "ko"]
+CvLanguage = Literal[
+    "it", "en", "de", "ko", "zh", "es", "fr", "ja", "pt", "ru", "id", "nl", "tr"
+]  # fmt: skip
 PageFormat = Literal["a4", "letter"]
 PAGE_WIDTHS = {"a4": "210mm", "letter": "8.5in"}
 PAGE_HEIGHTS = {"a4": "297mm", "letter": "11in"}
@@ -52,6 +54,7 @@ WORDS: dict[str, dict[str, str]] = {
         "technical": "Technical",
         "languages": "Languages",
         "present": "Present",
+        "other": "Other",
     },
     "it": {
         "summary": "Profilo",
@@ -66,6 +69,7 @@ WORDS: dict[str, dict[str, str]] = {
         "technical": "Tecniche",
         "languages": "Lingue",
         "present": "oggi",
+        "other": "Altro",
     },
     "de": {
         "summary": "Profil",
@@ -80,6 +84,7 @@ WORDS: dict[str, dict[str, str]] = {
         "technical": "Fachlich",
         "languages": "Sprachen",
         "present": "heute",
+        "other": "Weitere",
     },
     "ko": {
         "summary": "자기소개",
@@ -94,6 +99,142 @@ WORDS: dict[str, dict[str, str]] = {
         "technical": "기술 스택",
         "languages": "외국어",
         "present": "현재",
+        "other": "기타",
+    },
+    "es": {
+        "summary": "Perfil profesional",
+        "competencies": "Competencias clave",
+        "experience": "Experiencia profesional",
+        "projects": "Proyectos",
+        "education": "Formación",
+        "certifications": "Certificaciones",
+        "awards": "Premios y reconocimientos",
+        "interests": "Intereses",
+        "skills": "Habilidades",
+        "technical": "Técnicas",
+        "languages": "Idiomas",
+        "present": "actualidad",
+        "other": "Otras",
+    },
+    "fr": {
+        "summary": "Profil",
+        "competencies": "Compétences clés",
+        "experience": "Expérience professionnelle",
+        "projects": "Projets",
+        "education": "Formation",
+        "certifications": "Certifications",
+        "awards": "Prix et distinctions",
+        "interests": "Centres d'intérêt",
+        "skills": "Compétences",
+        "technical": "Techniques",
+        "languages": "Langues",
+        "present": "aujourd'hui",
+        "other": "Autres",
+    },
+    "pt": {
+        "summary": "Resumo profissional",
+        "competencies": "Competências principais",
+        "experience": "Experiência profissional",
+        "projects": "Projetos",
+        "education": "Formação",
+        "certifications": "Certificações",
+        "awards": "Prêmios e reconhecimentos",
+        "interests": "Interesses",
+        "skills": "Habilidades",
+        "technical": "Técnicas",
+        "languages": "Idiomas",
+        "present": "atual",
+        "other": "Outras",
+    },
+    "nl": {
+        "summary": "Profiel",
+        "competencies": "Kerncompetenties",
+        "experience": "Werkervaring",
+        "projects": "Projecten",
+        "education": "Opleiding",
+        "certifications": "Certificeringen",
+        "awards": "Prijzen en onderscheidingen",
+        "interests": "Interesses",
+        "skills": "Vaardigheden",
+        "technical": "Technisch",
+        "languages": "Talen",
+        "present": "heden",
+        "other": "Overig",
+    },
+    "tr": {
+        "summary": "Profesyonel Özet",
+        "competencies": "Temel Yetkinlikler",
+        "experience": "İş Deneyimi",
+        "projects": "Projeler",
+        "education": "Eğitim",
+        "certifications": "Sertifikalar",
+        "awards": "Ödüller",
+        "interests": "İlgi Alanları",
+        "skills": "Beceriler",
+        "technical": "Teknik",
+        "languages": "Diller",
+        "present": "günümüz",
+        "other": "Diğer",
+    },
+    "id": {
+        "summary": "Ringkasan Profesional",
+        "competencies": "Kompetensi Inti",
+        "experience": "Pengalaman Kerja",
+        "projects": "Proyek",
+        "education": "Pendidikan",
+        "certifications": "Sertifikasi",
+        "awards": "Penghargaan",
+        "interests": "Minat",
+        "skills": "Keahlian",
+        "technical": "Teknis",
+        "languages": "Bahasa",
+        "present": "sekarang",
+        "other": "Lainnya",
+    },
+    "ru": {
+        "summary": "Профиль",
+        "competencies": "Ключевые компетенции",
+        "experience": "Опыт работы",
+        "projects": "Проекты",
+        "education": "Образование",
+        "certifications": "Сертификаты",
+        "awards": "Награды",
+        "interests": "Интересы",
+        "skills": "Навыки",
+        "technical": "Технические",
+        "languages": "Языки",
+        "present": "н. в.",
+        "other": "Другое",
+    },
+    "ja": {
+        "summary": "職務要約",
+        "competencies": "コアスキル",
+        "experience": "職務経歴",
+        "projects": "プロジェクト",
+        "education": "学歴",
+        "certifications": "資格",
+        "awards": "受賞歴",
+        "interests": "興味・関心",
+        "skills": "スキル",
+        "technical": "技術",
+        "languages": "語学",
+        "present": "現在",
+        "other": "その他",
+    },
+    "zh": {
+        "summary": "个人简介",
+        "competencies": "核心能力",
+        "experience": "工作经历",
+        "projects": "项目经历",
+        "education": "教育背景",
+        "certifications": "证书",
+        "awards": "荣誉奖项",
+        "interests": "兴趣爱好",
+        "skills": "技能",
+        "technical": "技术",
+        "languages": "语言",
+        "present": "至今",
+        "other": "其他",
     },
 }
 MONTHS = {
@@ -139,6 +280,104 @@ MONTHS = {
         "Nov.",
         "Dez.",
     ],
+    "es": [
+        "ene",
+        "feb",
+        "mar",
+        "abr",
+        "may",
+        "jun",
+        "jul",
+        "ago",
+        "sept",
+        "oct",
+        "nov",
+        "dic",
+    ],
+    "fr": [
+        "janv.",
+        "févr.",
+        "mars",
+        "avr.",
+        "mai",
+        "juin",
+        "juil.",
+        "août",
+        "sept.",
+        "oct.",
+        "nov.",
+        "déc.",
+    ],
+    "pt": [
+        "jan",
+        "fev",
+        "mar",
+        "abr",
+        "mai",
+        "jun",
+        "jul",
+        "ago",
+        "set",
+        "out",
+        "nov",
+        "dez",
+    ],
+    "nl": [
+        "jan",
+        "feb",
+        "mrt",
+        "apr",
+        "mei",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "okt",
+        "nov",
+        "dec",
+    ],
+    "tr": [
+        "Oca",
+        "Şub",
+        "Mar",
+        "Nis",
+        "May",
+        "Haz",
+        "Tem",
+        "Ağu",
+        "Eyl",
+        "Eki",
+        "Kas",
+        "Ara",
+    ],
+    "id": [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "Mei",
+        "Jun",
+        "Jul",
+        "Agu",
+        "Sep",
+        "Okt",
+        "Nov",
+        "Des",
+    ],
+    "ru": [
+        "янв.",
+        "февр.",
+        "март",
+        "апр.",
+        "май",
+        "июнь",
+        "июль",
+        "авг.",
+        "сент.",
+        "окт.",
+        "нояб.",
+        "дек.",
+    ],
 }
 LEVELS = {
     "en": {"elementary": "elementary", "limited": "limited working", "professional": "professional working",
@@ -149,7 +388,18 @@ LEVELS = {
            "full": "fließend", "native": "Muttersprache"},
     "ko": {"elementary": "초급", "limited": "제한적 업무 가능", "professional": "업무 가능",
            "full": "비즈니스 능통", "native": "원어민"},
+    "es": {'elementary': 'básico', 'limited': 'limitado', 'professional': 'profesional', 'full': 'profesional completo', 'native': 'nativo'},
+    "fr": {'elementary': 'notions', 'limited': 'usage professionnel limité', 'professional': 'usage professionnel', 'full': 'courant', 'native': 'langue maternelle'},
+    "pt": {'elementary': 'básico', 'limited': 'limitado', 'professional': 'profissional', 'full': 'fluente', 'native': 'nativo'},
+    "nl": {'elementary': 'basis', 'limited': 'beperkt', 'professional': 'professioneel', 'full': 'vloeiend', 'native': 'moedertaal'},
+    "tr": {'elementary': 'başlangıç', 'limited': 'sınırlı', 'professional': 'profesyonel', 'full': 'ileri', 'native': 'ana dil'},
+    "id": {'elementary': 'dasar', 'limited': 'terbatas', 'professional': 'profesional', 'full': 'fasih', 'native': 'bahasa ibu'},
+    "ru": {'elementary': 'начальный', 'limited': 'ограниченный', 'professional': 'рабочий', 'full': 'свободный', 'native': 'родной'},
+    "ja": {'elementary': '初級', 'limited': '日常会話', 'professional': 'ビジネス', 'full': 'ビジネス上級', 'native': 'ネイティブ'},
+    "zh": {'elementary': '初级', 'limited': '有限工作能力', 'professional': '工作熟练', 'full': '专业精通', 'native': '母语'},
 }  # fmt: skip
+
+PhotoStyle = Literal["circle", "square"]
 
 
 # --- Escaping and URLs (as build-cv-html.mjs) --------------------------------------------------
@@ -162,6 +412,20 @@ def esc(text: object) -> str:
     return (
         html.escape(str(text), quote=True).replace("{", "&#123;").replace("}", "&#125;")
     )
+
+
+_BOLD = re.compile(r"\*\*([^*]+?)\*\*")
+
+
+def rich(text: object) -> str:
+    """`esc`, then `**…**` as <strong>, as career-ops does: escaping first, so only the markers
+    it left alone are read, and a bold span can't hold markup."""
+    return _BOLD.sub(r"<strong>\1</strong>", esc(text))
+
+
+def plain(text: str) -> str:
+    """The text without its `**` markers, as a reader (or an ATS) sees it."""
+    return _BOLD.sub(r"\1", text)
 
 
 _SCHEMES = ("mailto:", "tel:", "http:", "https:")
@@ -284,6 +548,8 @@ def strip_empty(source: str, filled: dict[str, bool]) -> str:
 def _date(d: MonthYear | None, lang: str) -> str:
     if not d:
         return ""
+    if lang in ("zh", "ja"):  # 2020年3月
+        return f"{d.year}年{d.month + 1}月" if d.month is not None else f"{d.year}年"
     if lang == "ko":  # Korean CVs write dates as 2020.03
         return f"{d.year}.{d.month + 1:02d}" if d.month is not None else str(d.year)
     return f"{MONTHS[lang][d.month]} {d.year}" if d.month is not None else str(d.year)
@@ -317,6 +583,9 @@ def _replace_contact_row(source: str, row: str) -> str:
 
 def _contact_row(p: Profile) -> str:
     items = []
+    if p.phone:
+        tel = safe_url("tel:" + re.sub(r"[^\d+]", "", p.phone))
+        items.append(f'<a href="{tel}">{esc(p.phone)}</a>' if tel else esc(p.phone))
     if p.email:
         items.append(f'<a href="{safe_url("mailto:" + p.email)}">{esc(p.email)}</a>')
     for link in p.links:
@@ -435,6 +704,10 @@ def _experience(p: Profile, part: Partial, lang: str, mark, group: bool = True) 
             role = esc(e.role)
             if grouped and period:
                 role += f' <span class="ca-role-period">· {period}</span>'
+            # The employer's line belongs to the company: once, on its first role.
+            context = esc(e.context) if i == 0 or not grouped else ""
+            if grouped and i == 0 and not context:
+                context = next((esc(r.context) for r in g if r.context), "")
             fields = {
                 "COMPANY": esc(e.company),
                 "PERIOD": esc(_period(*_span(g), lang))
@@ -442,11 +715,13 @@ def _experience(p: Profile, part: Partial, lang: str, mark, group: bool = True) 
                 else period,
                 "ROLE": role,
                 "LOCATION": esc(where),
-                "CONTEXT": "",
+                "CONTEXT": context,
                 "BULLETS": bullets,
             }
             entry = fill_entry(
-                part, fields, {"LOCATION_BLOCK": esc(where), "CONTEXT_BLOCK": None}
+                part,
+                fields,
+                {"LOCATION_BLOCK": esc(where), "CONTEXT_BLOCK": context or None},
             )
             if grouped:
                 entry = _with_class(entry, "ca-company" if i == 0 else "ca-role")
@@ -459,6 +734,15 @@ _MODES = {
     "it": {"onsite": "In sede", "hybrid": "Ibrido", "remote": "Da remoto"},
     "de": {"onsite": "Vor Ort", "hybrid": "Hybrid", "remote": "Remote"},
     "ko": {"onsite": "사무실 근무", "hybrid": "하이브리드", "remote": "원격 근무"},
+    "es": {"onsite": "Presencial", "hybrid": "Híbrido", "remote": "En remoto"},
+    "fr": {"onsite": "Sur site", "hybrid": "Hybride", "remote": "Télétravail"},
+    "pt": {"onsite": "Presencial", "hybrid": "Híbrido", "remote": "Remoto"},
+    "nl": {"onsite": "Op locatie", "hybrid": "Hybride", "remote": "Op afstand"},
+    "tr": {"onsite": "Ofiste", "hybrid": "Hibrit", "remote": "Uzaktan"},
+    "id": {"onsite": "Di kantor", "hybrid": "Hibrida", "remote": "Jarak jauh"},
+    "ru": {"onsite": "В офисе", "hybrid": "Гибрид", "remote": "Удалённо"},
+    "ja": {"onsite": "出社", "hybrid": "ハイブリッド", "remote": "リモート"},
+    "zh": {"onsite": "现场办公", "hybrid": "混合办公", "remote": "远程"},
 }
 
 
@@ -486,7 +770,7 @@ def _education(p: Profile, part: Partial, lang: str) -> str:
     return "\n  ".join(out)
 
 
-def _projects(p: Profile, part: Partial) -> str:
+def _projects(p: Profile, part: Partial, mark) -> str:
     out = []
     for x in p.projects:
         if not x.name:
@@ -494,15 +778,16 @@ def _projects(p: Profile, part: Partial) -> str:
         href = safe_url(x.url)
         name = f'<a href="{href}">{esc(x.name)}</a>' if href else esc(x.name)
         tech = ", ".join(x.skills)
+        desc = mark(x.description) if x.description else ""
         fields = {
             "NAME": name,
             "BADGE": "",
-            "DESC": esc(x.description),
+            "DESC": desc,
             "TECH": esc(tech),
         }
         present = {
             "BADGE_BLOCK": None,
-            "DESC_BLOCK": esc(x.description) or None,
+            "DESC_BLOCK": desc or None,
             "TECH_BLOCK": esc(tech) or None,
         }
         out.append(fill_entry(part, fields, present))
@@ -526,12 +811,52 @@ def _certifications(p: Profile, part: Partial) -> str:
     return "\n    ".join(out)
 
 
-def _skills(p: Profile, part: Partial, lang: str) -> str:
+def _awards(p: Profile, part: Partial) -> str:
+    out = []
+    for a in p.awards:
+        if not a.title:
+            continue
+        year = str(a.date.year) if a.date else ""
+        fields = {"TITLE": esc(a.title), "ORG": esc(a.issuer), "YEAR": esc(year)}
+        out.append(
+            fill_entry(
+                part,
+                fields,
+                {"ORG_BLOCK": esc(a.issuer) or None, "YEAR_BLOCK": esc(year) or None},
+            )
+        )
+    return "\n    ".join(out)
+
+
+def _interests(p: Profile) -> str:
+    """One line, commas. Kept as typed: career-ops lowercases all but the first, which
+    breaks names and acronyms ("Python", "AI ethics")."""
+    return ", ".join(esc(x.strip()) for x in p.interests if x.strip())
+
+
+def skill_groups(p: Profile, lang: str) -> list[tuple[str, list[str]]]:
+    """The skills line by line: one per category, in the order categories first appear.
+    Uncategorised skills go on the general line ("Technical"), or on "Other" after the
+    named ones when there are some."""
+    groups: dict[str, list[str]] = {}
+    for s in p.skills:
+        if s.name:
+            groups.setdefault(s.category.strip(), []).append(s.name)
+    loose = groups.pop("", [])
     w = WORDS[lang]
-    rows = []
-    names = [s.name for s in p.skills]
-    if names:
-        rows.append((w["technical"], ", ".join(names)))
+    rows = list(groups.items())
+    if loose:
+        rows.append((w["other"] if rows else w["technical"], loose))
+    return rows
+
+
+def _skills(
+    p: Profile, part: Partial, lang: str, first: tuple[str, str] | None = None
+) -> str:
+    w = WORDS[lang]
+    rows = [(cat, ", ".join(names)) for cat, names in skill_groups(p, lang)]
+    if first:
+        rows.insert(0, first)
     langs = [
         f"{x.name} ({x.level if x.level in ('A1', 'A2', 'B1', 'B2', 'C1', 'C2') else LEVELS[lang][x.level]})"
         for x in p.languages
@@ -585,15 +910,19 @@ def render(
     page: PageFormat = "a4",
     photo: bool = False,
     marked: frozenset[str] = frozenset(),
+    competencies: tuple[str, ...] | list[str] = (),
+    footer: str = "",
+    photo_style: PhotoStyle = "circle",
 ) -> str:
-    """The CV as an HTML document. Texts in `marked` (bullets, the summary) are highlighted:
-    the parts a tailored CV changed."""
+    """The CV as an HTML document. Texts in `marked` (bullets, the summary, a project's
+    description) are highlighted: the parts a tailored CV changed. `competencies` are a
+    tailored CV's keyword tags; `footer` is a line printed at the bottom (a consent, a permit)."""
 
     def mark(text: str) -> str:
         return (
-            f'<mark class="ca-changed">{esc(text)}</mark>'
+            f'<mark class="ca-changed">{rich(text)}</mark>'
             if text in marked
-            else esc(text)
+            else rich(text)
         )
 
     path = TEMPLATES[template]
@@ -601,26 +930,43 @@ def render(
     w = WORDS[lang]
     p = profile
     photo_src = p.photo if photo and p.photo and _PHOTO_SRC.match(p.photo) else ""
+    if photo_style not in ("circle", "square"):
+        photo_style = "circle"
 
     sections = {
         "EXPERIENCE": _experience(
             p, parts["experience"], lang, mark, group=template != "ats"
         ),
-        "PROJECTS": _projects(p, parts["projects"]),
+        "PROJECTS": _projects(p, parts["projects"], mark),
         "EDUCATION": _education(p, parts["education"], lang),
         "CERTIFICATIONS": _certifications(p, parts["certifications"]),
-        "SKILLS": _skills(p, parts["skills"], lang),
+        "AWARDS": _awards(p, parts["awards"]) if "awards" in parts else "",
     }
+    tags = list(dict.fromkeys(c.strip() for c in competencies if c.strip()))
+    # Parsers drop a row of tags whole: the ATS template gets them as a skills line instead,
+    # as career-ops' ats-payload.mjs folds them.
+    folded = (
+        (w["competencies"], ", ".join(tags)) if tags and template == "ats" else None
+    )
+    sections["SKILLS"] = _skills(p, parts["skills"], lang, folded)
+    if folded:
+        tags = []
+    if tags and "competencies" in parts:
+        sections["COMPETENCIES"] = "\n      ".join(
+            fill_entry(parts["competencies"], {"TAG": esc(c)}, {}) for c in tags
+        )
+    else:
+        sections["COMPETENCIES"] = "\n      ".join(
+            f'<span class="competency-tag">{esc(c)}</span>' for c in tags
+        )
     fields = {
         "LANG": lang,
         "PAGE_WIDTH": PAGE_WIDTHS[page],
         "NAME": esc(p.name),
         "SUMMARY_TEXT": mark(p.summary),
-        "COMPETENCIES": "",
-        "AWARDS": "",
-        "INTERESTS": "",
-        "CONSENT": "",
-        "PHOTO": f'<img class="cv-photo cv-photo--rounded" src="{esc(photo_src)}" alt="{esc(p.name)}">'
+        "INTERESTS": _interests(p),
+        "CONSENT": esc(footer.strip()),
+        "PHOTO": f'<img class="cv-photo cv-photo--{photo_style}" src="{esc(photo_src)}" alt="{esc(p.name)}">'
         if photo_src
         else "",
         **sections,
@@ -643,6 +989,9 @@ def render(
             "projects": bool(sections["PROJECTS"]),
             "education": bool(sections["EDUCATION"]),
             "certifications": bool(sections["CERTIFICATIONS"]),
+            "competencies": bool(sections["COMPETENCIES"]),
+            "awards": bool(sections["AWARDS"]),
+            "interests": bool(fields["INTERESTS"]),
             "skills": bool(sections["SKILLS"]),
         },
     )

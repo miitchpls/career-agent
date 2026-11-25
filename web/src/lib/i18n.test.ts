@@ -1,15 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest"
 
-import { getLocale, msgs, setLocale } from "@/lib/i18n"
+import { getLocale, LOCALES, msgs, setLocale } from "@/lib/i18n"
 import { suggest } from "@/lib/compose"
 import { DEFAULT_FILTERS } from "@/lib/filters"
 import { formatAmount, parseKoreanAmount, parseSalary } from "@/lib/currencies"
 import { offersPhrase } from "@/lib/run-messages"
 import { salaryLabel } from "@/lib/format"
-import { de } from "@/locales/de"
-import { en } from "@/locales/en"
 import { it as itMsgs } from "@/locales/it"
-import { ko } from "@/locales/ko"
 
 /** Every key path, functions and arrays included as leaves. */
 function paths(o: object, prefix = ""): string[] {
@@ -23,9 +20,18 @@ afterEach(() => setLocale("it"))
 describe("locales", () => {
   it("have the same keys as Italian", () => {
     const ref = paths(itMsgs).sort()
-    expect(paths(en).sort()).toEqual(ref)
-    expect(paths(de).sort()).toEqual(ref)
-    expect(paths(ko).sort()).toEqual(ref)
+    for (const { value } of LOCALES) {
+      setLocale(value)
+      expect(paths(msgs()).sort(), value).toEqual(ref)
+    }
+  })
+
+  it("count in Russian plural forms", () => {
+    setLocale("ru")
+    expect(offersPhrase(1, 1)).toBe("1 вакансия, все новые")
+    expect(offersPhrase(3, 0)).toBe("3 вакансии, уже просмотрены")
+    expect(offersPhrase(11, 2)).toBe("11 вакансий, новых: 2")
+    expect(offersPhrase(21, 0)).toBe("21 вакансия, уже просмотрены")
   })
 
   it("switch the messages used by plain functions", () => {

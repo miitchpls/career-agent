@@ -1,7 +1,7 @@
 # career-agent UI
 
 React 19, TypeScript and Vite, with [shadcn/ui](https://ui.shadcn.com) components on Tailwind CSS v4. The build is
-served by the Python backend; see the [project README](../README.md) for what the app does.
+served by the Python backend; see the [project README](../README.md) for what the app does and [docs/reference.md](../docs/reference.md) for how.
 
 ```bash
 npm install
@@ -18,28 +18,33 @@ src/
   main.tsx            Providers (theme, URL state, React Query, tooltips, toasts); loads the profile
   App.tsx             Header, navigation, search page and results
   components/
+    brand/            The logo, whose needle spins on hover
     composer/         The search bar: typed text → filter pieces in a sentence
     filters/          Editors for each filter
     jobs/             Results table, posting sheet, work-mode badge
     run/              Starting a board search and following its progress
     saved/            Saved searches
     profile/          Profile page: onboarding, import progress, view, edit dialogs
-    cv/               Tailored CV (mock)
+    cv/               Tailored CV, its per-posting settings, CV page preview, style gallery, country picker
     settings/         Preferences: theme, language, AI engine
     ui/               shadcn/ui components, generated (`npx shadcn add …`)
   lib/
     api.ts            Typed client for the backend; sends Accept-Language
     filters.ts        Filter state in the URL (nuqs) and its conversion to the API query
-    compose.ts        Parses typed text into filter suggestions (it/en/de/ko words)
+    compose.ts        Parses typed text into filter suggestions (words in all 13 languages)
     queries.ts        React Query hooks: jobs, run status, saved searches, places
     profile.ts        Profile types, helpers and store (see below)
+    tailored-cv.ts    Tailored CV per posting: polling, start, cancel, PDF, the posting's own settings
+    routes.ts         Page and item addresses (/jobs/<id>/<tab>, /applications/…, /profile)
+    cv-prefs.ts       CV preferences and what "auto" means for one posting (country, language, footer)
+    countries.ts      Country codes and names (Intl.DisplayNames); the country at the end of a location
     i18n.ts           Locale store and `useT()`
-  locales/            it.ts (reference), en.ts, de.ts, ko.ts
+  locales/            it.ts (reference) and the other 12: en, de, es, fr, pt, nl, tr, ru, id, zh, ja, ko
 ```
 
 ## Conventions
 
-**State.** Filters live in the URL, so a link reproduces a search. Server data goes through React Query. The
+**State.** Pages and open sheets are paths (React Router, `lib/routes.ts`); filters live in the query string (nuqs), so a link reproduces a search. Server data goes through React Query. The
 profile has its own store (`lib/profile.ts`, read with `useProfile()`), because the header, the profile page and
 the posting sheet share it and its saves need ordering:
 

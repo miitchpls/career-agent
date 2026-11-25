@@ -80,22 +80,22 @@ export function removeLast(f: FilterState): Patch | null {
 
 // What users may type, in any of the UI languages (the parser doesn't depend on the locale).
 const MODE_WORDS: [KnownMode, string[]][] = [
-  ["onsite", ["in sede", "sede", "onsite", "on-site", "on site", "ufficio", "in presenza", "presenza", "office", "in office", "vor ort", "büro", "사무실", "사무실 근무", "출근", "상주"]],
-  ["hybrid", ["ibrido", "ibrida", "hybrid", "smart working", "하이브리드", "혼합 근무"]],
-  ["remote", ["remoto", "remota", "da remoto", "remote", "full remote", "telelavoro", "homeoffice", "home office", "원격", "원격 근무", "재택", "재택근무", "리모트"]],
+  ["onsite", ["in sede", "sede", "onsite", "on-site", "on site", "ufficio", "in presenza", "presenza", "office", "in office", "vor ort", "büro", "사무실", "사무실 근무", "출근", "상주", "au bureau", "di kantor", "en la oficina", "kantor", "no escritório", "ofiste", "op kantoor", "op locatie", "presencial", "sur place", "sur site", "yerinde", "в офисе", "офис", "オフィス", "出社", "坐班", "现场", "线下"]],
+  ["hybrid", ["ibrido", "ibrida", "hybrid", "smart working", "하이브리드", "혼합 근무", "híbrido", "hibrido", "hybride", "hibrit", "hibrida", "гибрид", "гибридный", "ハイブリッド", "混合办公", "混合"]],
+  ["remote", ["remoto", "remota", "da remoto", "remote", "full remote", "telelavoro", "homeoffice", "home office", "원격", "원격 근무", "재택", "재택근무", "리모트", "en remoto", "evden", "jarak jauh", "op afstand", "remoto", "teletrabajo", "thuiswerk", "trabalho remoto", "télétravail", "uzaktan", "wfh", "à distance", "удаленно", "удалёнка", "удалённо", "リモート", "在宅", "居家办公", "远程"]],
 ]
-const OR_WORDS = ["o", "or", "oppure", "oder", "또는", "|"]
-const ANYWHERE_WORDS = ["ovunque", "everywhere", "anywhere", "worldwide", "tutto il mondo", "überall", "weltweit", "어디서나", "전 세계", "전세계"]
+const OR_WORDS = ["o", "or", "oppure", "oder", "또는", "ou", "of", "veya", "atau", "или", "または", "或", "或者", "|"]
+const ANYWHERE_WORDS = ["ovunque", "everywhere", "anywhere", "worldwide", "tutto il mondo", "überall", "weltweit", "어디서나", "전 세계", "전세계", "en cualquier lugar", "todo el mundo", "n'importe où", "monde entier", "qualquer lugar", "mundo todo", "overal", "wereldwijd", "her yer", "dünya çapında", "di mana saja", "seluruh dunia", "везде", "весь мир", "どこでも", "世界中", "任何地方", "全球"]
 const POSTED_WORDS: [number, string[]][] = [
-  [24, ["oggi", "24h", "24 ore", "ultime 24 ore", "1g", "1 giorno", "today", "last 24 hours", "heute", "letzte 24 stunden", "오늘", "24시간", "최근 24시간"]],
-  [72, ["3g", "3 giorni", "ultimi 3 giorni", "3 days", "last 3 days", "3 tage", "letzte 3 tage", "3일", "최근 3일"]],
-  [168, ["settimana", "7g", "7 giorni", "1 settimana", "ultimi 7 giorni", "ultima settimana", "week", "last week", "last 7 days", "woche", "letzte woche", "letzte 7 tage", "1주", "일주일", "최근 1주", "최근 7일"]],
-  [336, ["2 settimane", "14g", "14 giorni", "ultime 2 settimane", "2 weeks", "last 2 weeks", "2 wochen", "letzte 2 wochen", "2주", "최근 2주"]],
-  [720, ["mese", "30g", "30 giorni", "1 mese", "ultimo mese", "ultimi 30 giorni", "month", "last month", "last 30 days", "monat", "letzter monat", "letzte 30 tage", "1개월", "한 달", "최근 1개월", "최근 30일"]],
+  [24, ["oggi", "24h", "24 ore", "ultime 24 ore", "1g", "1 giorno", "today", "last 24 hours", "heute", "letzte 24 stunden", "오늘", "24시간", "최근 24시간", "hoy", "aujourd'hui", "hoje", "vandaag", "bugün", "hari ini", "сегодня", "今日", "今天"]],
+  [72, ["3g", "3 giorni", "ultimi 3 giorni", "3 days", "last 3 days", "3 tage", "letzte 3 tage", "3일", "최근 3일", "3 días", "3 jours", "3 dias", "3 dagen", "3 gün", "3 hari", "3 дня", "3日", "3天"]],
+  [168, ["settimana", "7g", "7 giorni", "1 settimana", "ultimi 7 giorni", "ultima settimana", "week", "last week", "last 7 days", "woche", "letzte woche", "letzte 7 tage", "1주", "일주일", "최근 1주", "최근 7일", "semana", "última semana", "semaine", "dernière semaine", "week", "afgelopen week", "hafta", "son hafta", "minggu", "minggu ini", "неделя", "за неделю", "1週間", "一周", "最近一周"]],
+  [336, ["2 settimane", "14g", "14 giorni", "ultime 2 settimane", "2 weeks", "last 2 weeks", "2 wochen", "letzte 2 wochen", "2주", "최근 2주", "2 semanas", "2 semaines", "2 weken", "2 hafta", "2 minggu", "2 недели", "2週間", "两周"]],
+  [720, ["mese", "30g", "30 giorni", "1 mese", "ultimo mese", "ultimi 30 giorni", "month", "last month", "last 30 days", "monat", "letzter monat", "letzte 30 tage", "1개월", "한 달", "최근 1개월", "최근 30일", "mes", "último mes", "mois", "dernier mois", "mês", "último mês", "maand", "afgelopen maand", "ay", "son ay", "bulan", "bulan ini", "месяц", "за месяц", "1ヶ月", "一个月", "最近一个月"]],
 ]
 /** Starts of "ultimi…", "last…", "letzte…", "최근…": typing one lists every date choice. */
-const LAST = /^(ultim|last|letzt|최근)/
-const SALARY_WORDS = ["stipendio", "ral", "salary", "gehalt", "lohn", "연봉", "급여"]
+const LAST = /^(ultim|last|letzt|최근|derni|afgelopen|son |последн|最近)/
+const SALARY_WORDS = ["stipendio", "ral", "salary", "gehalt", "lohn", "연봉", "급여", "salario", "sueldo", "salaire", "salário", "salaris", "maaş", "gaji", "зарплата", "給与", "年収", "薪资", "工资"]
 
 const prefixOf = (t: string, words: string[]) => t.length >= 2 && words.some((w) => w.startsWith(t))
 
@@ -130,13 +130,6 @@ export function commitDraft(f: FilterState, kind: DraftKind, text: string): Patc
   if (kind === "title") return ops.addTitle(f, t)
   return { q: t }
 }
-
-const norm = (s: string) =>
-  s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .trim()
 
 export function placeLabel(o: Pick<PlaceOption, "city" | "region" | "country_name">): string {
   return [o.city, o.region !== o.city ? o.region : null, o.country_name].filter(Boolean).join(", ")
@@ -225,13 +218,10 @@ export function suggest(
     patch: ops.addTitle(f, raw),
     keepGroup: newGroup,
   }
-  const command = out.length > 0
-  const exactCity = places.some((o) => norm(o.city) === norm(raw))
-  // A city that matches what was typed (or a prefix with nothing else to suggest) goes first.
-  if (cityItems.length && (exactCity || !command)) out.push(...cityItems.slice(0, 5), keyword)
-  else out.push(keyword, ...cityItems.slice(0, 5))
-
-  out.push({ id: `q:${t}`, icon: TextSearchIcon, label: tr.textQuoted(raw), hint: tr.textHint, patch: { q: raw }, keepGroup: newGroup })
+  // The two filters any word can be come first, always: a place the geocoder matched by
+  // spelling ("engineer" finds a village somewhere) is the less likely reading.
+  out.push(keyword, { id: `q:${t}`, icon: TextSearchIcon, label: tr.textQuoted(raw), hint: tr.textHint, patch: { q: raw }, keepGroup: newGroup })
+  out.push(...cityItems.slice(0, 5))
   return out
 }
 

@@ -21,21 +21,20 @@ Nothing is fetched: only the saved posting, the profile and the preferences are 
 
 import hashlib
 import json
-import re
-import threading
-import unicodedata
 from typing import Literal
 
-from pydantic import Field, ValidationError
+from pydantic import Field
 
 from . import ai, db, runs
+from .facts import norm as _norm
 from .i18n import LOCALE, t
-from .profile import _LANGUAGE_NAMES, Profile, _Model, _nullable, _obj
+from .profile import Profile
+from .schema import LANGUAGE_NAMES, Model, nullable, obj
 
 # --- What holds whatever the search -------------------------------------------------------------
 
 
-class ScorePrefs(_Model):
+class ScorePrefs(Model):
     """Settings for the score, not profile data: no revision per change."""
 
     # Hard no's in the user's words ("no body rental"). The AI flags a posting that states
@@ -106,20 +105,20 @@ MAX_CHECKS = 3
 
 _S = {"type": "string"}
 _NULLABLE_S = {"type": ["string", "null"]}
-_DIMENSION = _obj(
+_DIMENSION = obj(
     {
         "status": {"type": "string", "enum": list(Status.__args__)},
-        "score": _nullable({"type": "integer", "minimum": 1, "maximum": 5}),
+        "score": nullable({"type": "integer", "minimum": 1, "maximum": 5}),
         "note": _S,
     }
 )
 # Field order is the order the AI writes in: the requirements' importance before any match,
 # the dimensions before the global score, the verdict last.
-SCORE_SCHEMA = _obj(
+SCORE_SCHEMA = obj(
     {
         "requirements": {
             "type": "array",
-            "items": _obj(
+            "items": obj(
                 {
                     "requirement": _S,
                     "importance": {"type": "string", "enum": list(IMPORTANCE_ORDER)},
@@ -130,16 +129,16 @@ SCORE_SCHEMA = _obj(
                 }
             ),
         },
-        "dimensions": _obj({d: _DIMENSION for d in DIMENSIONS}),
+        "dimensions": obj({d: _DIMENSION for d in DIMENSIONS}),
         "red_flags": {
             "type": "array",
-            "items": _obj(
+            "items": obj(
                 {"text": _S, "jd_quote": _NULLABLE_S, "hard_stop": {"type": "boolean"}}
             ),
         },
         "gaps": {
             "type": "array",
-            "items": _obj({"requirement": _S, "risk": _S, "mitigation": _S}),
+            "items": obj({"requirement": _S, "risk": _S, "mitigation": _S}),
         },
         "checks": {"type": "array", "items": _S},
         "score": {"type": "number", "minimum": 1, "maximum": 5},
@@ -149,7 +148,7 @@ SCORE_SCHEMA = _obj(
 
 
 def system_prompt(locale: str) -> str:
-    lang = _LANGUAGE_NAMES.get(locale, "English")
+    lang = LANGUAGE_NAMES.get(locale, "English")
     return f"""You judge how well a job posting fits a job seeker, the way a careful \
 recruiter-side career coach would, and score it from 1 to 5.
 
@@ -230,7 +229,7 @@ def user_prompt(job: dict, p: Profile, sp: ScorePrefs) -> str:
         "salary": salary,
     }
     profile = p.dump()
-    for k in ("photo", "email", "links", "name"):
+    for k in ("photo", "email", "phone", "links", "name"):
         profile.pop(k, None)
     return (
         f"<posting>\n{json.dumps(posting, ensure_ascii=False)}\n\n"
@@ -243,7 +242,7 @@ def user_prompt(job: dict, p: Profile, sp: ScorePrefs) -> str:
 # --- Checking what comes back --------------------------------------------------------------------
 
 
-class Requirement(_Model):
+class Requirement(Model):
     requirement: str
     importance: Importance
     evidence: Evidence
@@ -252,25 +251,25 @@ class Requirement(_Model):
     profile_evidence: str
 
 
-class DimensionScore(_Model):
+class DimensionScore(Model):
     status: Status
     score: int | None
     note: str
 
 
-class RedFlag(_Model):
+class RedFlag(Model):
     text: str
     jd_quote: str | None
     hard_stop: bool
 
 
-class Gap(_Model):
+class Gap(Model):
     requirement: str
     risk: str
     mitigation: str
 
 
-class Result(_Model):
+class Result(Model):
     score: float
     decision: Decision
     verdict: str
@@ -282,11 +281,6 @@ class Result(_Model):
     hard_stop: bool
     gaps: list[Gap]
     checks: list[str]
-
-
-def _norm(text: str) -> str:
-    text = unicodedata.normalize("NFKC", text).casefold()
-    return " ".join(re.findall(r"\w+", text))
 
 
 def _quoted(quote, posting: str) -> str | None:
@@ -467,20 +461,16 @@ MAX_RUNNING = 3
 
 
 class Scorer:
-    """Scores run in background threads: one per posting, a few at a time (see runs.Slot)."""
+    """Scores run in background threads: one per posting, a few at a time."""
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._slots: dict[str, runs.Slot] = {}
+        self._runs = runs.PostingRuns(db.update_score, MAX_RUNNING)
 
     def running(self, url: str) -> bool:
-        with self._lock:
-            slot = self._slots.get(url)
-        return bool(slot and slot.running())
+        return self._runs.running(url)
 
     def idle(self) -> bool:
-        with self._lock:
-            return all(s.idle() for s in self._slots.values())
+        return self._runs.idle()
 
     def start(self, url: str) -> None:
         job = db.get_job(url)
@@ -494,102 +484,39 @@ class Scorer:
         profile = Profile.model_validate(saved["data"])
         sp = prefs()
         provider, model = ai.resolve()  # raises AiError: shown as is
-        # One lock for the cap and the claim: two requests can't both take the last place.
-        # Cancelled runs count until their process has exited.
-        with self._lock:
-            busy = sum(not s.idle() for s in self._slots.values())
-            slot = self._slots.setdefault(url, runs.Slot())
-            if busy >= MAX_RUNNING and not slot.running():
-                self._prune(url)
-                raise RuntimeError(t("score_busy_many"))
-            try:
-                score_id = slot.claim(
-                    lambda: db.create_score(
-                        url, saved["id"], fingerprint(job, sp), provider.id, model
-                    ),
-                    t("score_busy"),
-                )
-            except RuntimeError:
-                self._prune(url)
-                raise
-        slot.spawn(self._run, url, slot, score_id, job, profile, sp, provider, model)
+
+        def call(on_start) -> dict:
+            return ai.run(
+                provider,
+                model,
+                system_prompt(LOCALE.get()),
+                user_prompt(job, profile, sp),
+                SCORE_SCHEMA,
+                on_start=on_start,
+            )
+
+        def check(raw: dict) -> dict:
+            result = to_result(raw, job)
+            return {
+                "value": result.score,
+                "decision": result.decision,
+                "result": result.model_dump_json(by_alias=True),
+            }
+
+        self._runs.launch(
+            url,
+            lambda: db.create_score(
+                url, saved["id"], fingerprint(job, sp), provider.id, model
+            ),
+            t("score_busy"),
+            t("score_busy_many"),
+            provider,
+            call,
+            check,
+        )
 
     def cancel(self, url: str) -> None:
-        with self._lock:
-            slot = self._slots.get(url)
-        if slot:
-            slot.cancel(
-                lambda score_id: db.update_score(
-                    score_id, when_status="running", status="cancelled"
-                )
-            )
-
-    def _prune(self, url: str) -> None:
-        """Forget a posting's slot once nothing runs in it (call with the lock held)."""
-        slot = self._slots.get(url)
-        if slot and slot.idle():
-            del self._slots[url]
-
-    def _run(
-        self,
-        url: str,
-        slot: runs.Slot,
-        score_id: int,
-        job: dict,
-        profile: Profile,
-        sp: ScorePrefs,
-        provider: ai.Provider,
-        model,
-    ) -> None:
-        try:
-            if slot.cancelled(score_id):
-                return
-            try:
-                raw = ai.run(
-                    provider,
-                    model,
-                    system_prompt(LOCALE.get()),
-                    user_prompt(job, profile, sp),
-                    SCORE_SCHEMA,
-                    on_start=slot.started(score_id),
-                )
-            except ai.AiError as e:
-                db.update_score(
-                    score_id, when_status="running", status="failed", error=str(e)
-                )
-                return
-            try:
-                result = to_result(raw, job)
-            except (ValidationError, TypeError, ValueError, KeyError, AttributeError):
-                db.update_score(
-                    score_id,
-                    when_status="running",
-                    status="failed",
-                    error=t("ai_invalid", name=provider.name),
-                    raw=json.dumps(raw, ensure_ascii=False),
-                )
-                return
-            db.update_score(
-                score_id,
-                when_status="running",
-                status="ready",
-                value=result.score,
-                decision=result.decision,
-                result=result.model_dump_json(by_alias=True),
-                raw=json.dumps(raw, ensure_ascii=False),
-            )
-        except Exception as e:  # never leave a score "running" forever
-            db.update_score(
-                score_id,
-                when_status="running",
-                status="failed",
-                error=t("ai_failed", name=provider.name, why=type(e).__name__),
-            )
-            raise
-        finally:
-            slot.done(score_id)
-            with self._lock:
-                self._prune(url)
+        self._runs.cancel(url)
 
 
 def state(url: str) -> dict:

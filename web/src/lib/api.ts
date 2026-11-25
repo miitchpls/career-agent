@@ -69,6 +69,8 @@ export interface Job {
   hits: { place: string; label: string | null; keyword: string }[]
   /** The posting's last finished fit score, if any. */
   score: { value: number; decision: ScoreDecision } | null
+  /** Whether a tailored CV was finished for it (`/api/jobs/cv`). */
+  has_cv?: boolean
 }
 
 export interface JobsPage {
@@ -195,7 +197,7 @@ export interface ProfileState {
 }
 
 /** Languages a CV can be written in (`career_agent.cv_render.CvLanguage`). */
-export const CV_LANGUAGES = ["it", "en", "de", "ko"] as const
+export const CV_LANGUAGES = ["it", "en", "de", "ko", "zh", "es", "fr", "ja", "pt", "ru", "id", "nl", "tr"] as const
 export type CvLanguage = (typeof CV_LANGUAGES)[number]
 
 /** career-ops' CV templates, rendered by `career_agent.cv_render`. */
@@ -211,7 +213,17 @@ export interface CvPreviewRequest {
   profile: unknown | null
   /** Texts to highlight: what a tailored CV moved. */
   marked?: string[]
+  /** A tailored CV's keyword tags. */
+  competencies?: string[]
+  /** The line the CV ends with. */
+  footer?: string
+  /** A posting's own photo shape; by default the saved preference. */
+  photoStyle?: CvPrefs["photoStyle"]
 }
+
+/** Sections a tailored CV copies from the profile as they are. */
+export const LOCKED_SECTIONS = ["headline", "summary", "experience", "projects", "skills"] as const
+export type LockedSection = (typeof LOCKED_SECTIONS)[number]
 
 /** How tailored CVs are written: `/api/cv/preferences`. */
 export interface CvPrefs {
@@ -223,6 +235,79 @@ export interface CvPrefs {
   style: CvTemplate
   /** "auto": only where CVs usually carry a photo. */
   photo: "auto" | "always" | "never"
+  photoStyle: "circle" | "square"
+  /** A line at the bottom of the CV (a data-processing consent, a permit); "" for none. */
+  footer: string
+  /** Only for postings in these countries (ISO codes, lowercase); empty: on every CV. */
+  footerCountries: string[]
+  locked: LockedSection[]
+  /** What every tailored CV should know: the story to tell, house rules. */
+  guidance: string
+}
+
+// --- Tailored CV (career_agent.tailor) ------------------------------------------------------------
+
+export interface TailoredCvResult {
+  language: CvLanguage
+  /** The CV's content, as a profile. */
+  profile: unknown
+  competencies: string[]
+  /** Texts rewritten or moved, highlighted in the preview. */
+  marked: string[]
+  /** listed: a skill of the profile; supported: its text shows it; gap: no trace of it. */
+  keywords: { term: string; kind: "listed" | "supported" | "gap"; inCv: boolean }[]
+  /** % of the keywords the CV contains. */
+  coverage: number | null
+  /** What the AI says it changed, in the UI's language. */
+  changes: string[]
+  /** What the server's checks undid: `terms` triggered it, `text` is the AI's version. */
+  warnings: {
+    kind: "bullet_restored" | "project_restored" | "summary_trimmed" | "summary_kept" | "headline_kept" | "competency_dropped"
+    terms: string[]
+    text: string
+  }[]
+}
+
+export interface TailoredCv {
+  id: number
+  url: string
+  status: "running" | "ready" | "failed"
+  language: CvLanguage
+  provider: string
+  model: string | null
+  result: TailoredCvResult | null
+  error: string | null
+  created_at: string
+  /** How many CVs were finished for this posting, up to this one. */
+  version: number
+  /** Ready CVs: the profile, the posting or the CV settings changed since. */
+  stale?: boolean
+}
+
+export interface CvState {
+  cv: TailoredCv | null
+  earlier: TailoredCv | null
+}
+
+/** One posting's own CV settings: each one set (not null) replaces the default for it only. */
+export interface CvOverrides {
+  language: CvPrefs["language"] | null
+  format: CvPrefs["format"] | null
+  style: CvPrefs["style"] | null
+  photo: CvPrefs["photo"] | null
+  /** Whether this posting's CV ends with the footer, wherever the posting is. */
+  footer: boolean | null
+  locked: LockedSection[] | null
+  /** Added to the default guidance, for this posting only. */
+  notes: string
+}
+
+export interface CvPdfRequest {
+  url: string
+  template: CvTemplate
+  format: "a4" | "letter"
+  photo: boolean
+  footer: string
 }
 
 export interface UploadedFile {
@@ -430,6 +515,26 @@ export const api = {
     prefs: () => request<CvPrefs>("/api/cv/preferences"),
     savePrefs: (prefs: CvPrefs) => put<CvPrefs>("/api/cv/preferences", prefs),
     preview: (body: CvPreviewRequest) => post<{ pages: Partial<Record<CvTemplate, string>>; sample: boolean }>("/api/cv/preview", body),
+    get: (url: string) => request<CvState>(`/api/jobs/cv?url=${encodeURIComponent(url)}`),
+    start: (url: string, language: CvLanguage) => post<CvState>("/api/jobs/cv", { url, language }),
+    cancel: (url: string) => del<CvState>(`/api/jobs/cv?url=${encodeURIComponent(url)}`),
+    count: () => request<{ postings: number }>("/api/jobs/cv/count"),
+    settings: (url: string) => request<CvOverrides>(`/api/jobs/cv/settings?url=${encodeURIComponent(url)}`),
+    saveSettings: (url: string, settings: CvOverrides) => put<CvOverrides>("/api/jobs/cv/settings", { url, settings }),
+    /** The PDF file and the name the server gives it. */
+    pdf: async (body: CvPdfRequest): Promise<{ blob: Blob; filename: string }> => {
+      const res = await fetch("/api/jobs/cv/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept-Language": getLocale() },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => null))?.detail
+        throw new Error(typeof detail === "string" ? detail : msgs().common.invalidRequest)
+      }
+      const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1]
+      return { blob: await res.blob(), filename: name ?? "CV.pdf" }
+    },
   },
   profile: {
     get: () => request<ProfileState>("/api/profile"),

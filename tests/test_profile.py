@@ -124,6 +124,35 @@ def test_to_profile_converts_and_flags_what_the_cv_does_not_say():
     assert len({e["id"] for e in p["experiences"]}) == 2
 
 
+def test_to_profile_reads_phone_context_categories_awards_and_interests():
+    raw = {
+        **RAW,
+        "phone": " +39 333 000 0000 ",
+        "experiences": [{**RAW["experiences"][0], "context": "Scale-up, 80 people"}],
+        "skills": [{"name": "Spark", "inferred": False, "category": "Data"}],
+        "awards": [
+            {
+                "title": "Premio tesi",
+                "issuer": "Università di Bologna",
+                "date": {"month": None, "year": 2019},
+                "description": "",
+                "evidence": "Laurea magistrale in Informatica",
+                "review": None,
+            },
+            {"title": "", "issuer": "x"},
+        ],
+        "interests": ["Vela", " ", "Vela"],
+    }
+    p = profile.to_profile(raw, CV)
+    assert p.phone == "+39 333 000 0000"
+    assert p.experiences[0].context == "Scale-up, 80 people"
+    assert p.skills[0].category == "Data"
+    # Its title isn't in the CV: flagged like any entry the CV doesn't hold.
+    assert [a.title for a in p.awards] == ["Premio tesi"] and p.awards[0].review
+    assert p.awards[0].date.year == 2019
+    assert p.interests == ["Vela"]
+
+
 def test_evidence_matching_ignores_case_punctuation_and_spacing():
     raw = {
         **RAW,
@@ -232,7 +261,9 @@ def test_profile_starts_empty_and_saves_revisions():
     assert r.status_code == 200
     body = r.json()
     assert body["profile"]["name"] == "Giulia Ferri"
-    assert body["profile"]["skills"] == [{"name": "Python", "inferred": False}]
+    assert body["profile"]["skills"] == [
+        {"name": "Python", "inferred": False, "category": ""}
+    ]
     assert body["saved_at"]
     client.put("/api/profile", json={"profile": P})  # unchanged: no new revision
     client.put("/api/profile", json={"profile": {**P, "name": "Giulia F."}})
@@ -669,16 +700,73 @@ def test_cv_preferences_are_saved():
         "format": "auto",
         "style": "standard",
         "photo": "auto",
+        "photoStyle": "circle",
+        "footer": "",
+        "footerCountries": [],
+        "locked": [],
+        "guidance": "",
     }
-    prefs = {"language": "de", "format": "a4", "style": "jake", "photo": "never"}
-    assert client.put("/api/cv/preferences", json=prefs).json() == prefs
-    assert client.get("/api/cv/preferences").json() == prefs
+    prefs = {
+        "language": "de",
+        "format": "a4",
+        "style": "jake",
+        "photo": "never",
+        "photoStyle": "square",
+        "footer": " Work permit: B (Switzerland). ",
+        "footerCountries": ["ch", "li", "ch"],
+        "locked": ["summary", "headline"],
+        "guidance": "  Never 'Senior' in the title. ",
+    }
+    saved = client.put("/api/cv/preferences", json=prefs).json()
+    # Sections in their own order, the guidance trimmed.
+    clean = {
+        **prefs,
+        "locked": ["headline", "summary"],
+        "guidance": "Never 'Senior' in the title.",
+        "footer": "Work permit: B (Switzerland).",
+        "footerCountries": ["ch", "li"],
+    }
+    assert saved == clean
+    assert client.get("/api/cv/preferences").json() == clean
     assert (
         client.put("/api/cv/preferences", json={**prefs, "style": "fancy"}).status_code
         == 422
     )
     db.set_setting("cv_prefs", '{"style": "removed-style"}')  # unreadable: defaults
     assert client.get("/api/cv/preferences").json()["style"] == "standard"
+    db.set_setting("cv_prefs", '{"photo_style": "rounded"}')  # a shape no longer offered
+    assert client.get("/api/cv/preferences").json()["photoStyle"] == "circle"
+    bad = {**prefs, "footerCountries": ["Italy"]}
+    assert client.put("/api/cv/preferences", json=bad).status_code == 422
+
+
+def test_the_old_consent_setting_becomes_a_footer():
+    """Italy's consent, for Italian postings ("auto", the old default) or for every CV."""
+    from career_agent.profile import ITALIAN_CONSENT
+
+    db.set_setting("cv_prefs", '{"style": "ats", "consent": "auto"}')
+    got = client.get("/api/cv/preferences").json()
+    assert got["footer"] == ITALIAN_CONSENT and got["footerCountries"] == ["it"]
+    db.set_setting("cv_prefs", '{"consent": "always"}')
+    assert client.get("/api/cv/preferences").json()["footerCountries"] == []
+    db.set_setting("cv_prefs", '{"consent": "never"}')
+    assert client.get("/api/cv/preferences").json()["footer"] == ""
+
+
+def test_a_postings_old_consent_choice_becomes_its_footer_choice():
+    from career_agent import profile
+
+    url = "https://www.linkedin.com/jobs/view/1"
+    db.set_setting(
+        f"cv_overrides:{url}",
+        '{"consent": "never", "photoStyle": "square", "style": "ats"}',
+    )
+    o = profile.cv_overrides(url)
+    assert o.footer is False and o.style == "ats"
+    db.set_setting(f"cv_overrides:{url}", '{"consent": "always"}')
+    assert profile.cv_overrides(url).footer is True
+    db.set_setting(f"cv_overrides:{url}", '{"consent": "auto"}')
+    assert profile.cv_overrides(url).empty()
 
 
 def test_pdf_internal_value_error_is_the_readable_message(monkeypatch):
