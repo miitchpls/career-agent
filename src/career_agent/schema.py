@@ -28,4 +28,18 @@ def nullable(schema: dict) -> dict:
 
 
 # The UI's languages, as the prompts name them.
-LANGUAGE_NAMES = {"it": "Italian", "en": "English", "de": "German", "ko": "Korean"}
+LANGUAGE_NAMES = {
+    "it": "Italian",
+    "en": "English",
+    "de": "German",
+    "ko": "Korean",
+    "zh": "Simplified Chinese",
+    "es": "Spanish",
+    "fr": "French",
+    "ja": "Japanese",
+    "pt": "Portuguese",
+    "ru": "Russian",
+    "id": "Indonesian",
+    "nl": "Dutch",
+    "tr": "Turkish",
+}

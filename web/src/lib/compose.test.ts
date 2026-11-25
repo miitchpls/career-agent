@@ -13,16 +13,17 @@ const apply = (f: FilterState, s: Suggestion) => ({ ...f, ...s.patch }) as Filte
 const labels = (s: Suggestion[]) => s.map((x) => x.label)
 
 describe("suggest", () => {
-  it("lists geocoded cities first, with region and country", () => {
-    expect(labels(suggest("Naples", empty, false, NAPLES)).slice(0, 3)).toEqual([
+  it("puts title and text first, then geocoded cities with region and country", () => {
+    expect(labels(suggest("Naples", empty, false, NAPLES))).toEqual([
+      "Titolo contiene «Naples»",
+      "Testo contiene «Naples»",
       "Napoli, Campania, Italia",
       "Naples, Florida, Stati Uniti",
-      "Titolo contiene «Naples»",
     ])
   })
 
   it("inherits the country from the picked city", () => {
-    const f = apply(empty, suggest("Naples", empty, false, NAPLES)[1])
+    const f = apply(empty, suggest("Naples", empty, false, NAPLES)[3])
     expect(f.where).toEqual([
       { anywhere: false, places: [{ city: "Naples", country: "us", region: "Florida", geo_id: 4165565 }], modes: [] },
     ])
@@ -30,7 +31,7 @@ describe("suggest", () => {
 
   it("builds (city · mode) OR (anywhere · remote) through the 'oppure' flow", () => {
     let f = apply(empty, suggest("python developer", empty, false)[0])
-    f = apply(f, suggest("Napoli", f, false, NAPLES)[0])
+    f = apply(f, suggest("Napoli", f, false, NAPLES)[2])
     f = apply(f, suggest("ibr", f, false)[0])
     expect(suggest("o", f, false)[0]).toMatchObject({ id: "or", patch: null, keepGroup: true })
     f = apply(f, suggest("remoto", f, true)[0]) // after "oppure": goes into a new group
@@ -70,8 +71,8 @@ describe("suggest", () => {
   })
 
   it("doesn't add the same city twice to a group", () => {
-    const f = apply(empty, suggest("Napoli", empty, false, NAPLES)[0])
-    expect(apply(f, suggest("Napoli", f, false, NAPLES)[0]).where[0].places).toHaveLength(1)
+    const f = apply(empty, suggest("Napoli", empty, false, NAPLES)[2])
+    expect(apply(f, suggest("Napoli", f, false, NAPLES)[2]).where[0].places).toHaveLength(1)
   })
 })
 

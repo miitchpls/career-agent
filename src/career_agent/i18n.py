@@ -1,6 +1,6 @@
 """User-facing server messages in the UI's languages.
 
-The UI sends its language as `Accept-Language` ("it", "en", "de", "ko"); an app-wide dependency
+The UI sends its language as `Accept-Language` ("it", "en", "ja"…); an app-wide dependency
 puts it in `LOCALE` for the request. A search runs in a background thread, which keeps the language
 of the request that started it.
 """
@@ -8,8 +8,10 @@ of the request that started it.
 from contextvars import ContextVar
 from typing import Literal
 
-Locale = Literal["it", "en", "de", "ko"]
-LOCALES: tuple[Locale, ...] = ("it", "en", "de", "ko")
+Locale = Literal[
+    "it", "en", "de", "ko", "zh", "es", "fr", "ja", "pt", "ru", "id", "nl", "tr"
+]  # fmt: skip
+LOCALES: tuple[Locale, ...] = Locale.__args__
 DEFAULT: Locale = "it"
 
 LOCALE: ContextVar[Locale] = ContextVar("locale", default=DEFAULT)
@@ -402,6 +404,17 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "ko": "파일을 찾을 수 없습니다",
     },
 }
+
+
+def _merge_extra() -> None:
+    from .i18n_extra import EXTRA
+
+    for lang, messages in EXTRA.items():
+        for key, text in messages.items():
+            MESSAGES[key][lang] = text  # type: ignore[index]
+
+
+_merge_extra()
 
 
 def t(key: str, **params: object) -> str:

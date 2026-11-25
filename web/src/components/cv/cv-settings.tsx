@@ -12,14 +12,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { CV_TEMPLATES, LOCKED_SECTIONS, type CvOverrides, type CvPrefs, type Job } from "@/lib/api"
-import { resolveCv, useCvPrefs } from "@/lib/cv-prefs"
-import { useT } from "@/lib/i18n"
+import { CV_LANGUAGES, CV_TEMPLATES, LOCKED_SECTIONS, type CvOverrides, type Job } from "@/lib/api"
+import { footerApplies, jobCountry, resolveCv, useCvPrefs } from "@/lib/cv-prefs"
+import { intlTag, languageName, useT } from "@/lib/i18n"
 import { useProfile } from "@/lib/profile"
 import { NO_OVERRIDES, overrideCount, useCvSettings, useSaveCvSettings } from "@/lib/tailored-cv"
 import { cn } from "@/lib/utils"
 
-type Choice = Exclude<keyof CvPrefs, "locked" | "guidance">
+type Choice = "language" | "format" | "style" | "photo"
 
 /**
  * The choices of each CV setting, labelled; "auto" ones say what they come to for `job` when
@@ -30,18 +30,14 @@ export function useCvChoices(job?: Pick<Job, "location" | "description">) {
   const t = all.profileView
   const prefs = useCvPrefs()
   const { profile } = useProfile()
-  const languageName = { it: t.languageIt, en: t.languageEn, de: t.languageDe, ko: t.languageKo }
   // What "auto" resolves to here, whatever the other settings.
-  const auto = job ? resolveCv({ ...prefs, language: "job", format: "auto", photo: "auto", consent: "auto" }, job, true) : null
+  const auto = job ? resolveCv({ ...prefs, language: "job", format: "auto", photo: "auto" }, job, true) : null
   const yes = (on: boolean) => (on ? all.cv.settings.yes : all.cv.settings.no)
   const withAuto = (label: string, value: string | null) => (value ? `${label} (${value})` : label)
   return {
     language: [
-      ["job", withAuto(t.languageJob, auto && languageName[auto.language].toLowerCase())],
-      ["it", t.languageIt],
-      ["en", t.languageEn],
-      ["de", t.languageDe],
-      ["ko", t.languageKo],
+      ["job", withAuto(t.languageJob, auto && languageName(auto.language).toLocaleLowerCase(intlTag()))],
+      ...CV_LANGUAGES.map((l): [string, string] => [l, languageName(l)]),
     ],
     format: [
       ["auto", withAuto(t.formatAuto, auto && (auto.format === "a4" ? "A4" : "Letter"))],
@@ -51,16 +47,6 @@ export function useCvChoices(job?: Pick<Job, "location" | "description">) {
     style: CV_TEMPLATES.map((id) => [id, all.cv.templates[id].name]),
     photo: [
       ["auto", withAuto(t.photoAuto, auto && profile.photo ? yes(auto.photo) : null)],
-      ["always", t.photoAlways],
-      ["never", t.photoNever],
-    ],
-    photoStyle: [
-      ["rounded", t.photoRounded],
-      ["circle", t.photoCircle],
-      ["square", t.photoSquare],
-    ],
-    consent: [
-      ["auto", withAuto(t.consentAuto, auto && yes(auto.consent))],
       ["always", t.photoAlways],
       ["never", t.photoNever],
     ],
@@ -96,7 +82,6 @@ export function CvSettings({
     if (notes.trim() !== overrides.notes) set({ notes: notes.trim() })
   }
   const n = overrideCount(overrides)
-  const photo = overrides.photo ?? defaults.photo
   const locked = overrides.locked ?? defaults.locked
 
   const row = (key: Choice, label: string) => {
@@ -160,8 +145,7 @@ export function CvSettings({
           {row("format", pv.format)}
           {row("style", pv.style)}
           {row("photo", pv.photo)}
-          {photo !== "never" && row("photoStyle", pv.photoStyle)}
-          {row("consent", pv.consent)}
+          <FooterRow job={job} overrides={overrides} onChange={(footer) => set({ footer })} />
           <SettingRow
             label={pv.locked}
             changed={overrides.locked !== null}
@@ -240,6 +224,56 @@ export function CvSettings({
         </div>
       </PopoverContent>
     </Popover>
+  )
+}
+
+/** The footer, on or off for this posting; nothing to choose while there's no footer text. */
+function FooterRow({
+  job,
+  overrides,
+  onChange,
+}: {
+  job: Pick<Job, "location">
+  overrides: CvOverrides
+  onChange: (footer: boolean | null) => void
+}) {
+  const all = useT()
+  const t = all.cv.settings
+  const defaults = useCvPrefs()
+  const byDefault = footerApplies(defaults, jobCountry(job.location))
+  const label = all.profileView.footer
+  const name = (on: boolean) => (on ? t.footerOn : t.footerOff)
+  if (!defaults.footer.trim())
+    return (
+      <SettingRow label={label} changed={false} resetLabel="" onReset={() => {}}>
+        <span className="px-1 text-xs text-muted-foreground">{t.noFooter}</span>
+      </SettingRow>
+    )
+  const on = overrides.footer ?? byDefault
+  return (
+    <SettingRow
+      label={label}
+      changed={overrides.footer !== null}
+      resetLabel={t.resetOne(name(byDefault))}
+      onReset={() => onChange(null)}
+    >
+      <Select value={on ? "on" : "off"} onValueChange={(v) => {
+          const want = v === "on"
+          onChange(want === byDefault ? null : want)
+        }}>
+        <SelectTrigger size="sm" className="h-7 w-full text-xs" aria-label={label}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="end">
+          <SelectItem value="on" className="text-xs">
+            {name(true)}
+          </SelectItem>
+          <SelectItem value="off" className="text-xs">
+            {name(false)}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </SettingRow>
   )
 }
 

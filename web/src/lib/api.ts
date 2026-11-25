@@ -197,7 +197,7 @@ export interface ProfileState {
 }
 
 /** Languages a CV can be written in (`career_agent.cv_render.CvLanguage`). */
-export const CV_LANGUAGES = ["it", "en", "de", "ko"] as const
+export const CV_LANGUAGES = ["it", "en", "de", "ko", "zh", "es", "fr", "ja", "pt", "ru", "id", "nl", "tr"] as const
 export type CvLanguage = (typeof CV_LANGUAGES)[number]
 
 /** career-ops' CV templates, rendered by `career_agent.cv_render`. */
@@ -215,8 +215,8 @@ export interface CvPreviewRequest {
   marked?: string[]
   /** A tailored CV's keyword tags. */
   competencies?: string[]
-  /** End with the data-processing consent line. */
-  consent?: boolean
+  /** The line the CV ends with. */
+  footer?: string
   /** A posting's own photo shape; by default the saved preference. */
   photoStyle?: CvPrefs["photoStyle"]
 }
@@ -236,8 +236,10 @@ export interface CvPrefs {
   /** "auto": only where CVs usually carry a photo. */
   photo: "auto" | "always" | "never"
   photoStyle: "rounded" | "circle" | "square"
-  /** The data-processing consent line; "auto": postings in Italy, where CVs end with it. */
-  consent: "auto" | "always" | "never"
+  /** A line at the bottom of the CV (a data-processing consent, a permit); "" for none. */
+  footer: string
+  /** Only for postings in these countries (ISO codes, lowercase); empty: on every CV. */
+  footerCountries: string[]
   locked: LockedSection[]
   /** What every tailored CV should know: the story to tell, house rules. */
   guidance: string
@@ -294,7 +296,8 @@ export interface CvOverrides {
   style: CvPrefs["style"] | null
   photo: CvPrefs["photo"] | null
   photoStyle: CvPrefs["photoStyle"] | null
-  consent: CvPrefs["consent"] | null
+  /** Whether this posting's CV ends with the footer, wherever the posting is. */
+  footer: boolean | null
   locked: LockedSection[] | null
   /** Added to the default guidance, for this posting only. */
   notes: string
@@ -305,7 +308,7 @@ export interface CvPdfRequest {
   template: CvTemplate
   format: "a4" | "letter"
   photo: boolean
-  consent: boolean
+  footer: string
 }
 
 export interface UploadedFile {

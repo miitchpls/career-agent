@@ -701,7 +701,8 @@ def test_cv_preferences_are_saved():
         "style": "standard",
         "photo": "auto",
         "photoStyle": "rounded",
-        "consent": "auto",
+        "footer": "",
+        "footerCountries": [],
         "locked": [],
         "guidance": "",
     }
@@ -711,7 +712,8 @@ def test_cv_preferences_are_saved():
         "style": "jake",
         "photo": "never",
         "photoStyle": "circle",
-        "consent": "always",
+        "footer": " Work permit: B (Switzerland). ",
+        "footerCountries": ["ch", "li", "ch"],
         "locked": ["summary", "headline"],
         "guidance": "  Never 'Senior' in the title. ",
     }
@@ -721,6 +723,8 @@ def test_cv_preferences_are_saved():
         **prefs,
         "locked": ["headline", "summary"],
         "guidance": "Never 'Senior' in the title.",
+        "footer": "Work permit: B (Switzerland).",
+        "footerCountries": ["ch", "li"],
     }
     assert saved == clean
     assert client.get("/api/cv/preferences").json() == clean
@@ -730,6 +734,21 @@ def test_cv_preferences_are_saved():
     )
     db.set_setting("cv_prefs", '{"style": "removed-style"}')  # unreadable: defaults
     assert client.get("/api/cv/preferences").json()["style"] == "standard"
+    bad = {**prefs, "footerCountries": ["Italy"]}
+    assert client.put("/api/cv/preferences", json=bad).status_code == 422
+
+
+def test_the_old_consent_setting_becomes_a_footer():
+    """Italy's consent, for Italian postings ("auto", the old default) or for every CV."""
+    from career_agent.profile import ITALIAN_CONSENT
+
+    db.set_setting("cv_prefs", '{"style": "ats", "consent": "auto"}')
+    got = client.get("/api/cv/preferences").json()
+    assert got["footer"] == ITALIAN_CONSENT and got["footerCountries"] == ["it"]
+    db.set_setting("cv_prefs", '{"consent": "always"}')
+    assert client.get("/api/cv/preferences").json()["footerCountries"] == []
+    db.set_setting("cv_prefs", '{"consent": "never"}')
+    assert client.get("/api/cv/preferences").json()["footer"] == ""
 
 
 def test_pdf_internal_value_error_is_the_readable_message(monkeypatch):

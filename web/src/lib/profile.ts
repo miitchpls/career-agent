@@ -278,6 +278,24 @@ export function renameCategory(p: Profile, from: string, to: string): Profile {
   return { ...p, skills: p.skills.map((s) => ((s.category ?? "") === from ? { ...s, category: to.trim() } : s)) }
 }
 
+/**
+ * A skill line saved from its dialog: `name` holds exactly `skills` afterwards. Skills new to
+ * the profile join it; ones taken off the line stay, with no category. `from`: the line's name
+ * before (null for a new one), so renaming moves it.
+ */
+export function saveCategory(p: Profile, from: string | null, name: string, skills: string[]): Profile {
+  const line = name.trim()
+  const chosen = new Set(skills.map((s) => s.toLowerCase()))
+  const out = p.skills.map((s) => {
+    const cat = s.category?.trim() ?? ""
+    if (chosen.has(s.name.toLowerCase())) return { ...s, category: line }
+    return cat === line || (from !== null && cat === from) ? { ...s, category: "" } : s
+  })
+  const known = new Set(p.skills.map((s) => s.name.toLowerCase()))
+  const added = skills.filter((s) => !known.has(s.toLowerCase())).map((name) => ({ name, category: line }))
+  return { ...p, skills: [...out, ...added] }
+}
+
 /** Insert or replace an entry by id, newest first. */
 export function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   return list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [item, ...list]

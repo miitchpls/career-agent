@@ -6,11 +6,13 @@ import {
   AwardIcon,
   BriefcaseIcon,
   CameraIcon,
+  Trash2Icon,
   CheckIcon,
   ChevronDownIcon,
   FolderGitIcon,
   GraduationCapIcon,
   HeartIcon,
+  InfoIcon,
   LanguagesIcon,
   LayoutGridIcon,
   LoaderCircleIcon,
@@ -28,7 +30,9 @@ import { toast } from "sonner"
 
 import { useCvChoices } from "@/components/cv/cv-settings"
 import { StyleGallery } from "@/components/cv/style-gallery"
-import { Field, FormDialog, MediaStrip, SkillLine } from "@/components/profile/fields"
+import { CountryPicker } from "@/components/cv/country-picker"
+import { LinkButton } from "@/components/link-button"
+import { Field, FormDialog, FormGroup, MediaStrip, SkillLine } from "@/components/profile/fields"
 import { ScorePrefsCard } from "@/components/profile/score-prefs"
 import { ReviewCard } from "@/components/profile/review-panel"
 import {
@@ -73,6 +77,8 @@ import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { countryName } from "@/lib/countries"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   completeness,
@@ -86,6 +92,7 @@ import {
   removeSkill,
   renameCategory,
   reviewCount,
+  saveCategory,
   setSkillCategory,
   skillCategories,
   skillUses,
@@ -105,7 +112,7 @@ import {
 import { LOCKED_SECTIONS, type CvPrefs } from "@/lib/api"
 import { useCvCount } from "@/lib/tailored-cv"
 import { useCvPrefs, useSaveCvPrefs } from "@/lib/cv-prefs"
-import { useT } from "@/lib/i18n"
+import { intlTag, useT } from "@/lib/i18n"
 import { openPreferences } from "@/lib/preferences"
 import { activeEngine, useAiEngines } from "@/lib/use-ai"
 import { cn } from "@/lib/utils"
@@ -351,32 +358,86 @@ function Mark({ children }: { children: React.ReactNode }) {
 // --- Identity --------------------------------------------------------------------------------
 
 /** The avatar is the photo picker: hover shows a camera, click opens the system file dialog. */
+// The photo's shape on the CV, previewed by the avatar itself.
+const SHAPE: Record<CvPrefs["photoStyle"], string> = {
+  rounded: "rounded-2xl",
+  circle: "rounded-full",
+  square: "rounded-md",
+}
+
+/**
+ * The avatar is the photo. With none, a click opens the system file dialog; with one, its
+ * pencil opens what can be done with it: replace it, pick its shape on the CV, remove it.
+ */
 function Photo({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
   const all = useT()
   const t = all.profileView
   const input = useRef<HTMLInputElement>(null)
+  const prefs = useCvPrefs()
+  const save = useSaveCvPrefs()
+  const shape = SHAPE[prefs.photoStyle]
+  const pick = () => input.current?.click()
+  const avatar = (
+    <Avatar className={cn("size-24 shadow-xs transition-[border-radius] duration-300 ease-out", shape, "*:rounded-[inherit] after:rounded-[inherit]")}>
+      {p.photo && <AvatarImage src={p.photo} alt="" className="object-cover" />}
+      <AvatarFallback className="rounded-[inherit] text-2xl font-medium">{initials(p.name)}</AvatarFallback>
+    </Avatar>
+  )
+  const badge = "absolute -right-1 -bottom-1 grid size-7 place-items-center rounded-full border-2 border-card bg-foreground text-background shadow-xs"
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => input.current?.click()}
-        aria-label={p.photo ? t.changePhoto : t.addPhoto}
-        className="group/photo relative block shrink-0 self-start rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        <Avatar className="size-24 border shadow-xs transition-transform duration-300 ease-out group-hover/photo:scale-[1.04]">
-          {p.photo && <AvatarImage src={p.photo} alt="" className="object-cover" />}
-          <AvatarFallback className="text-2xl font-medium">{initials(p.name)}</AvatarFallback>
-        </Avatar>
-        <span className="absolute inset-0 flex scale-95 flex-col items-center justify-center gap-0.5 rounded-full bg-black/60 text-white opacity-0 backdrop-blur-[2px] transition-all duration-300 ease-out group-hover/photo:scale-100 group-hover/photo:opacity-100 group-focus-visible/photo:scale-100 group-focus-visible/photo:opacity-100">
-          <CameraIcon className="size-4 transition-transform duration-300 group-hover/photo:-translate-y-0.5" />
-          <span className="text-[10px] font-medium">{p.photo ? t.change : all.common.add}</span>
-        </span>
-        {!p.photo && (
-          <span className="absolute right-0.5 bottom-0.5 grid size-7 place-items-center rounded-full border-2 border-card bg-foreground text-background transition-opacity group-hover/photo:opacity-0">
+    <div className="relative shrink-0 self-start">
+      {p.photo ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={t.photoMenu}
+              className={cn("group/photo block outline-none focus-visible:ring-3 focus-visible:ring-ring/50", shape)}
+            >
+              {avatar}
+              <span className={cn(badge, "transition-transform group-hover/photo:scale-110")}>
+                <PencilIcon className="size-3" />
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuItem onSelect={pick}>
+              <CameraIcon />
+              {t.changePhoto}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs text-muted-foreground">{t.photoShape}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={prefs.photoStyle}
+              onValueChange={(v) => save.mutate({ ...prefs, photoStyle: v as CvPrefs["photoStyle"] })}
+            >
+              {(["rounded", "circle", "square"] as const).map((v) => (
+                <DropdownMenuRadioItem key={v} value={v} onSelect={(e) => e.preventDefault()}>
+                  <span className={cn("size-3.5 border border-current", SHAPE[v])} aria-hidden />
+                  {{ rounded: t.photoRounded, circle: t.photoCircle, square: t.photoSquare }[v]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={() => onChange({ ...p, photo: null })}>
+              <Trash2Icon />
+              {t.removePhoto}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <button
+          type="button"
+          onClick={pick}
+          aria-label={t.addPhoto}
+          className={cn("group/photo block outline-none focus-visible:ring-3 focus-visible:ring-ring/50", shape)}
+        >
+          {avatar}
+          <span className={cn(badge, "transition-transform group-hover/photo:scale-110")}>
             <PlusIcon className="size-3" />
           </span>
-        )}
-      </button>
+        </button>
+      )}
       <input
         ref={input}
         type="file"
@@ -392,7 +453,7 @@ function Photo({ profile: p, onChange }: { profile: Profile; onChange: Change })
             .catch((err: Error) => toast.error(all.profile.uploadFailed, { description: err.message }))
         }}
       />
-    </>
+    </div>
   )
 }
 
@@ -732,8 +793,9 @@ function EducationSection({ profile: p, onChange }: { profile: Profile; onChange
   )
 }
 
-/** Which skill line the category dialog names: a new one for a skill, or a rename. */
-type CategoryEdit = { skill: string } | { from: string } | null
+/** The skill line the category dialog edits: a new one (maybe with a skill already on it),
+ * or an existing one. */
+type CategoryEdit = { from: null; skills: string[] } | { from: string } | null
 
 function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
   const all = useT()
@@ -755,24 +817,36 @@ function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }
   }
 
   return (
-    <Section icon={WrenchIcon} title={t.skills} count={p.skills.length}>
+    <Section
+      icon={WrenchIcon}
+      title={t.skills}
+      count={p.skills.length}
+      action={
+        <Button variant="ghost" size="xs" onClick={() => setNaming({ from: null, skills: [] })}>
+          <PlusIcon />
+          {t.newCategoryButton}
+        </Button>
+      }
+    >
       <div className="space-y-3">
         {rows.map(([category, skills]) =>
           categories.length && !category && !skills.length ? null : (
             <div key={category || "-"} className="space-y-1.5">
               {categories.length > 0 && (
-                <div className="group/line flex h-5 items-center gap-1">
-                  <span className={cn("text-xs font-medium", !category && "text-muted-foreground")}>{category || t.noCategory}</span>
-                  {category && (
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
+                <div className="flex h-5 items-center">
+                  {category ? (
+                    // The line's name opens it: rename, change what's on it, delete it.
+                    <button
+                      type="button"
                       aria-label={t.renameCategory(category)}
-                      className="opacity-0 transition-opacity group-hover/line:opacity-100 focus-visible:opacity-100"
                       onClick={() => setNaming({ from: category })}
+                      className="group/line -mx-1.5 inline-flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
                     >
-                      <PencilIcon />
-                    </Button>
+                      {category}
+                      <PencilIcon className="size-3 text-muted-foreground opacity-0 transition-opacity group-hover/line:opacity-100 group-focus-visible/line:opacity-100" />
+                    </button>
+                  ) : (
+                    <span className="text-xs font-medium text-muted-foreground">{t.noCategory}</span>
                   )}
                 </div>
               )}
@@ -785,7 +859,7 @@ function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }
                       profile={p}
                       categories={categories}
                       onMove={(c) => onChange(setSkillCategory(p, s.name, c))}
-                      onNewCategory={() => setNaming({ skill: s.name })}
+                      onNewCategory={() => setNaming({ from: null, skills: [s.name] })}
                       onConfirm={() => onChange({ ...p, skills: p.skills.map((x) => (x.name === s.name ? { ...x, inferred: false } : x)) })}
                       onRemove={() => remove(s.name)}
                     />
@@ -811,13 +885,21 @@ function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }
       <CategoryDialog
         open={naming !== null}
         onOpenChange={(o) => !o && setNaming(null)}
-        initial={naming && "from" in naming ? naming.from : ""}
+        initial={naming?.from ?? ""}
+        skills={
+          naming === null
+            ? []
+            : naming.from === null
+              ? naming.skills
+              : p.skills.filter((s) => lineOf(s) === naming.from).map((s) => s.name)
+        }
+        known={p.skills.map((s) => s.name)}
         taken={categories}
-        onSave={(name) => {
-          if (naming && "from" in naming) onChange(renameCategory(p, naming.from, name))
-          else if (naming) onChange(setSkillCategory(p, naming.skill, name))
+        onSave={(name, skills) => {
+          onChange(saveCategory(p, naming?.from ?? null, name, skills))
           setNaming(null)
         }}
+        onDelete={naming?.from ? () => onChange(renameCategory(p, naming.from as string, "")) : undefined}
       />
     </Section>
   )
@@ -1303,53 +1385,120 @@ function CvPrefsCard() {
   return (
     <Card className="gap-3 px-5 py-4">
       <h2 className="text-sm font-medium">{t.cvPrefs}</h2>
-      <Pref
-        label={t.language}
-        value={prefs.language}
-        onChange={set("language")}
-        options={choices.language}
-      />
-      <Pref
-        label={t.format}
-        value={prefs.format}
-        onChange={set("format")}
-        options={choices.format}
-      />
-      <Pref
-        label={t.style}
-        value={prefs.style}
-        onChange={set("style")}
-        options={choices.style}
-      />
-      <Button variant="outline" size="sm" className="w-full" onClick={() => setGallery(true)}>
-        <LayoutGridIcon />
-        {t.compareStyles}
-      </Button>
+      {/* One grid: every label in one column, every control the same width in the other. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_8.75rem] items-center gap-x-3 gap-y-2">
+        <Pref label={t.language} value={prefs.language} onChange={set("language")} options={choices.language} />
+        <Pref label={t.format} value={prefs.format} onChange={set("format")} options={choices.format} />
+        <Pref label={t.style} value={prefs.style} onChange={set("style")} options={choices.style} />
+        <LinkButton
+          onClick={() => setGallery(true)}
+          className="col-start-2 -mt-1 inline-flex items-center gap-1 justify-self-start text-xs text-muted-foreground hover:text-foreground"
+        >
+          <LayoutGridIcon className="size-3" />
+          {t.compareStyles}
+        </LinkButton>
+        <Pref label={t.photo} value={prefs.photo} onChange={set("photo")} options={choices.photo} />
+        <FooterPref prefs={prefs} onSave={(footer, footerCountries) => save.mutate({ ...prefs, footer, footerCountries })} />
+        <LockedPref prefs={prefs} onChange={(locked) => save.mutate({ ...prefs, locked })} />
+        <GuidancePref prefs={prefs} onSave={(guidance) => save.mutate({ ...prefs, guidance })} />
+      </div>
       <StyleGallery open={gallery} onOpenChange={setGallery} />
-      <Pref
-        label={t.photo}
-        value={prefs.photo}
-        onChange={set("photo")}
-        options={choices.photo}
-      />
-      {prefs.photo !== "never" && (
-        <Pref
-          label={t.photoStyle}
-          value={prefs.photoStyle}
-          onChange={set("photoStyle")}
-          options={choices.photoStyle}
-        />
-      )}
-      <Pref
-        label={t.consent}
-        hint={t.consentHint}
-        value={prefs.consent}
-        onChange={set("consent")}
-        options={choices.consent}
-      />
-      <LockedPref prefs={prefs} onChange={(locked) => save.mutate({ ...prefs, locked })} />
-      <GuidancePref prefs={prefs} onSave={(guidance) => save.mutate({ ...prefs, guidance })} />
     </Card>
+  )
+}
+
+/** A control of the preferences grid that opens something: same size as the selects. */
+function PrefButton({ empty, children, ...props }: { empty?: boolean } & React.ComponentProps<typeof Button>) {
+  return (
+    <Button variant="outline" size="sm" className="h-7 w-full justify-between gap-1 px-2.5 text-xs font-normal" {...props}>
+      <span className={cn("truncate", empty && "text-muted-foreground")}>{children}</span>
+      <ChevronDownIcon className="text-muted-foreground" />
+    </Button>
+  )
+}
+
+/**
+ * The line the CV ends with, in the user's words: a data-processing consent (Italy), a work
+ * permit, whatever their markets expect. On every CV, or only for postings in the countries
+ * picked: no country's rules are built in.
+ */
+function FooterPref({
+  prefs,
+  onSave,
+}: {
+  prefs: CvPrefs
+  onSave: (footer: string, countries: string[]) => void
+}) {
+  const all = useT()
+  const t = all.profileView
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState(prefs.footer)
+  const [scope, setScope] = useState<"all" | "some">("all")
+  const [countries, setCountries] = useState(prefs.footerCountries)
+  const summary = !prefs.footer
+    ? t.footerNone
+    : prefs.footerCountries.length
+      ? prefs.footerCountries.map((c) => countryName(c, intlTag())).join(", ")
+      : t.footerEverywhere
+  return (
+    <>
+      <PrefLabel label={t.footer} hint={t.footerHint} />
+      <PrefButton
+        empty={!prefs.footer}
+        onClick={() => {
+          setText(prefs.footer)
+          setCountries(prefs.footerCountries)
+          setScope(prefs.footerCountries.length ? "some" : "all")
+          setOpen(true)
+        }}
+      >
+        {summary}
+      </PrefButton>
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={t.footer}
+        description={t.footerDialogHint}
+        footnote={<span />}
+        canSave={scope === "all" || countries.length > 0 || !text.trim()}
+        onSave={() => onSave(text.trim(), text.trim() && scope === "some" ? countries : [])}
+      >
+        <Field label={t.footerText}>
+          <Textarea
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={600}
+            placeholder={t.footerPlaceholder}
+            className="min-h-24"
+          />
+        </Field>
+        <FormGroup title={t.footerWhere}>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={scope}
+            onValueChange={(v) => v && setScope(v as "all" | "some")}
+            disabled={!text.trim()}
+            className="w-fit"
+          >
+            <ToggleGroupItem value="all" className="px-3 text-xs">
+              {t.footerEverywhere}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="some" className="px-3 text-xs">
+              {t.footerSome}
+            </ToggleGroupItem>
+          </ToggleGroup>
+          {scope === "some" && text.trim() && (
+            <div className="space-y-2">
+              <CountryPicker value={countries} onChange={setCountries} />
+              <p className="text-xs text-pretty text-muted-foreground">{t.footerSomeHint}</p>
+            </div>
+          )}
+        </FormGroup>
+      </FormDialog>
+    </>
   )
 }
 
@@ -1358,14 +1507,11 @@ function LockedPref({ prefs, onChange }: { prefs: CvPrefs; onChange: (locked: Cv
   const t = useT().profileView
   const n = prefs.locked.length
   return (
-    <div className="flex items-center justify-between gap-3">
+    <>
       <PrefLabel label={t.locked} hint={t.lockedHint} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="h-7 w-40 justify-between px-2.5 text-xs font-normal">
-            <span className="truncate">{n ? t.lockedSome(n) : t.lockedNone}</span>
-            <ChevronDownIcon className="text-muted-foreground" />
-          </Button>
+          <PrefButton empty={!n}>{n ? t.lockedSome(n) : t.lockedNone}</PrefButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           {LOCKED_SECTIONS.map((section) => (
@@ -1383,7 +1529,7 @@ function LockedPref({ prefs, onChange }: { prefs: CvPrefs; onChange: (locked: Cv
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+    </>
   )
 }
 
@@ -1394,22 +1540,25 @@ function GuidancePref({ prefs, onSave }: { prefs: CvPrefs; onSave: (guidance: st
   const [open, setOpen] = useState(false)
   const [text, setText] = useState(prefs.guidance)
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-3">
-        <PrefLabel label={t.guidance} hint={t.guidanceHint} />
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 w-40 justify-start px-2.5 text-xs font-normal"
-          onClick={() => {
-            setText(prefs.guidance)
-            setOpen(true)
-          }}
-        >
-          <span className={cn("truncate", !prefs.guidance && "text-muted-foreground")}>{prefs.guidance || t.guidanceNone}</span>
-        </Button>
-      </div>
-      <FormDialog open={open} onOpenChange={setOpen} title={t.guidance} description={t.guidanceDialogHint} onSave={() => onSave(text.trim())}>
+    <>
+      <PrefLabel label={t.guidance} hint={t.guidanceHint} />
+      <PrefButton
+        empty={!prefs.guidance}
+        onClick={() => {
+          setText(prefs.guidance)
+          setOpen(true)
+        }}
+      >
+        {prefs.guidance || t.guidanceNone}
+      </PrefButton>
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={t.guidance}
+        description={t.guidanceDialogHint}
+        footnote={<span />}
+        onSave={() => onSave(text.trim())}
+      >
         <Field label={t.guidance}>
           <Textarea
             autoFocus
@@ -1422,21 +1571,26 @@ function GuidancePref({ prefs, onSave }: { prefs: CvPrefs; onSave: (guidance: st
         </Field>
         <p className="-mt-3 text-right text-xs text-muted-foreground tabular-nums">{text.length} / 3000</p>
       </FormDialog>
-    </div>
+    </>
   )
 }
 
+/** A row's label; a hint, when there is one, behind a small (i), the same on every row. */
 function PrefLabel({ label, hint }: { label: string; hint?: string }) {
-  if (!hint) return <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="cursor-default text-xs whitespace-nowrap text-muted-foreground underline decoration-dotted underline-offset-4">
-          {label}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-60">{hint}</TooltipContent>
-    </Tooltip>
+    <span className="flex min-w-0 items-center gap-1 text-xs leading-tight text-pretty text-muted-foreground">
+      <span>{label}</span>
+      {hint && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" aria-label={hint} className="shrink-0 rounded-full text-muted-foreground/60 hover:text-foreground">
+              <InfoIcon className="size-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-60">{hint}</TooltipContent>
+        </Tooltip>
+      )}
+    </span>
   )
 }
 
@@ -1454,10 +1608,10 @@ function Pref({
   options: [string, string][]
 }) {
   return (
-    <div className="flex items-center justify-between gap-3">
+    <>
       <PrefLabel label={label} hint={hint} />
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger size="sm" className="h-7 w-40 text-xs" aria-label={label}>
+        <SelectTrigger size="sm" className="h-7 w-full text-xs" aria-label={label}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent align="end">
@@ -1468,6 +1622,6 @@ function Pref({
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </>
   )
 }

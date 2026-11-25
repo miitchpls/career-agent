@@ -86,23 +86,27 @@ export const NO_OVERRIDES: CvOverrides = {
   style: null,
   photo: null,
   photoStyle: null,
-  consent: null,
+  footer: null,
   locked: null,
   notes: "",
 }
 
-/** The settings that differ from the defaults for this posting. */
-export const OVERRIDABLE = ["language", "format", "style", "photo", "photoStyle", "consent", "locked"] as const
+/** The settings that replace a default for this posting (the footer and the notes work apart). */
+const REPLACING = ["language", "format", "style", "photo", "photoStyle", "locked"] as const
 
-/** The defaults with the posting's own settings applied (the notes stay apart). */
+/** The defaults with the posting's own settings applied, as the server applies them: the
+ * footer on (wherever the posting is) or off; the notes stay apart. */
 export function applyOverrides(prefs: CvPrefs, o: CvOverrides): CvPrefs {
   const out = { ...prefs } as Record<string, unknown>
-  for (const k of OVERRIDABLE) if (o[k] !== null) out[k] = o[k]
+  for (const k of REPLACING) if (o[k] !== null) out[k] = o[k]
+  if (o.footer === true) out.footerCountries = []
+  if (o.footer === false) out.footer = ""
   return out as unknown as CvPrefs
 }
 
 /** How many settings the posting changes. */
-export const overrideCount = (o: CvOverrides) => OVERRIDABLE.filter((k) => o[k] !== null).length + (o.notes ? 1 : 0)
+export const overrideCount = (o: CvOverrides) =>
+  REPLACING.filter((k) => o[k] !== null).length + (o.footer !== null ? 1 : 0) + (o.notes ? 1 : 0)
 
 const settingsKey = (url: string) => ["cv-settings", url]
 

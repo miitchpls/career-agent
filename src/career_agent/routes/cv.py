@@ -86,7 +86,7 @@ class CvPdfRequest(BaseModel):
     template: cv_render.TemplateId
     format: cv_render.PageFormat = "a4"
     photo: bool = False
-    consent: bool = False
+    footer: str = Field("", max_length=600)
 
 
 def _inline_photo(profile: Profile) -> Profile:
@@ -103,7 +103,7 @@ def _inline_photo(profile: Profile) -> Profile:
 
 
 def _pdf_name(name: str, company: str | None) -> str:
-    """ "Michele Greco CV - Acme" as a file name anything accepts: Michele-Greco-CV-Acme.pdf."""
+    """ "Jane Doe CV - Acme" as a file name anything accepts: Jane-Doe-CV-Acme.pdf."""
     words = " ".join(x for x in (name, "CV", company or "") if x)
     ascii_ = unicodedata.normalize("NFKD", words).encode("ascii", "ignore").decode()
     stem = "-".join(re.findall(r"[A-Za-z0-9]+", ascii_))[:80].strip("-")
@@ -126,7 +126,7 @@ def cv_pdf(body: CvPdfRequest):
             body.format,
             body.photo,
             competencies=result["competencies"],
-            consent=body.consent,
+            footer=body.footer,
             photo_style=effective_cv_prefs(body.url).photo_style,
         )
     except ValueError as e:
@@ -166,9 +166,9 @@ class PreviewRequest(BaseModel):
     profile: Profile | None = None
     # Texts to highlight: what a tailored CV changed.
     marked: list[str] = Field(default_factory=list, max_length=200)
-    # A tailored CV's keyword tags, and whether to end with the data-processing consent.
+    # A tailored CV's keyword tags, and the line it ends with (none when empty).
     competencies: list[str] = Field(default_factory=list, max_length=12)
-    consent: bool = False
+    footer: str = Field("", max_length=600)
     # A posting's own photo shape; by default the saved preference. The UI sends camelCase.
     photo_style: PhotoStylePref | None = Field(
         None, validation_alias=AliasChoices("photoStyle", "photo_style")
@@ -191,7 +191,7 @@ def cv_preview(req: PreviewRequest):
                 req.photo,
                 marked,
                 req.competencies,
-                req.consent,
+                req.footer,
                 style,
             )
             for tid in dict.fromkeys(req.templates)
