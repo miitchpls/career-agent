@@ -2,7 +2,7 @@
 
 A local job search tool. It searches LinkedIn and Indeed through [JobSpy](https://github.com/speedyapply/JobSpy),
 stores the postings in SQLite and lets you filter them in a browser UI. An optional profile, filled in by hand or
-drafted from your CV by an AI CLI already installed on your computer, is the base for tailored CVs (still a mock).
+drafted from your CV by an AI CLI already installed on your computer, is the base for CVs tailored to each posting, written by the same AI CLI and printed to PDF.
 
 Proof of concept: one user, one machine, no authentication.
 
@@ -125,7 +125,9 @@ column) for a period; a click on a node or a band filters the list below, which 
 ## Profile
 
 Optional: searching works without it. The profile follows LinkedIn's sections (experience, education, skills,
-languages, projects, certifications) and accepts a photo and attachments.
+languages, projects, certifications, honors and awards, interests) and accepts a photo and attachments. It also
+holds what career-ops' CV payload prints and LinkedIn doesn't: a phone number, one line about each employer under
+the role (career-ops' `context`), and skill categories, one CV line each (`Frontend: Angular, React`).
 
 You can fill it in by hand (every save is kept) or import a CV:
 
@@ -206,8 +208,36 @@ Set on the profile page and saved on the server. They decide how a tailored CV i
 | Format | automatic, A4, Letter | Letter for jobs in the US and Canada, A4 elsewhere |
 | Style | one of the career-ops templates below | — |
 | Photo | where usual, always, never | No photo for the US, Canada, the UK and Ireland, where CVs normally don't have one |
+| Photo shape | rounded, circle, square | — |
+| Privacy consent | for Italy, always, never | The GDPR data-processing line Italian CVs end with, for jobs in Italy (or Italian postings with no country) |
+| Fixed sections | headline, summary, experience, projects, skills | Copied from the profile as they are (career-ops' `cv.locked_sections`) |
+| Guidance | free text | The story to tell and house rules every CV follows (career-ops' `modes/_profile.md` and `_custom.md`) |
 
 The country comes from the end of the posting's location.
+
+### Tailored CV
+
+The **CV** tab of a posting (or of an application with a LinkedIn or Indeed posting) writes a CV for it, following
+career-ops' `pdf` mode, with the AI CLI chosen in Preferences. Like career-ops' dashboard (`<<cv-json>>`), the AI
+returns structured content and the server builds and checks the CV:
+
+- The AI returns only what tailoring may change: 15-20 keywords copied from the posting, a headline, the summary,
+  6-8 competency tags, each role's bullets (reordered within the role, reworded in the posting's vocabulary, each
+  pointing at the bullet it rewrites), the 3-4 most relevant projects, the awards worth showing, and the skills in
+  lines. Names, employers, titles, dates, the roles' order, education and certifications come from the profile.
+- It reads the posting's fit score when one was finished for this profile (career-ops tailors from its evaluation
+  report), and the CV guidance.
+- A rewritten text that brings in a number or a name the profile doesn't hold goes back to the profile's wording
+  (a bullet, a project) or is dropped (a sentence of the summary, a competency); so does a keyword the profile has
+  no trace of. A headline that claims a seniority the profile doesn't show keeps the profile's. Every undone change
+  is listed under **Fact check**. No bullet is lost; locked sections are copied as they are.
+- The keywords are classified without AI, as career-ops' `jd-skill-gap.mjs` does: a skill you list, one your
+  profile's text shows, or a gap. The coverage is how many of them the finished CV contains (`keyword-match.mjs`).
+- **Download PDF** prints the CV in the chosen template with a Chromium-family browser found on the computer
+  (Chrome, Chromium, Edge, Brave, or Playwright's Chromium), headless, without network: the same engine career-ops
+  prints with.
+
+Each generation is a new version; a CV goes stale when the profile, the posting or the guidance changes.
 
 ### CV templates
 
@@ -235,8 +265,9 @@ Roles at one employer are grouped the same way: the company and its span once, t
 role with its own dates; a place all the roles share is written once. The `ats` template
 keeps one block per role, company included, for parsers.
 
-Not filled from the profile, because it has no such data: core competencies, awards, interests, phone. Those
-sections are left out.
+Core competencies appear only in tailored CVs. Interests are printed by the `standard` template only, as in
+career-ops; the `ats` template gets the competencies as a skills line, as career-ops' `ats-payload.mjs` folds them.
+Text wrapped in `**…**` is bold.
 
 ### AI engines
 
@@ -287,6 +318,8 @@ Profile tables:
 | `documents` | Uploaded CVs and their extracted text |
 | `profile_files` | Photos and attachments. Files the profile no longer uses are deleted after the next save |
 | `profile_reviews` | AI reviews and their suggestions, with whether each was applied or dismissed |
+| `job_scores` | Fit scores, one row per run, with the profile revision scored |
+| `job_cvs` | Tailored CVs, one row per run: the CV's content as a profile, keywords, checks, and the AI's raw answer |
 
 **Start over** on the profile page deletes the profile, drafts, reviews, CVs and attachments. Postings and saved searches
 are unaffected.
@@ -323,8 +356,11 @@ src/career_agent/
   profile.py   Profile model, CV reading, import pipeline, CV preferences
   review.py    AI review of the profile: prompt, schema, checks against new facts
   score.py     Fit score of a posting: preferences, prompt, schema, checks, bands
+  tailor.py    CV tailored to a posting: prompt, schema, fact and keyword checks
+  facts.py     What the profile says: tells a rephrasing from a new number or name
+  pdf.py       HTML to PDF with a local Chromium-family browser
   applications.py  Applications: posting keys, history, notes, posting copies
-  runs.py      One background AI run at a time (import, review, score), cancellable
+  runs.py      Background AI runs (import, review, score, CV), one per kind or per posting, cancellable
   cv_render.py career-ops CV templates filled with the profile
   cv_templates/ the templates, copied from career-ops
   ai.py        AI CLI detection, settings and isolated runs
@@ -345,7 +381,9 @@ tests/
 | `POST /api/jobs/open` | One posting from a pasted link: from the database when saved, else read from its board |
 | `POST /api/jobs/paste` | A posting the board wouldn't show, saved under its link from the text the user copied |
 | `GET/PUT /api/ai` | AI engines found, saved choice |
-| `GET/PUT /api/cv/preferences` | CV language, format, style and photo |
+| `GET/PUT /api/cv/preferences` | CV language, format, style, photo, consent, fixed sections, guidance |
+| `GET /api/jobs/cv?url=` · `POST /api/jobs/cv` · `DELETE /api/jobs/cv?url=` | A posting's tailored CV (and the last finished one) · start (`language`) · cancel |
+| `POST /api/jobs/cv/pdf` · `GET /api/jobs/cv/count` | The last finished CV as a PDF, in a template and format · postings with a CV |
 | `POST /api/cv/preview` | CV templates filled with a profile (or the sample) as HTML, several per request; optional highlighted texts |
 | `GET/PUT/DELETE /api/profile` | Profile and open draft · save · delete everything |
 | `POST /api/profile/import` | Start an import (multipart: `file` or `text`) |
@@ -364,7 +402,8 @@ tests/
 - Importing a CV replaces the profile on confirm; it doesn't merge with what's there.
 - Only Claude Code and Codex are supported as AI engines.
 - Errors reported by the AI CLIs are shown in the CLI's language, usually English.
-- The tailored CV for a posting is a stand-in for AI generation, built from the real profile and posting: it lists
-  the posting's skills you have, have only by inference, or lack (from a fixed vocabulary), moves the bullets and
-  skills the posting names to the top, and highlights the moved bullets in the preview. It never reorders
-  experiences, rewrites or adds text. There is no PDF export yet.
+- The fact check is stricter than career-ops' `verify-cv-facts.mjs`: any number or name-shaped word missing from
+  the profile undoes the change, so a rewording that is true but uses a term the profile lacks is undone too. Add
+  the term to the profile when it's true.
+- Roles keep their titles in the profile's language when the CV is written in another one.
+- PDF export needs a Chromium-family browser on the computer.

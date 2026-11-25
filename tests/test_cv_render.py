@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from career_agent import cv_render
 from career_agent.app import app
-from career_agent.profile import Profile
+from career_agent.profile import Award, Profile, Skill
 
 client = TestClient(app)
 
@@ -265,3 +265,90 @@ def test_korean_cv_words_and_dates():
     # Korean CVs write dates as year.month.
     assert "2020.01 – 현재" in out
     assert "2020.01 – 2022.12" in out
+
+
+# --- Fields from career-ops' payload the profile now carries -------------------------------------
+
+
+def _full():
+    p = cv_render.sample_profile()
+    return p.model_copy(
+        update={
+            "phone": "+41 76 000 00 00",
+            "awards": [
+                Award(
+                    id="a",
+                    title="Hackathon winner",
+                    issuer="HackZurich",
+                    date={"year": 2023},
+                )
+            ],
+            "interests": ["Chess", "Hiking"],
+            "experiences": [
+                p.experiences[0].model_copy(
+                    update={
+                        "context": "Fintech scale-up, ~200 people",
+                        "bullets": ["Cut **p95** latency <b>fast</b>"],
+                    }
+                ),
+                *p.experiences[1:],
+            ],
+            "skills": [
+                Skill(name="Python", category="Languages"),
+                Skill(name="Go", category="Languages"),
+                Skill(name="Docker"),
+                Skill(name="React", category="Frontend"),
+            ],
+        }
+    )
+
+
+def test_phone_context_awards_interests_and_bold():
+    page = cv_render.render("standard", _full(), "en", "a4")
+    assert '<a href="tel:+41760000000">+41 76 000 00 00</a>' in page
+    assert '<div class="job-context">Fintech scale-up, ~200 people</div>' in page
+    assert "Hackathon winner" in page and "HackZurich" in page
+    assert "Chess, Hiking" in page  # as typed
+    # Escaping first: the markers become <strong>, typed markup stays text.
+    assert "Cut <strong>p95</strong> latency &lt;b&gt;fast&lt;/b&gt;" in page
+
+
+def test_skills_go_on_one_line_per_category():
+    p = _full()
+    assert cv_render.skill_groups(p, "it") == [
+        ("Languages", ["Python", "Go"]),
+        ("Frontend", ["React"]),
+        ("Altro", ["Docker"]),
+    ]
+    p = p.model_copy(update={"skills": [Skill(name="Docker")]})
+    assert cv_render.skill_groups(p, "en") == [("Technical", ["Docker"])]
+
+
+def test_competencies_consent_and_photo_style():
+    p = _full().model_copy(update={"photo": "data:image/png;base64,AAAA"})
+    page = cv_render.render(
+        "standard",
+        p,
+        "it",
+        "a4",
+        True,
+        competencies=["Event-driven", "Go"],
+        consent=True,
+        photo_style="circle",
+    )
+    assert '<span class="competency-tag">Event-driven</span>' in page
+    assert "Regolamento UE 2016/679" in page
+    assert "cv-photo--circle" in page
+    # Without them, both sections go.
+    page = cv_render.render("standard", p, "it", "a4")
+    assert "competency-tag" not in page.split("</head>")[1]
+    assert "Regolamento" not in page
+
+
+def test_ats_gets_the_competencies_as_a_skills_line():
+    page = cv_render.render(
+        "ats", _full(), "en", "a4", competencies=["Event-driven", "Go"]
+    )
+    body = page.split("</head>")[1]
+    assert "competency-tag" not in body
+    assert "Core Competencies" in body and "Event-driven, Go" in body

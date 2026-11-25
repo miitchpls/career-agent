@@ -124,6 +124,35 @@ def test_to_profile_converts_and_flags_what_the_cv_does_not_say():
     assert len({e["id"] for e in p["experiences"]}) == 2
 
 
+def test_to_profile_reads_phone_context_categories_awards_and_interests():
+    raw = {
+        **RAW,
+        "phone": " +39 333 000 0000 ",
+        "experiences": [{**RAW["experiences"][0], "context": "Scale-up, 80 people"}],
+        "skills": [{"name": "Spark", "inferred": False, "category": "Data"}],
+        "awards": [
+            {
+                "title": "Premio tesi",
+                "issuer": "Università di Bologna",
+                "date": {"month": None, "year": 2019},
+                "description": "",
+                "evidence": "Laurea magistrale in Informatica",
+                "review": None,
+            },
+            {"title": "", "issuer": "x"},
+        ],
+        "interests": ["Vela", " ", "Vela"],
+    }
+    p = profile.to_profile(raw, CV)
+    assert p.phone == "+39 333 000 0000"
+    assert p.experiences[0].context == "Scale-up, 80 people"
+    assert p.skills[0].category == "Data"
+    # Its title isn't in the CV: flagged like any entry the CV doesn't hold.
+    assert [a.title for a in p.awards] == ["Premio tesi"] and p.awards[0].review
+    assert p.awards[0].date.year == 2019
+    assert p.interests == ["Vela"]
+
+
 def test_evidence_matching_ignores_case_punctuation_and_spacing():
     raw = {
         **RAW,
@@ -232,7 +261,9 @@ def test_profile_starts_empty_and_saves_revisions():
     assert r.status_code == 200
     body = r.json()
     assert body["profile"]["name"] == "Giulia Ferri"
-    assert body["profile"]["skills"] == [{"name": "Python", "inferred": False}]
+    assert body["profile"]["skills"] == [
+        {"name": "Python", "inferred": False, "category": ""}
+    ]
     assert body["saved_at"]
     client.put("/api/profile", json={"profile": P})  # unchanged: no new revision
     client.put("/api/profile", json={"profile": {**P, "name": "Giulia F."}})
@@ -669,10 +700,30 @@ def test_cv_preferences_are_saved():
         "format": "auto",
         "style": "standard",
         "photo": "auto",
+        "photoStyle": "rounded",
+        "consent": "auto",
+        "locked": [],
+        "guidance": "",
     }
-    prefs = {"language": "de", "format": "a4", "style": "jake", "photo": "never"}
-    assert client.put("/api/cv/preferences", json=prefs).json() == prefs
-    assert client.get("/api/cv/preferences").json() == prefs
+    prefs = {
+        "language": "de",
+        "format": "a4",
+        "style": "jake",
+        "photo": "never",
+        "photoStyle": "circle",
+        "consent": "always",
+        "locked": ["summary", "headline"],
+        "guidance": "  Never 'Senior' in the title. ",
+    }
+    saved = client.put("/api/cv/preferences", json=prefs).json()
+    # Sections in their own order, the guidance trimmed.
+    clean = {
+        **prefs,
+        "locked": ["headline", "summary"],
+        "guidance": "Never 'Senior' in the title.",
+    }
+    assert saved == clean
+    assert client.get("/api/cv/preferences").json() == clean
     assert (
         client.put("/api/cv/preferences", json={**prefs, "style": "fancy"}).status_code
         == 422

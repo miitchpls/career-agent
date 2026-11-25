@@ -6,10 +6,10 @@ import { useMutation, useMutationState, useQuery, useQueryClient } from "@tansta
 import { toast } from "sonner"
 
 import { api, type CvTemplate, type ScoreDecision, type Site } from "@/lib/api"
-import { useGenerated } from "@/lib/cv-mock"
 import { useCvPrefs } from "@/lib/cv-prefs"
 import { msgs } from "@/lib/i18n"
 import { postingKey } from "@/lib/job-link"
+import { shownCv, useTailoredCv } from "@/lib/tailored-cv"
 
 /** Where an application stands. `saved`: followed, not sent yet. */
 export type AppStatus = "saved" | "applied" | "screening" | "interview" | "offer" | "rejected" | "ghosted" | "withdrawn"
@@ -212,11 +212,29 @@ export function useDeleteApplication() {
 
 // --- The CV sent ---------------------------------------------------------------------------
 
-/** The CV template (its id) to record as sent with this posting: the one generated for it. */
+/** The CV template (its id) to record as sent with this posting: the one its CV is shown in. */
 export function useCvToSend(url: string): CvTemplate | null {
-  const generated = useGenerated().has(url)
+  const cv = shownCv(useTailoredCv(url, !!url).data)
   const style = useCvPrefs().style
-  return generated ? style : null
+  return cv ? style : null
+}
+
+/**
+ * The same, asked when needed: a list's status menu doesn't load every row's CV, it asks
+ * (or reuses what's loaded) when a status is picked.
+ */
+export function useFetchCvToSend(): (url: string) => Promise<CvTemplate | null> {
+  const client = useQueryClient()
+  const style = useCvPrefs().style
+  return async (url) => {
+    if (!url) return null
+    try {
+      const state = await client.fetchQuery({ queryKey: ["job-cv", url], queryFn: () => api.cv.get(url), staleTime: 10_000 })
+      return shownCv(state) ? style : null
+    } catch {
+      return null // not knowing which CV went out never blocks the status change
+    }
+  }
 }
 
 /** The CV sent, by name in the current language; one recorded by name (older ones) as it is. */

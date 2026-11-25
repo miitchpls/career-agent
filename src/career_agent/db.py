@@ -11,7 +11,7 @@ from . import fx
 from .query import Query, Sql, salary_in, where
 
 DB_PATH = Path("data/jobs.db")
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -124,6 +124,22 @@ CREATE TABLE IF NOT EXISTS job_scores (
     updated_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS job_scores_url ON job_scores(url, id);
+CREATE TABLE IF NOT EXISTS job_cvs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    url         TEXT NOT NULL REFERENCES jobs(url) ON DELETE CASCADE,
+    revision_id INTEGER REFERENCES profile_revisions(id) ON DELETE CASCADE,  -- the profile tailored
+    inputs      TEXT NOT NULL,      -- tailor.fingerprint: the posting's text and the CV settings
+    language    TEXT NOT NULL,      -- the CV's language (cv_render.CvLanguage)
+    status      TEXT NOT NULL,      -- running | ready | failed | cancelled
+    provider    TEXT NOT NULL,
+    model       TEXT,
+    result      TEXT,               -- JSON of tailor.Result, once ready
+    raw         TEXT,               -- the AI's answer as it came, for debugging
+    error       TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS job_cvs_url ON job_cvs(url, id);
 CREATE TABLE IF NOT EXISTS applications (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     key              TEXT,              -- applications.posting_key; NULL without a link
@@ -335,6 +351,16 @@ def _items(conn, rows, currency: str, rates: dict[str, float]) -> list[dict]:
         }
         for i in items:
             i["score"] = by_score.get(i["url"])
+        with_cv = {
+            r["url"]
+            for r in conn.execute(
+                f"SELECT DISTINCT url FROM job_cvs WHERE status = 'ready' "
+                f"AND url IN ({', '.join('?' * len(urls))})",
+                urls,
+            )
+        }
+        for i in items:
+            i["has_cv"] = i["url"] in with_cv
     return items
 
 
@@ -804,6 +830,89 @@ def fail_running_scores(error: str = SCORE_INTERRUPTED) -> None:
     with connect() as conn:
         conn.execute(
             "UPDATE job_scores SET status = 'failed', error = ?, updated_at = ? "
+            "WHERE status = 'running'",
+            (error, _now()),
+        )
+
+
+# --- Tailored CVs (tailor.py) -------------------------------------------------------------------
+
+
+def create_cv(
+    url: str,
+    revision_id: int,
+    inputs: str,
+    language: str,
+    provider: str,
+    model: str | None,
+) -> int:
+    now = _now()
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO job_cvs (url, revision_id, inputs, language, status, provider, model, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?)",
+            (url, revision_id, inputs, language, provider, model, now, now),
+        )
+        return cur.lastrowid
+
+
+_CV_FIELDS = {"status", "result", "raw", "error"}
+
+
+def update_cv(cv_id: int, when_status: str | None = None, **fields) -> bool:
+    """Set CV columns; with `when_status`, only if it's still in that state."""
+    assert fields and set(fields) <= _CV_FIELDS
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    sql = f"UPDATE job_cvs SET {sets}, updated_at = ? WHERE id = ?"
+    params: list = [*fields.values(), _now(), cv_id]
+    if when_status:
+        sql += " AND status = ?"
+        params.append(when_status)
+    with connect() as conn:
+        return conn.execute(sql, params).rowcount > 0
+
+
+def latest_cv(url: str) -> dict | None:
+    """The posting's last CV that wasn't cancelled: running, ready or failed."""
+    return _cv_row(url, "status != 'cancelled'")
+
+
+def last_ready_cv(url: str) -> dict | None:
+    return _cv_row(url, "status = 'ready'")
+
+
+def _cv_row(url: str, condition: str) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            f"SELECT *, (SELECT count(*) FROM job_cvs v WHERE v.url = c.url "
+            f"AND v.status = 'ready' AND v.id <= c.id) AS version "
+            f"FROM job_cvs c WHERE url = ? AND {condition} ORDER BY id DESC LIMIT 1",
+            (url,),
+        ).fetchone()
+    if not row:
+        return None
+    r = dict(row)
+    r["result"] = json.loads(r["result"]) if r["result"] else None
+    r.pop("raw")
+    return r
+
+
+def count_cv_postings() -> int:
+    """How many postings have a finished tailored CV."""
+    with connect() as conn:
+        return conn.execute(
+            "SELECT count(DISTINCT url) FROM job_cvs WHERE status = 'ready'"
+        ).fetchone()[0]
+
+
+CV_INTERRUPTED = "cv_interrupted"  # an i18n key, translated when read
+
+
+def fail_running_cvs(error: str = CV_INTERRUPTED) -> None:
+    """At startup: no CV generation survives a restart."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE job_cvs SET status = 'failed', error = ?, updated_at = ? "
             "WHERE status = 'running'",
             (error, _now()),
         )

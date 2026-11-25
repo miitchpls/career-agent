@@ -5,7 +5,16 @@ import { toast } from "sonner"
 import { api, type CvLanguage, type CvPrefs, type Job } from "@/lib/api"
 import { msgs } from "@/lib/i18n"
 
-export const DEFAULT_CV_PREFS: CvPrefs = { language: "job", format: "auto", style: "standard", photo: "auto" }
+export const DEFAULT_CV_PREFS: CvPrefs = {
+  language: "job",
+  format: "auto",
+  style: "standard",
+  photo: "auto",
+  photoStyle: "rounded",
+  consent: "auto",
+  locked: [],
+  guidance: "",
+}
 
 export function useCvPrefs(): CvPrefs {
   const { data } = useQuery({ queryKey: ["cv-prefs"], queryFn: api.cv.prefs, staleTime: Infinity })
@@ -86,15 +95,20 @@ export interface ResolvedCv {
   format: "a4" | "letter"
   style: CvPrefs["style"]
   photo: boolean
+  /** End with the data-processing consent. */
+  consent: boolean
 }
 
 /** The preferences applied to one posting: no "auto" left. */
 export function resolveCv(prefs: CvPrefs, job: Pick<Job, "location" | "description">, hasPhoto: boolean): ResolvedCv {
   const country = jobCountry(job.location)
+  const language = prefs.language === "job" ? postingLanguage(job.description) : prefs.language
   return {
-    language: prefs.language === "job" ? postingLanguage(job.description) : prefs.language,
+    language,
     format: prefs.format === "auto" ? (country && LETTER.has(country) ? "letter" : "a4") : prefs.format,
     style: prefs.style,
     photo: hasPhoto && (prefs.photo === "always" || (prefs.photo === "auto" && !(country && NO_PHOTO.has(country)))),
+    // Italian CVs end with it; an Italian posting with no country stated likely is one.
+    consent: prefs.consent === "always" || (prefs.consent === "auto" && (country ? country === "it" : language === "it")),
   }
 }

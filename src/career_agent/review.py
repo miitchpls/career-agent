@@ -10,13 +10,15 @@ profile doesn't already hold (a number, a product, a tool, a name). Those are dr
 import json
 import re
 import threading
-import unicodedata
 import uuid
 from typing import Literal
 
 from pydantic import ValidationError
 
 from . import ai, db, runs
+from .facts import Known as _Known
+from .facts import has as _has
+from .facts import norm as _norm
 from .i18n import LOCALE, t
 from .profile import _LANGUAGE_NAMES, Profile, _Model, _obj
 
@@ -145,70 +147,6 @@ def user_prompt(p: Profile) -> str:
 # --- Checking what comes back ------------------------------------------------------------------
 
 _BLANK = re.compile(r"\[\[([^\[\]]{1,40})\]\]")
-_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
-# A word, keeping the punctuation that is part of a name: Node.js, C#, C++, CI/CD.
-_TOKEN = re.compile(r"[^\W_](?:[\w+#./-]*[\w+#])?")
-_GERMAN = frozenset(
-    ["und", "der", "die", "das", "mit", "für", "ist", "von", "bei", "wir"]
-)
-
-
-def _norm(text: str) -> str:
-    text = unicodedata.normalize("NFKC", text).casefold()
-    return " ".join(re.findall(r"\w+", text))
-
-
-def _has(known: str, needle: str) -> bool:
-    """`needle` as whole words in the normalised `known` text."""
-    n = _norm(needle)
-    return bool(n) and f" {n} " in f" {known} "
-
-
-def _texts(value) -> list[str]:
-    """Every string and number in a dumped profile."""
-    if isinstance(value, dict):
-        return [s for v in value.values() for s in _texts(v)]
-    if isinstance(value, list):
-        return [s for v in value for s in _texts(v)]
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, int | float) and not isinstance(value, bool):
-        return [str(value)]
-    return []
-
-
-class _Known:
-    """What the profile says, to tell a rephrasing from a new fact."""
-
-    def __init__(self, p: Profile) -> None:
-        text = "\n".join(_texts(p.dump()))
-        self.words = _norm(text)
-        self.numbers = {n.replace(",", ".") for n in _NUMBER.findall(text)}
-        words = set(self.words.split())
-        # German capitalises every noun: there a capital letter doesn't mark a name.
-        self.german = len(words & _GERMAN) >= 3
-
-    def new_facts(self, text: str) -> list[str]:
-        """Numbers and names in `text` the profile doesn't hold."""
-        text = _BLANK.sub(" ", text)
-        out = [
-            n for n in _NUMBER.findall(text) if n.replace(",", ".") not in self.numbers
-        ]
-        for sentence in re.split(r"(?<=[.!?:;])\s+|\n", text):
-            for i, tok in enumerate(_TOKEN.findall(sentence)):
-                if not _is_name(tok, first=i == 0, german=self.german):
-                    continue
-                if not _has(self.words, tok):
-                    out.append(tok)
-        return out
-
-
-def _is_name(tok: str, first: bool, german: bool) -> bool:
-    if any(c.isdigit() for c in tok) or any(c in "+#./" for c in tok[1:]):
-        return True  # C++, Node.js, S3, CI/CD
-    if any(c.isupper() for c in tok[1:]):
-        return True  # FastAPI, iOS, AWS
-    return tok[0].isupper() and not first and not german  # Kubernetes mid-sentence
 
 
 def _entries(p: Profile) -> dict[str, tuple[Section, object]]:
@@ -320,7 +258,7 @@ def _check(item, p: Profile, known: _Known, entries) -> Suggestion | None:
         blanks = _BLANK.findall(after)
         if (kind == "question") != bool(blanks) or len(blanks) > MAX_BLANKS:
             return None
-        if "[[" in _BLANK.sub("", after) or known.new_facts(after):
+        if "[[" in _BLANK.sub("", after) or known.new_facts(_BLANK.sub(" ", after)):
             return None
     return Suggestion(
         id=uuid.uuid4().hex[:10],
