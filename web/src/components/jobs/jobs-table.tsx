@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { Direction, Job, Sort } from "@/lib/api"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
 import { useT } from "@/lib/i18n"
+import { DECISION_DOT, formatScore } from "@/lib/job-score"
 import { cn } from "@/lib/utils"
 
 const MotionBody = motion.create(TableBody)
@@ -173,6 +174,7 @@ export function JobsTable({
           <SortableHead field="salary" sort={sort} direction={direction} onSort={onSort}>
             {t.salary}
           </SortableHead>
+          <TableHead>{t.scoreColumn}</TableHead>
           <TableHead>{t.site}</TableHead>
           <SortableHead field="posted" sort={sort} direction={direction} onSort={onSort} className="pr-4">
             {t.postedOn}
@@ -205,6 +207,16 @@ export function JobsTable({
               {salaryLabel(job) ?? <span className="text-muted-foreground">—</span>}
               {convertedLabel(job.salary_converted) && (
                 <div className="text-[11px] text-muted-foreground">{convertedLabel(job.salary_converted)}</div>
+              )}
+            </TableCell>
+            <TableCell className="text-xs tabular-nums">
+              {job.score ? (
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  <span className={cn("size-1.5 rounded-full", DECISION_DOT[job.score.decision])} />
+                  {formatScore(job.score.value)}
+                </span>
+              ) : (
+                <span className="text-muted-foreground">—</span>
               )}
             </TableCell>
             <TableCell>

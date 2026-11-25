@@ -24,6 +24,7 @@ import { toast } from "sonner"
 
 import { StyleGallery } from "@/components/cv/style-gallery"
 import { MediaStrip, SkillLine } from "@/components/profile/fields"
+import { ScorePrefsCard } from "@/components/profile/score-prefs"
 import { ReviewCard } from "@/components/profile/review-panel"
 import {
   CertificationDialog,
@@ -995,6 +996,8 @@ function Aside({ profile }: { profile: Profile }) {
           <p className="text-xs text-muted-foreground">{t.complete}</p>
         )}
       </Card>
+
+      <ScorePrefsCard />
 
       <ReviewCard />
 

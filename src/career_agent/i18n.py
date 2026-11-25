@@ -261,6 +261,42 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "de": "Bestätige oder verwirf zuerst den aus dem Lebenslauf importierten Entwurf.",
         "ko": "먼저 이력서에서 가져온 초안을 확인하거나 버리세요.",
     },
+    "score_no_job": {
+        "it": "Questa offerta non è tra quelle salvate.",
+        "en": "This posting isn't among the saved ones.",
+        "de": "Diese Stelle ist nicht unter den gespeicherten.",
+        "ko": "저장된 채용공고가 아닙니다.",
+    },
+    "score_no_description": {
+        "it": "L'annuncio non ha un testo da valutare.",
+        "en": "The posting has no text to score.",
+        "de": "Die Anzeige hat keinen Text zum Bewerten.",
+        "ko": "평가할 공고 내용이 없습니다.",
+    },
+    "score_no_profile": {
+        "it": "Serve un profilo salvato per valutare la compatibilità.",
+        "en": "A saved profile is needed to score the fit.",
+        "de": "Für die Bewertung wird ein gespeichertes Profil benötigt.",
+        "ko": "적합도를 평가하려면 저장된 프로필이 필요합니다.",
+    },
+    "score_busy": {
+        "it": "La valutazione di questa offerta è già in corso",
+        "en": "This posting is already being scored",
+        "de": "Diese Stelle wird bereits bewertet",
+        "ko": "이 채용공고는 이미 평가 중입니다",
+    },
+    "score_busy_many": {
+        "it": "Ci sono già tre valutazioni in corso: aspetta che una finisca.",
+        "en": "Three scores are already running: wait for one to finish.",
+        "de": "Es laufen bereits drei Bewertungen: warte, bis eine fertig ist.",
+        "ko": "이미 세 건의 평가가 진행 중입니다. 하나가 끝날 때까지 기다리세요.",
+    },
+    "score_interrupted": {
+        "it": "Valutazione interrotta: il server è stato riavviato.",
+        "en": "Scoring interrupted: the server was restarted.",
+        "de": "Bewertung unterbrochen: der Server wurde neu gestartet.",
+        "ko": "평가가 중단되었습니다: 서버가 다시 시작되었습니다.",
+    },
     "review_interrupted": {
         "it": "Revisione interrotta: il server è stato riavviato.",
         "en": "Review interrupted: the server was restarted.",
@@ -272,6 +308,31 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "en": "Suggestion not found: there may be a newer review.",
         "de": "Vorschlag nicht gefunden: vielleicht gibt es eine neuere Prüfung.",
         "ko": "제안을 찾을 수 없습니다: 더 최근의 검토가 있을 수 있습니다.",
+    },
+    # Opening a posting from a link (job_link.py)
+    "link_unsupported": {
+        "it": "Questo non è il link di un annuncio LinkedIn o Indeed.",
+        "en": "This isn't a LinkedIn or Indeed job link.",
+        "de": "Das ist kein Link zu einer Stelle auf LinkedIn oder Indeed.",
+        "ko": "LinkedIn 또는 Indeed 채용공고 링크가 아닙니다.",
+    },
+    "link_paste_empty": {
+        "it": "Servono almeno il titolo e il testo dell'annuncio.",
+        "en": "A title and the posting's text are needed.",
+        "de": "Titel und Text der Anzeige werden benötigt.",
+        "ko": "제목과 공고 내용이 필요합니다.",
+    },
+    "link_unreadable": {
+        "it": "Non riesco a leggere questo annuncio: potrebbe essere stato rimosso.",
+        "en": "Can't read this posting: it may have been taken down.",
+        "de": "Diese Stelle lässt sich nicht lesen: vielleicht wurde sie entfernt.",
+        "ko": "이 채용공고를 읽을 수 없습니다: 삭제되었을 수 있습니다.",
+    },
+    "link_failed": {
+        "it": "{site} non ha risposto: riprova tra poco.",
+        "en": "{site} didn't answer: try again shortly.",
+        "de": "{site} hat nicht geantwortet: versuche es gleich noch einmal.",
+        "ko": "{site}이(가) 응답하지 않았습니다: 잠시 후 다시 시도하세요.",
     },
     "file_not_found": {
         "it": "File non trovato",

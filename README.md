@@ -31,6 +31,26 @@ reproduces it.
 The bar filters the postings **already saved**. **Find new jobs** (or **Run** on a saved search) turns the same
 filters into board searches and starts them.
 
+### Opening a posting from a link
+
+Under the search bar, **Open it from a link** takes a posting's address. The board is recognised as the link is
+pasted, and Enter opens the posting in the same sheet as a search result, which shows at once and fills in when
+the posting arrives. Nothing else starts: no search, no CV.
+
+- A posting already saved (found by a search, or opened from a link before) opens from the database, without
+  asking the board.
+- A new posting is read within the same limits as a search: refused while its board is paused, counted, and a
+  sign of throttling pauses the board. It's saved with your jobs.
+  - **LinkedIn**: from the posting's page, one request, counted in the daily budget.
+  - **Indeed**: by its key, through the app API JobSpy searches with (Indeed's web pages sit behind a bot
+    check), for the country of the link's domain (`it.indeed.com` is Italy, `www` the US).
+- When the board won't show it (a login wall, a pause, a removed posting), there's one attempt and no
+  workaround: the sheet offers **Paste the text** instead. Title, company, place and the posting's text, copied
+  from the page you see, are saved under the same link without any request.
+
+Accepted LinkedIn forms: `/jobs/view/<id>`, `/jobs/view/<title>-<id>`, any country subdomain, and list pages with
+`?currentJobId=<id>`. Indeed: any page with `?jk=` or `?vjk=`.
+
 ### Filters
 
 Different filters are combined with AND.
@@ -127,6 +147,37 @@ restart; if a later review fails or is interrupted, the last finished one's open
 until a new one finishes.
 
 The edit dialogs refuse an end date before the start date (and an expiry before the issue date).
+
+### Fit score
+
+A saved posting can be scored against the profile, the way career-ops scores an offer. The score answers
+"how well do you fit this job", not "is it what you're looking for now": that depends on the search, and the
+sheet checks it separately (below). The AI CLI reads only the saved posting, the profile (without name, email
+and links) and two settings that hold whatever the search, on the profile page under **For the score**:
+dealbreakers in your own words ("no body rental") and an optional note. Nothing is fetched. It returns:
+
+- the posting's requirements (at most 12; every critical and high one is kept), each with its importance
+  (critical, high, meaningful, preferred, low signal), what that rests on (the posting's words, its structure,
+  or an estimate), whether the profile covers it, and the profile line that shows it;
+- three dimensions scored 1-5: CV match, pay (against the market), company. One without evidence has no score
+  and doesn't count; it never becomes a neutral 3;
+- red flags, the gaps worth preparing for interviews, and up to three checks that could change the score;
+- one score from 1.0 to 5.0 and a one-sentence verdict.
+
+The server checks the answer rather than trusting it. The decision comes from the score through one table
+(4.5 strong apply, 4.0 apply, 3.0 consider, below skip). A quote must be in the posting's text as whole words,
+or it's dropped; an importance the posting doesn't back can't be critical or high; a hard stop (a posting that
+states one of your dealbreakers) needs the posting's words, and it forces skip without changing the number.
+Confidence (high, medium, low) follows how many dimensions rest on evidence. A score is stored per posting and
+marked stale when the profile, the dealbreakers and note, or the posting change; the list shows each posting's
+last one.
+
+### Your search, on each posting
+
+A posting opened from the results shows how it meets the active search, condition by condition: the place
+group it was found in, the work mode that group asks for, the minimum pay (in the search's currency), the
+employment type and the posting's age. Each is met, not met, or unknown (the posting doesn't say). It's the
+filters' own rules, computed on the server: no AI and no request to a board.
 
 ### CV preferences
 
@@ -247,13 +298,15 @@ src/career_agent/
   app.py       FastAPI routes; serves the built UI
   query.py     The query model: SQL filter and search plan
   scraper.py   Runs a search plan in the background: pauses, budget, back-off
-  boards.py    LinkedIn and Indeed through JobSpy, counting requests
+  boards.py    LinkedIn and Indeed through JobSpy, counting requests; one posting from its link
+  job_link.py  Pasted links: which posting, and opening it within the boards' limits
   db.py        SQLite schema and queries
   geo.py       City autocomplete and English names for the boards
   fx.py        ECB exchange rates
   profile.py   Profile model, CV reading, import pipeline, CV preferences
   review.py    AI review of the profile: prompt, schema, checks against new facts
-  runs.py      One background AI run at a time (import, review), cancellable
+  score.py     Fit score of a posting: preferences, prompt, schema, checks, bands
+  runs.py      One background AI run at a time (import, review, score), cancellable
   cv_render.py career-ops CV templates filled with the profile
   cv_templates/ the templates, copied from career-ops
   ai.py        AI CLI detection, settings and isolated runs
@@ -271,6 +324,8 @@ tests/
 | `GET /api/status` · `POST /api/cancel` | Progress of the running search · stop it |
 | `GET/POST /api/saved` · `DELETE /api/saved/{id}` · `POST /api/saved/{id}/run` | Saved searches |
 | `GET /api/places?q=` | City suggestions |
+| `POST /api/jobs/open` | One posting from a pasted link: from the database when saved, else read from its board |
+| `POST /api/jobs/paste` | A posting the board wouldn't show, saved under its link from the text the user copied |
 | `GET/PUT /api/ai` | AI engines found, saved choice |
 | `GET/PUT /api/cv/preferences` | CV language, format, style and photo |
 | `POST /api/cv/preview` | CV templates filled with a profile (or the sample) as HTML, several per request; optional highlighted texts |
@@ -279,6 +334,9 @@ tests/
 | `PUT/DELETE /api/profile/draft` · `POST /api/profile/draft/confirm` · `POST /api/profile/draft/retry` | Review an import |
 | `POST /api/profile/files` · `GET /api/profile/files/{id}` | Photos and attachments |
 | `GET/POST/DELETE /api/profile/review` · `PATCH /api/profile/review/suggestions/{id}` | Latest AI review · start · cancel · mark a suggestion applied or dismissed |
+| `GET /api/jobs/score?url=` · `POST /api/jobs/score` · `DELETE /api/jobs/score?url=` | A posting's fit score (and the last finished one) · start · cancel |
+| `GET/PUT /api/score/preferences` | What the fit score reads whatever the search: dealbreakers and a note |
+| `POST /api/jobs/match` | How a saved posting meets each condition of a search |
 
 ## Known limitations
 
