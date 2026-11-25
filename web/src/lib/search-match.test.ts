@@ -19,7 +19,7 @@ group("search match", () => {
   })
 
   it("leaves out what the search was met by: the posting was found by it", () => {
-    expect(describe({ kind: "place", state: "ok", value: "Lugano" })).toBeNull()
+    expect(describe({ kind: "place", state: "ok", value: "Basel" })).toBeNull()
     expect(describe({ kind: "job_type", state: "ok", value: ["fulltime"], expected: ["fulltime"] })).toBeNull()
     expect(describe({ kind: "posted", state: "ok", value: "2026-11-23", expected: 24 })).toBeNull()
     expect(describe({ kind: "posted", state: "unknown", value: null, expected: 24 })?.text).toBe("Data non indicata")

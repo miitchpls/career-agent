@@ -4,7 +4,7 @@ import type { RunStatus, RunStep } from "@/lib/api"
 import { offersPhrase, runMessage, stepOutcome } from "@/lib/run-messages"
 
 const step = (over: Partial<RunStep>): RunStep => ({
-  site: "linkedin", keyword: "contabile", place: "Lugano", status: "pending", found: 0, new: 0, abroad: 0, off_title: 0, missed: 0, error: null, note: null, ran_at: null, ...over,
+  site: "linkedin", keyword: "contabile", place: "Basel", status: "pending", found: 0, new: 0, abroad: 0, off_title: 0, missed: 0, error: null, note: null, ran_at: null, ...over,
 })
 const status = (over: Partial<RunStatus>): RunStatus => ({
   running: true, started: "t", finished: null, phase: "searching", current: 0, pause_seconds: null,
@@ -14,7 +14,7 @@ const status = (over: Partial<RunStatus>): RunStatus => ({
 describe("runMessage", () => {
   it("says what it is searching", () => {
     const r = status({ steps: [step({ status: "running" })] })
-    expect(runMessage(r)).toEqual({ text: "Cerco «contabile» su LinkedIn a Lugano…", live: true })
+    expect(runMessage(r)).toEqual({ text: "Cerco «contabile» su LinkedIn a Basel…", live: true })
   })
 
   it("reports the last result during the pause, and what comes next", () => {
@@ -31,7 +31,7 @@ describe("runMessage", () => {
       phase: "pausing",
       steps: [step({ status: "error", error: "il portale non ha risposto in tempo" }), step({ site: "indeed" })],
     })
-    expect(runMessage(r)?.text).toBe("LinkedIn: il portale non ha risposto in tempo · tra poco Indeed a Lugano…")
+    expect(runMessage(r)?.text).toBe("LinkedIn: il portale non ha risposto in tempo · tra poco Indeed a Basel…")
   })
 
   it("summarises the end", () => {

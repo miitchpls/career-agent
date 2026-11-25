@@ -8,7 +8,7 @@ from career_agent.query import Place, Query, Scope, match
 
 client = TestClient(app)
 
-LUGANO = Place(city="Lugano", country="ch", geo_id=1)
+BASEL = Place(city="Basel", country="ch", geo_id=1)
 TORONTO = Place(city="Toronto", country="ca", geo_id=2)
 RATES = {"CHF": 1.0, "EUR": 1.0, "CAD": 1.5}
 JOB = {
@@ -34,7 +34,7 @@ def test_only_the_conditions_the_search_sets():
 def test_place_and_mode_follow_the_matching_group():
     q = Query(
         scopes=[
-            Scope(places=[LUGANO], modes=["hybrid"]),
+            Scope(places=[BASEL], modes=["hybrid"]),
             Scope(places=[TORONTO], modes=["remote"]),
         ]
     )
@@ -47,15 +47,15 @@ def test_place_and_mode_follow_the_matching_group():
     }
     assert states(q, hits=["geo:9"]) == {"place": "no"}
     # A group with any mode: nothing to check on the mode.
-    q = Query(scopes=[Scope(places=[LUGANO])])
+    q = Query(scopes=[Scope(places=[BASEL])])
     assert states(q) == {"place": "ok"}
-    assert match(q, JOB, ["geo:1"], RATES)[0]["value"] == "Lugano"
+    assert match(q, JOB, ["geo:1"], RATES)[0]["value"] == "Basel"
 
 
 def test_without_a_place_of_its_own_the_place_is_unknown():
     q = Query(
         scopes=[
-            Scope(places=[LUGANO], modes=["hybrid"]),
+            Scope(places=[BASEL], modes=["hybrid"]),
             Scope(places=[TORONTO], modes=["remote"]),
         ]
     )
@@ -97,10 +97,10 @@ def test_the_endpoint_reads_the_saved_posting_and_its_hits():
             }
         ],
         "geo:1",
-        "Lugano",
+        "Basel",
         "go",
     )
-    q = Query(scopes=[Scope(places=[LUGANO], modes=["hybrid"])], salary_min=90)
+    q = Query(scopes=[Scope(places=[BASEL], modes=["hybrid"])], salary_min=90)
     r = client.post("/api/jobs/match", json={"url": "u", "query": q.model_dump()})
     assert [(c["kind"], c["state"]) for c in r.json()["checks"]] == [
         ("place", "ok"),

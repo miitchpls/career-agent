@@ -13,7 +13,7 @@ const money = (n: number, cur: string) => `${cur} ${compact(n)}`
 
 /**
  * The sheet's words for one check: what departs from the search, or can't be told. A met one
- * is null: the posting was found by the search, so saying it matches ("✓ Lugano") is noise.
+ * is null: the posting was found by the search, so saying it matches ("✓ Basel") is noise.
  */
 export function describe(c: MatchCheck): MatchLine | null {
   const state = c.state

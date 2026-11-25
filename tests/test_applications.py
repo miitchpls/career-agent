@@ -76,13 +76,13 @@ def test_a_board_posting_takes_the_saved_text_and_score():
                 "site": "linkedin",
                 "title": "Platform Engineer",
                 "company": "Helvetia",
-                "location": "Lugano",
+                "location": "Basel",
                 "work_mode": "hybrid",
                 "description": "Kubernetes at scale.",
             }
         ],
         "geo:1",
-        "Lugano",
+        "Basel",
         "go",
     )
     sid = db.create_score(CANONICAL, None, "x", "claude", None)
@@ -91,7 +91,7 @@ def test_a_board_posting_takes_the_saved_text_and_score():
         "application"
     ]
     assert a["url"] == CANONICAL and a["site"] == "linkedin"
-    assert (a["company"], a["location"]) == ("Helvetia", "Lugano")
+    assert (a["company"], a["location"]) == ("Helvetia", "Basel")
     assert a["posting"]["description"] == "Kubernetes at scale."
     assert a["score"] == {"value": 4.2, "decision": "apply"}
 
@@ -148,19 +148,19 @@ def test_pasted_text_fills_a_saved_posting_the_board_left_empty():
                 "site": "linkedin",
                 "title": "Platform Engineer",
                 "company": "Helvetia",
-                "location": "Lugano",
+                "location": "Basel",
                 "work_mode": "unknown",
                 "description": None,
             }
         ],
         "geo:1",
-        "Lugano",
+        "Basel",
         "go",
     )
-    add(url=CANONICAL, description="Kubernetes, hybrid in Lugano.")
+    add(url=CANONICAL, description="Kubernetes, hybrid in Basel.")
     assert (
         db.find_job("linkedin", JOB_ID, "CHF")["description"]
-        == "Kubernetes, hybrid in Lugano."
+        == "Kubernetes, hybrid in Basel."
     )
 
 

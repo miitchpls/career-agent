@@ -194,7 +194,7 @@ class Step:
 
     site: Site
     keyword: str
-    place: str  # display name: "Lugano", "Ovunque"
+    place: str  # display name: "Basel", "Ovunque"
     status: StepStatus = "pending"
     found: int = 0  # matching the query (title, country), new or already saved
     new: int = 0
