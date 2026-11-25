@@ -419,7 +419,7 @@ def test_at_most_three_run_and_slots_are_let_go(monkeypatch):
     for u in urls[:3]:
         assert client.post("/api/jobs/score", json={"url": u}).status_code == 202
     r = client.post("/api/jobs/score", json={"url": urls[3]})
-    assert r.status_code == 409 and urls[3] not in scorer._pool._slots
+    assert r.status_code == 409 and urls[3] not in scorer._runs._pool._slots
     # A cancelled run still exiting keeps its place.
     client.request("DELETE", "/api/jobs/score", params={"url": urls[0]})
     assert client.post("/api/jobs/score", json={"url": urls[3]}).status_code == 409
@@ -427,7 +427,7 @@ def test_at_most_three_run_and_slots_are_let_go(monkeypatch):
         if scorer.idle():
             break
         time.sleep(0.01)
-    assert scorer._pool._slots == {}
+    assert scorer._runs._pool._slots == {}
 
 
 def test_dealbreakers_saved_among_the_old_goals_carry_over():

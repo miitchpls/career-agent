@@ -345,7 +345,10 @@ database.
 
 ```
 src/career_agent/
-  app.py       FastAPI routes; serves the built UI
+  app.py       FastAPI app: mounts the routers, serves the built UI
+  routes/      The JSON API, one router per area: jobs, search, applications, fit, cv, profile, ai
+  workers.py   The background workers (search, import, review, scores, CVs), one of each
+  schema.py    API model base, JSON-schema helpers for the AI answers, language names
   query.py     The query model: SQL filter and search plan
   scraper.py   Runs a search plan in the background: pauses, budget, back-off
   boards.py    LinkedIn and Indeed through JobSpy, counting requests; one posting from its link

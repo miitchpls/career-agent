@@ -29,23 +29,12 @@ import json
 import re
 from typing import Literal
 
-from pydantic import ValidationError
-
 from . import ai, db, runs
 from .cv_render import CvLanguage, plain
 from .facts import TOKEN, Corpus, Known, has, is_name, norm
 from .i18n import LOCALE, t
-from .profile import (
-    _LANGUAGE_NAMES,
-    CvPrefs,
-    Experience,
-    Profile,
-    Project,
-    Skill,
-    _Model,
-    _obj,
-    cv_prefs,
-)
+from .profile import CvPrefs, Experience, Profile, Project, Skill, cv_prefs
+from .schema import LANGUAGE_NAMES, Model, obj
 
 MAX_KEYWORDS = 20
 MAX_COMPETENCIES = 8
@@ -82,7 +71,7 @@ _SENIORITY = frozenset(
 
 _S = {"type": "string"}
 _LIST = {"type": "array", "items": _S}
-TAILOR_SCHEMA = _obj(
+TAILOR_SCHEMA = obj(
     {
         "keywords": _LIST,
         "headline": _S,
@@ -90,24 +79,24 @@ TAILOR_SCHEMA = _obj(
         "competencies": _LIST,
         "experiences": {
             "type": "array",
-            "items": _obj(
+            "items": obj(
                 {
                     "id": _S,
                     "bullets": {
                         "type": "array",
-                        "items": _obj({"index": {"type": "integer"}, "text": _S}),
+                        "items": obj({"index": {"type": "integer"}, "text": _S}),
                     },
                 }
             ),
         },
         "projects": {
             "type": "array",
-            "items": _obj({"id": _S, "description": _S}),
+            "items": obj({"id": _S, "description": _S}),
         },
         "awards": _LIST,
         "skills": {
             "type": "array",
-            "items": _obj({"category": _S, "names": _LIST}),
+            "items": obj({"category": _S, "names": _LIST}),
         },
         "changes": _LIST,
     }
@@ -115,8 +104,8 @@ TAILOR_SCHEMA = _obj(
 
 
 def system_prompt(language: CvLanguage, locale: str) -> str:
-    cv_lang = _LANGUAGE_NAMES.get(language, "English")
-    ui_lang = _LANGUAGE_NAMES.get(locale, "English")
+    cv_lang = LANGUAGE_NAMES.get(language, "English")
+    ui_lang = LANGUAGE_NAMES.get(locale, "English")
     return f"""You tailor a person's CV to one job posting, the way career-ops' pdf mode \
 does: the same true facts, reordered and reworded so the posting's reader finds the \
 strongest evidence first. You never add a skill, a tool, a number, an employer or a result \
@@ -259,7 +248,7 @@ def user_prompt(
         )
     if prefs.guidance:
         out += f"<guidance>\n{prefs.guidance}\n</guidance>\n\n"
-    settings = {"language": _LANGUAGE_NAMES[language], "locked": prefs.locked}
+    settings = {"language": LANGUAGE_NAMES[language], "locked": prefs.locked}
     return out + f"<settings>\n{json.dumps(settings)}\n</settings>"
 
 
@@ -301,13 +290,13 @@ WarningKind = Literal[
 ]
 
 
-class Keyword(_Model):
+class Keyword(Model):
     term: str
     kind: KeywordKind
     in_cv: bool
 
 
-class Check(_Model):
+class Check(Model):
     """A check that changed what the AI wrote: `terms` is what triggered it, `text` the
     text concerned (the AI's version, dropped or replaced)."""
 
@@ -316,7 +305,7 @@ class Check(_Model):
     text: str
 
 
-class Result(_Model):
+class Result(Model):
     language: CvLanguage
     # The CV's content, as a profile: what the templates render.
     profile: dict
@@ -684,13 +673,13 @@ class Tailorer:
     """CVs are written in background threads: one per posting, a few at a time."""
 
     def __init__(self) -> None:
-        self._pool = runs.Pool(MAX_RUNNING)
+        self._runs = runs.PostingRuns(db.update_cv, MAX_RUNNING)
 
     def running(self, url: str) -> bool:
-        return self._pool.running(url)
+        return self._runs.running(url)
 
     def idle(self) -> bool:
-        return self._pool.idle()
+        return self._runs.idle()
 
     def start(self, url: str, language: CvLanguage) -> None:
         job = db.get_job(url)
@@ -707,7 +696,22 @@ class Tailorer:
         prefs = cv_prefs()
         evaluation = evaluation_for(db.last_ready_score(url), saved["id"])
         provider, model = ai.resolve()  # raises AiError: shown as is
-        slot, cv_id = self._pool.claim(
+
+        def call(on_start) -> dict:
+            return ai.run(
+                provider,
+                model,
+                system_prompt(language, LOCALE.get()),
+                user_prompt(job, profile, prefs, language, evaluation),
+                TAILOR_SCHEMA,
+                on_start=on_start,
+            )
+
+        def check(raw: dict) -> dict:
+            result = to_result(raw, job, profile, prefs, language)
+            return {"result": result.model_dump_json(by_alias=True)}
+
+        self._runs.launch(
             url,
             lambda: db.create_cv(
                 url,
@@ -719,87 +723,13 @@ class Tailorer:
             ),
             t("cv_busy"),
             t("cv_busy_many"),
-        )
-        slot.spawn(
-            self._run,
-            url,
-            slot,
-            cv_id,
-            job,
-            profile,
-            prefs,
-            language,
-            evaluation,
             provider,
-            model,
+            call,
+            check,
         )
 
     def cancel(self, url: str) -> None:
-        self._pool.cancel(
-            url,
-            lambda cv_id: db.update_cv(
-                cv_id, when_status="running", status="cancelled"
-            ),
-        )
-
-    def _run(
-        self,
-        url: str,
-        slot: runs.Slot,
-        cv_id: int,
-        job: dict,
-        profile: Profile,
-        prefs: CvPrefs,
-        language: CvLanguage,
-        evaluation: dict | None,
-        provider: ai.Provider,
-        model,
-    ) -> None:
-        try:
-            if slot.cancelled(cv_id):
-                return
-            try:
-                raw = ai.run(
-                    provider,
-                    model,
-                    system_prompt(language, LOCALE.get()),
-                    user_prompt(job, profile, prefs, language, evaluation),
-                    TAILOR_SCHEMA,
-                    on_start=slot.started(cv_id),
-                )
-            except ai.AiError as e:
-                db.update_cv(
-                    cv_id, when_status="running", status="failed", error=str(e)
-                )
-                return
-            try:
-                result = to_result(raw, job, profile, prefs, language)
-            except (ValidationError, TypeError, ValueError, KeyError, AttributeError):
-                db.update_cv(
-                    cv_id,
-                    when_status="running",
-                    status="failed",
-                    error=t("ai_invalid", name=provider.name),
-                    raw=json.dumps(raw, ensure_ascii=False),
-                )
-                return
-            db.update_cv(
-                cv_id,
-                when_status="running",
-                status="ready",
-                result=result.model_dump_json(by_alias=True),
-                raw=json.dumps(raw, ensure_ascii=False),
-            )
-        except Exception as e:  # never leave a CV "running" forever
-            db.update_cv(
-                cv_id,
-                when_status="running",
-                status="failed",
-                error=t("ai_failed", name=provider.name, why=type(e).__name__),
-            )
-            raise
-        finally:
-            self._pool.done(url, slot, cv_id)
+        self._runs.cancel(url)
 
 
 def state(url: str) -> dict:
