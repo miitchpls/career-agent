@@ -146,7 +146,7 @@ def test_a_new_link_is_read_saved_and_counted(monkeypatch):
         and job["site"] == "linkedin"
         and job["work_mode"] == "hybrid"
     )
-    assert job["hits"] == [{"place": "link", "label": None, "keyword": ""}]
+    assert job["opened"] is True and db.get_job(CANONICAL) is not None
     assert db.requests_since("linkedin", datetime.now(UTC) - timedelta(minutes=1)) == 1
 
     # The second time it opens from the database: no request.
@@ -161,25 +161,20 @@ def test_a_new_link_is_read_saved_and_counted(monkeypatch):
 
 
 def test_a_job_found_by_a_search_opens_without_a_request(monkeypatch):
-    db.save_many(
-        [
-            {
-                "url": "https://it.indeed.com/viewjob?jk=0123456789abcdef",
-                "site": "indeed",
-                "title": "Go Developer",
-                "company": "Beta",
-                "location": "Torino",
-                "work_mode": "onsite",
-                "description": "",
-            }
-        ],
-        "geo:1",
-        "Torino",
-        "go",
+    db.save_job(
+        {
+            "url": "https://it.indeed.com/viewjob?jk=0123456789abcdef",
+            "site": "indeed",
+            "title": "Go Developer",
+            "company": "Beta",
+            "location": "Torino",
+            "work_mode": "onsite",
+            "description": "",
+        }
     )
     r = open_("https://www.indeed.com/viewjob?jk=0123456789abcdef")
     assert r.status_code == 200 and r.json()["known"] is True
-    assert r.json()["job"]["hits"][0]["keyword"] == "go"
+    assert r.json()["job"]["title"] == "Go Developer"
 
 
 def test_links_that_cant_be_opened_say_why(monkeypatch):
@@ -334,7 +329,7 @@ def test_pasted_text_is_saved_under_the_link_without_a_request(monkeypatch):
     assert job["description"] == (
         "Chi siamo  \nUn team piccolo.\n\nCosa farai  \n- API in Go  \n- Lavoro ibrido"
     )
-    assert job["hits"] == [{"place": "link", "label": None, "keyword": ""}]
+    assert job["opened"] is True
     assert db.requests_since("linkedin", datetime.now(UTC) - timedelta(minutes=1)) == 0
     # It now opens from the database, and a second paste doesn't overwrite it.
     assert open_(CANONICAL).json()["known"] is True
@@ -364,21 +359,16 @@ def test_an_indeed_server_error_is_the_board_not_the_posting(monkeypatch):
 
 
 def test_pasted_text_fills_a_saved_posting_the_board_left_empty():
-    db.save_many(
-        [
-            {
-                "url": CANONICAL,
-                "site": "linkedin",
-                "title": "Backend Engineer",
-                "company": "Acme",
-                "location": "",
-                "work_mode": "unknown",
-                "description": None,
-            }
-        ],
-        "geo:1",
-        "Zurigo",
-        "go",
+    db.save_job(
+        {
+            "url": CANONICAL,
+            "site": "linkedin",
+            "title": "Backend Engineer",
+            "company": "Acme",
+            "location": "",
+            "work_mode": "unknown",
+            "description": None,
+        }
     )
     r = paste(title="Ignored", company="Other", description="Lavoro ibrido a Zurigo.")
     assert r.status_code == 200 and r.json()["known"] is False
@@ -409,3 +399,51 @@ def test_a_saved_posting_is_found_by_link_without_asking_the_board(monkeypatch):
         == CANONICAL
     )
     assert get("https://example.com/jobs/1") is None
+
+
+def test_a_posting_a_search_brought_with_its_text_is_saved_without_a_request(
+    monkeypatch,
+):
+    from career_agent import feed
+    from career_agent.query import Query, plan
+
+    url = "https://it.indeed.com/viewjob?jk=0011223344556677"
+    posting = {
+        "url": url,
+        "site": "indeed",
+        "title": "Go Developer",
+        "company": "Beta",
+        "location": "Torino",
+        "work_mode": "hybrid",
+        "description": "Go, ibrido",
+    }
+    q = Query.model_validate(
+        {
+            "scopes": [{"places": [{"city": "Torino", "country": "it"}]}],
+            "title_any": ["go"],
+            "sites": ["indeed"],
+        }
+    )
+    (pq,), _, _ = plan(q)
+    feed.add_page(
+        feed.key(pq, q, "relevant"), pq, "relevant", [posting], {url}, None, True
+    )
+    monkeypatch.setattr(boards, "open_indeed", lambda *_: pytest.fail("asked Indeed"))
+    r = open_(url)
+    assert r.status_code == 200 and r.json()["known"] is False
+    assert db.get_job(url)["description"] == "Go, ibrido"
+    assert db.job_places(url) == [pq.place_key]  # where the search that listed it looked
+    assert db.requests_since("indeed", datetime.now(UTC) - timedelta(minutes=1)) == 0
+
+
+def test_opening_waits_its_turn_after_the_boards_last_request(monkeypatch):
+    from career_agent import job_link, scraper
+
+    fake_linkedin(monkeypatch, FakeResponse(PAGE.format(ld=json.dumps(LD))))
+    slept = []
+    monkeypatch.setattr(job_link.time, "sleep", slept.append)
+    monkeypatch.setattr(
+        scraper, "turn_wait", lambda site: 4.5 if site == "linkedin" else 0
+    )
+    assert open_(CANONICAL).status_code == 200
+    assert slept == [4.5] and "linkedin" in scraper._last_request

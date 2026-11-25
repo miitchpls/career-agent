@@ -42,8 +42,8 @@ The page opens empty. In the search bar, what you type is turned into filters (t
 employment type, date), shown as a sentence whose parts you click to edit. The query lives in the URL, so a link
 reproduces it.
 
-The bar filters the postings **already saved**. **Find new jobs** (or **Run** on a saved search) turns the same
-filters into board searches and starts them.
+Running the query (Enter, or the arrow) searches the boards with it; what was read recently comes back without a
+request. The results are the boards' own lists, page after page: nothing is stored until you open a posting.
 
 ### Opening a posting from a link
 
@@ -51,11 +51,11 @@ Under the search bar, **Open it from a link** takes a posting's address. The boa
 pasted, and Enter opens the posting in the same sheet as a search result, which shows at once and fills in when
 the posting arrives. Nothing else starts: no search, no CV.
 
-- A posting already saved (found by a search, or opened from a link before) opens from the database, without
-  asking the board.
+- A posting already opened opens from the database, without asking the board. So does an Indeed posting a
+  recent search listed, since Indeed sends the text with the list.
 - A new posting is read within the same limits as a search: refused while its board is paused, counted, and a
-  sign of throttling pauses the board. It's saved with your jobs.
-  - **LinkedIn**: from the posting's page, one request, counted in the daily budget.
+  sign of throttling pauses the board. Opening it is what stores it.
+  - **LinkedIn**: from the posting's page, one request, counted in the budgets.
   - **Indeed**: by its key, through the app API JobSpy searches with (Indeed's web pages sit behind a bot
     check), for the country of the link's domain (`it.indeed.com` is Italy, `www` the US).
 - When the board won't show it (a login wall, a pause, a removed posting), there's one attempt and no
@@ -67,7 +67,12 @@ Accepted LinkedIn forms: `/jobs/view/<id>`, `/jobs/view/<title>-<id>`, any count
 
 ### Filters
 
-Different filters are combined with AND.
+Different filters are combined with AND. Where (places, remote only), title, date window and board are what the
+boards are asked; the others filter what they returned, without a request. A LinkedIn list card has no salary,
+employment type or text, so until the posting is opened what it doesn't state can't exclude it.
+Once it's opened, it stays where it was even if its page says something against the filters (no salary when one
+is required, a lower salary, another work mode): the row is marked **Outside filters**, and the posting's sheet
+opens on a warning that says which filters it misses.
 
 | Filter | URL parameter | Matches |
 |---|---|---|
@@ -92,26 +97,34 @@ Korean UI shows them the same way.
 
 ### Running a search
 
-A query becomes one board search per board × place × title phrase, capped at **16 per run**. The searches run one
-at a time, 10–20 s apart, and the results page shows their progress. A query needs at least one place (or
-"anywhere") and one title phrase: these are the boards' search terms.
+A query becomes one board search per board × place × title phrase, capped at **16**. A query needs at least one
+place (or "anywhere") and one title phrase: these are the boards' search terms. Indeed searches one country at a
+time, so "anywhere" scopes skip Indeed.
 
-An identical search (same board, phrase, place, remote-only flag and date window) that succeeded in the last
-**6 hours** is skipped, since its results are already saved. **Refresh anyway** runs it again; limits and pauses
-still apply.
-
-Indeed searches one country at a time, so "anywhere" scopes skip Indeed.
+- **Order**: **Most relevant** (the default) or **Most recent**, the boards' own two sort buttons (LinkedIn
+  `sortBy=R` / `DD`, Indeed `sort: RELEVANCE` / `DATE`). Switching reads the other order.
+- **Pages**: a run reads one list page of each search: LinkedIn 10 postings, Indeed 25 with their text. **Show
+  more** reads the next page of each search that has one. The list shows them page after page, so what's shown
+  never moves: newest first within a page, else the searches take turns, each in its board's own order.
+- **Cache**: the pages read are kept in memory, from the first page, for **3 hours** by relevance and **1 hour**
+  newest first. All the pages of a search expire together, so they always belong to one snapshot (a page read
+  hours after the one before would repeat or skip postings that moved meanwhile). **Refresh** reads the first pages
+  again. A restart empties the cache.
 
 ### Staying under the boards' limits
 
-- **Indeed**: one request returns up to 50 postings with their descriptions.
-- **LinkedIn**: one request per list page (10 postings). A posting's own page (description, employment type,
-  salary) is opened only for postings that are new, in the right country and with a title that can match the
-  query, with a 1.5–4 s pause between pages. Postings whose title can't match are dropped.
-- **Daily budget**: at most 150 LinkedIn requests (list and posting pages) in any 24 hours. Searches over budget
-  are postponed.
+- **One request per page**: a search's page is one request; a posting's own page (LinkedIn: description,
+  employment type, salary) is read only when you open it. Indeed sends the text with the list.
+- **Pacing**: before each request, the run waits until that board's last one is 3–7 s old (Indeed 2–4 s); the
+  two boards take turns, so one's pause passes while the other is asked.
+- **Budgets**: LinkedIn at most 70 requests in any hour and 150 in any 24 hours (list pages and opened postings),
+  Indeed at most 100 a day. Searches over budget are postponed.
 - **Back-off**: at the first sign of throttling (HTTP 403, 429 or 999, a redirect to the login page, a suspiciously
-  empty page) the board is paused for 45 minutes. The pause survives a restart; searches on the other board go on.
+  empty list, or two LinkedIn postings in a row that load without their text) the board is paused for 45 minutes.
+  Another block within a day of the last pause makes it 6 hours, then 24. The pause survives a restart; searches
+  on the other board go on.
+- **Indeed's date sort**: the app API is undocumented. If a page by date fails and the same page by relevance
+  works, Indeed is asked by relevance until the next restart.
 
 ### Places
 
@@ -322,7 +335,7 @@ Everything lives in `data/` (git-ignored):
 
 | Path | Contents |
 |---|---|
-| `data/jobs.db` | SQLite database: postings, saved searches, board budgets and pauses, settings, profile |
+| `data/jobs.db` | SQLite database: the postings you opened, saved searches, board budgets and pauses, settings, profile |
 | `data/documents/` | Uploaded CVs, named by their SHA-256 |
 | `data/profile-files/` | Photos and attachments |
 
@@ -366,10 +379,11 @@ src/career_agent/
   routes/      The JSON API, one router per area: jobs, search, applications, fit, cv, profile, ai
   workers.py   The background workers (search, import, review, scores, CVs), one of each
   schema.py    API model base, JSON-schema helpers for the AI answers, language names
-  query.py     The query model: SQL filter and search plan
-  scraper.py   Runs a search plan in the background: pauses, budget, back-off
-  boards.py    LinkedIn and Indeed through JobSpy, counting requests; one posting from its link
-  job_link.py  Pasted links: which posting, and opening it within the boards' limits
+  query.py     The query model: search plan and the filters on what the boards return
+  scraper.py   Runs a search plan in the background: pacing, budgets, back-off
+  feed.py      The boards' list pages, cached in memory, merged into what a search shows
+  boards.py    LinkedIn and Indeed through JobSpy: one list page per request; one posting by its id
+  job_link.py  Opening a posting (from the list or a link) within the boards' limits: what stores it
   db.py        SQLite schema and queries
   geo.py       City autocomplete and English names for the boards
   fx.py        ECB exchange rates
@@ -393,12 +407,12 @@ tests/
 
 | Method and path | |
 |---|---|
-| `POST /api/jobs` | Saved postings matching a query, paginated |
-| `POST /api/search` | Start board searches for a query (`?force=true`: refresh anyway) |
+| `POST /api/feed` | What a query shows (`order`): the cached board pages, filtered and merged; never asks a board. With each board's requests left |
+| `POST /api/search` | Read the first page of a query's searches not cached (`?order=relevant\|recent`; `more=true`: the next page of each; `force=true`: the first pages again) |
 | `GET /api/status` · `POST /api/cancel` | Progress of the running search · stop it |
 | `GET/POST /api/saved` · `DELETE /api/saved/{id}` · `POST /api/saved/{id}/run` | Saved searches |
 | `GET /api/places?q=` | City suggestions |
-| `POST /api/jobs/open` | One posting from a pasted link: from the database when saved, else read from its board |
+| `POST /api/jobs/open` | Open a posting (from the list or a link) and store it: from the database or the cached Indeed list when possible, else read from its board |
 | `POST /api/jobs/paste` | A posting the board wouldn't show, saved under its link from the text the user copied |
 | `GET/PUT /api/ai` | AI engines found, saved choice |
 | `GET/PUT /api/cv/preferences` | CV language, format, style, photo, footer, fixed sections, guidance |
@@ -420,6 +434,10 @@ tests/
 ## Known limitations
 
 - Excluding title words (`Query.title_none`) is supported by the API but not exposed in the UI.
+- A LinkedIn posting shows no salary, employment type or work mode (unless its title or place says) until it's
+  opened: the list card doesn't have them.
+- Whether Indeed's app API takes the date sort is undocumented; the app falls back to relevance if it doesn't.
+- The search cache lives in memory: a restart empties it, so the next search reads the boards again.
 - Importing a CV replaces the profile on confirm; it doesn't merge with what's there.
 - Only Claude Code and Codex are supported as AI engines.
 - Errors reported by the AI CLIs are shown in the CLI's language, usually English.

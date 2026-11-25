@@ -69,21 +69,16 @@ def test_an_application_from_another_site_keeps_its_text():
 
 
 def test_a_board_posting_takes_the_saved_text_and_score():
-    db.save_many(
-        [
-            {
-                "url": CANONICAL,
-                "site": "linkedin",
-                "title": "Platform Engineer",
-                "company": "Helvetia",
-                "location": "Basel",
-                "work_mode": "hybrid",
-                "description": "Kubernetes at scale.",
-            }
-        ],
-        "geo:1",
-        "Basel",
-        "go",
+    db.save_job(
+        {
+            "url": CANONICAL,
+            "site": "linkedin",
+            "title": "Platform Engineer",
+            "company": "Helvetia",
+            "location": "Basel",
+            "work_mode": "hybrid",
+            "description": "Kubernetes at scale.",
+        }
     )
     sid = db.create_score(CANONICAL, None, "x", "claude", None)
     db.update_score(sid, status="ready", value=4.2, decision="apply")
@@ -141,21 +136,16 @@ def test_a_blank_title_is_refused():
 
 
 def test_pasted_text_fills_a_saved_posting_the_board_left_empty():
-    db.save_many(
-        [
-            {
-                "url": CANONICAL,
-                "site": "linkedin",
-                "title": "Platform Engineer",
-                "company": "Helvetia",
-                "location": "Basel",
-                "work_mode": "unknown",
-                "description": None,
-            }
-        ],
-        "geo:1",
-        "Basel",
-        "go",
+    db.save_job(
+        {
+            "url": CANONICAL,
+            "site": "linkedin",
+            "title": "Platform Engineer",
+            "company": "Helvetia",
+            "location": "Basel",
+            "work_mode": "unknown",
+            "description": None,
+        }
     )
     add(url=CANONICAL, description="Kubernetes, hybrid in Basel.")
     assert (

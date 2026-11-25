@@ -12,6 +12,7 @@ import {
   GaugeIcon,
   LoaderCircleIcon,
   MapPinIcon,
+  TriangleAlertIcon,
   XIcon,
 } from "lucide-react"
 
@@ -33,7 +34,7 @@ import type { JobTab } from "@/lib/routes"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
 import { useT } from "@/lib/i18n"
 import { formatScore, shownScore, useCanScore, useScore, useStartScore } from "@/lib/job-score"
-import { describe } from "@/lib/search-match"
+import { describe, excludes, type MatchLine } from "@/lib/search-match"
 import { cn } from "@/lib/utils"
 import { parseStoredJobTypes } from "@/lib/job-types"
 import { shownCv, useCanTailor, useCvLook, useStartCv, useTailoredCv } from "@/lib/tailored-cv"
@@ -45,7 +46,7 @@ const MATCH_ICON = {
 }
 
 /** The current search's conditions, met or not by this posting (no AI: the same rules as the filters). */
-function SearchMatch({ url, query }: { url: string; query: Query }) {
+function SearchMatch({ url, query, listed }: { url: string; query: Query; listed: boolean }) {
   const t = useT().match
   // Only what the check reads: editing the title words or the free text doesn't refetch.
   const { scopes, salary_min, salary_currency, job_types, posted_within } = query
@@ -54,8 +55,41 @@ function SearchMatch({ url, query }: { url: string; query: Query }) {
     queryFn: () => api.match(url, query),
     staleTime: 30_000,
   })
-  const lines = (data?.checks ?? []).map(describe).filter((l) => l !== null)
-  if (!lines.length) return null
+  const checks = data?.checks ?? []
+  const said = (keep: boolean) =>
+    checks.filter((c) => excludes(c, query) === keep).map(describe).filter((l): l is MatchLine => l !== null)
+  // What keeps it out of the results leads, as a warning; the rest stays quiet chips.
+  const off = said(true)
+  const lines = said(false)
+  return (
+    <>
+      {off.length > 0 && (
+        <div role="status" className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5">
+          <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0 space-y-1 text-sm">
+            <p className="font-medium text-foreground">{t.offTitle}</p>
+            <ul className="space-y-0.5 text-muted-foreground">
+              {off.map((l) => (
+                <li key={l.text} className="flex items-center gap-1.5">
+                  {(() => {
+                    const m = MATCH_ICON[l.state]
+                    return <m.icon className={cn("size-3.5 shrink-0", m.className)} />
+                  })()}
+                  {l.text}
+                </li>
+              ))}
+            </ul>
+            {listed && <p className="pt-0.5 text-xs text-muted-foreground">{t.offListed}</p>}
+          </div>
+        </div>
+      )}
+      {lines.length > 0 && <MatchChips lines={lines} />}
+    </>
+  )
+}
+
+function MatchChips({ lines }: { lines: MatchLine[] }) {
+  const t = useT().match
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-xs">
       <Tooltip>
@@ -101,6 +135,7 @@ export function JobSheet({
   job,
   pending = null,
   query = null,
+  listed = false,
   tab,
   onTab,
   onClose,
@@ -117,6 +152,8 @@ export function JobSheet({
   pending?: PendingJob | null
   /** The search the sheet was opened from, to check the posting against; null: none. */
   query?: Query | null
+  /** It's in the search's list with the "outside filters" mark (`Job.unmet`). */
+  listed?: boolean
   onClose: () => void
   /** Saves the text the user copied for a posting the board wouldn't show, or showed without text. */
   onPaste: (url: string, posting: PastedPosting) => Promise<void>
@@ -133,6 +170,7 @@ export function JobSheet({
             key={job.url}
             job={job}
             query={query}
+            listed={listed}
             tab={tab}
             onTab={onTab}
             onOpenProfile={onOpenProfile}
@@ -150,6 +188,7 @@ export function JobSheet({
 function JobDetails({
   job,
   query,
+  listed,
   tab,
   onTab: setTab,
   onOpenProfile,
@@ -159,6 +198,7 @@ function JobDetails({
   onOpenApplication: (id: number) => void
   job: Job
   query: Query | null
+  listed: boolean
   tab: JobTab
   onTab: (tab: JobTab) => void
   onOpenProfile: () => void
@@ -246,7 +286,7 @@ function JobDetails({
             </span>
           )}
         </SheetDescription>
-        {query && <SearchMatch url={job.url} query={query} />}
+        {query && <SearchMatch url={job.url} query={query} listed={listed} />}
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <Button asChild size="sm" variant="outline">
             <a href={job.url} target="_blank" rel="noreferrer" onClick={() => setAway(true)}>

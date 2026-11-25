@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import db, geo
+from ..boards import Order
 from ..i18n import LOCALE, t
 from ..query import Query
 from ..workers import runner
@@ -22,13 +23,16 @@ def places(q: str = ""):
 
 
 @router.post("/api/search")
-def search(q: Query, force: bool = False):
+def search(
+    q: Query, order: Order = "relevant", more: bool = False, force: bool = False
+):
     """Start a portal search right away (the user asked for it by pressing the button).
 
-    `force`: rerun identical searches made in the last hours too («Aggiorna comunque»).
+    Reads each search's first page unless it's cached. `more`: the next page of each («Mostra
+    altre»). `force`: read the first pages again even when cached («Aggiorna»).
     """
     try:
-        return runner.start(q, force=force)
+        return runner.start(q, order, more=more, force=force)
     except (RuntimeError, ValueError) as e:
         raise HTTPException(400, str(e)) from e
 
@@ -57,13 +61,13 @@ def saved_delete(saved_id: int):
 
 
 @router.post("/api/saved/{saved_id}/run")
-def saved_run(saved_id: int, force: bool = False):
+def saved_run(saved_id: int, order: Order = "relevant", force: bool = False):
     """Run a saved search (from its «Esegui» button); `force` as in /api/search."""
     saved = db.get_saved(saved_id)
     if not saved:
         raise HTTPException(404, t("saved_not_found"))
     try:
-        summary = runner.start(Query.model_validate(saved["query"]), force=force)
+        summary = runner.start(Query.model_validate(saved["query"]), order, force=force)
     except (RuntimeError, ValueError) as e:
         raise HTTPException(400, str(e)) from e
     db.mark_saved_run(saved_id)

@@ -1,21 +1,26 @@
 """The job boards, through JobSpy's scrapers, counting every request.
 
-`jobspy.scrape_jobs()` opens the page of every LinkedIn result up front: one more request per
-posting, including the ones we would throw away. Here a LinkedIn search reads the list page
-(one request, up to 10 postings), then opens a posting's page only if `wants` asks for it, with
-a short pause before each one, and stops at the request budget or the first sign of throttling.
-Indeed returns descriptions with the list, so a single request is enough.
+A search reads one list page per call: one request, nothing else. `jobspy.scrape_jobs()` would
+loop over pages and open every LinkedIn posting up front; here the caller asks for each page
+(the user's "show more"), and a posting's own page is read only when the user opens it
+(`open_linkedin`). Indeed returns descriptions with the list, so an Indeed posting needs no
+second request at all.
 
-This drives JobSpy's scraper classes directly and reuses `LinkedIn._fetch_details`, which is
-not public API: the dependency is pinned to a minor version in pyproject.toml.
+Both boards are asked by relevance or newest first. Indeed's app API isn't documented: if it
+refuses the date sort, the same page is asked by relevance and the date sort dropped until a
+restart.
+
+This drives JobSpy's scraper classes directly and reuses their parsers (`_process_job`,
+`_fetch_details`, `_build_query`…), which are not public API: the dependency is pinned to a
+minor version in pyproject.toml.
 """
 
 import json
 import logging
-import random
-from collections.abc import Callable
+import time
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Literal
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
@@ -23,13 +28,17 @@ from jobspy.indeed import Indeed
 from jobspy.indeed.constant import country_codes as INDEED_COUNTRIES
 from jobspy.indeed.constant import headers as INDEED_HEADERS
 from jobspy.indeed.constant import job_search_query as INDEED_SEARCH_QUERY
+from jobspy.indeed.constant import jobs_per_page as JOBSPY_INDEED_PAGE
 from jobspy.indeed.constant import languages as INDEED_LANGUAGES
 from jobspy.indeed.constant import subdomains as INDEED_SUBDOMAINS
+from jobspy.indeed.model import JobSearch
 from jobspy.linkedin import LinkedIn
+from jobspy.linkedin.constant import empty_page as LINKEDIN_EMPTY_PAGE
 from jobspy.linkedin.constant import headers as LINKEDIN_HEADERS
+from jobspy.linkedin.constant import max_results as LINKEDIN_MAX_RESULTS
 from jobspy.linkedin.util import is_job_remote, parse_location
 from jobspy.model import Country, JobPost, Location, ScraperInput
-from jobspy.util import RequestsRotating, create_session
+from jobspy.util import RequestsRotating, check_status, create_session
 
 from .query import Site
 
@@ -37,13 +46,24 @@ from .query import Site
 logging.getLogger("jobspy").setLevel(logging.ERROR)
 log = logging.getLogger(__name__)
 
+Order = Literal["relevant", "recent"]
+
 # 403/429 are the usual throttles; LinkedIn answers 999 to clients it takes for bots.
 BLOCKED_STATUS = frozenset({403, 429, 999})
 # Where LinkedIn sends anonymous visitors it wants to stop.
 _LOGIN_PATHS = ("/authwall", "/login", "/checkpoint", "/uas/login")
-DETAIL_PAUSE_SECONDS = (1.5, 4.0)
+LINKEDIN_PAGE = 10  # postings on a LinkedIn list page (fixed by LinkedIn)
+# Postings asked per Indeed page. One request could bring 100, but then one Indeed page would
+# bury LinkedIn's 10 in the merged list; 25 keeps the boards side by side.
+INDEED_PAGE = 25
+# Posting pages that answer 200 without the posting, in a row: a throttle that doesn't say so.
+# One can be a removed posting; two count as a block.
+EMPTY_PAGES_BLOCK = 2
+_empty_pages = 0
 
 Row = dict[str, object]
+Cursor = int | str | None
+"""Where the next list page starts: LinkedIn's offset, Indeed's cursor; None = no more."""
 
 
 @dataclass
@@ -51,18 +71,20 @@ class Result:
     rows: list[Row] = field(default_factory=list)
     """One per posting, with JobSpy's DataFrame columns; salaries annualised."""
     detailed: set[str] = field(default_factory=set)
-    """`job_url` of the LinkedIn rows whose page was read (description, type, pay)."""
+    """`job_url` of the rows read with their description (Indeed rows, opened postings)."""
     requests: int = 0
     """HTTP requests made, redirects included."""
     error: str | None = None
     blocked: bool = False
     """The board throttled us: stop asking it for a while."""
+    next: Cursor = None
+    """Where the following list page starts (search pages only)."""
 
 
 class _Counted:
     """Counts a JobSpy scraper's HTTP requests and spots throttling.
 
-    JobSpy builds its session inside `scrape()`; the property hooks it as it's assigned.
+    The property hooks every session as it's assigned, JobSpy's or ours.
     """
 
     def __init__(self) -> None:
@@ -88,11 +110,29 @@ class _Counted:
 
 
 class _LinkedIn(_Counted, LinkedIn):
-    pass
+    order: Order = "relevant"
+
+    def _search_params(self) -> dict[str, str | int]:
+        # LinkedIn's two sort buttons: "Most relevant" (R) and "Most recent" (DD).
+        sort = "DD" if self.order == "recent" else "R"
+        return {**super()._search_params(), "sortBy": sort}
+
+
+# Whether Indeed takes "sort: DATE" isn't documented: if a page by date fails and the same page
+# by relevance works, the date sort is dropped until a restart.
+_indeed_by_date = True
 
 
 class _Indeed(_Counted, Indeed):
-    pass
+    by_date = False
+
+    def _build_query(self, filters: str, cursor: str | None) -> str:
+        query = (
+            super()
+            ._build_query(filters, cursor)
+            .replace(f"limit: {JOBSPY_INDEED_PAGE}", f"limit: {INDEED_PAGE}", 1)
+        )
+        return query.replace("sort: RELEVANCE", "sort: DATE") if self.by_date else query
 
 
 def to_row(post: JobPost) -> Row:
@@ -102,59 +142,139 @@ def to_row(post: JobPost) -> Row:
     return row
 
 
-def search(
-    site: Site,
-    args: dict,
-    *,
-    results: int,
-    wants: Callable[[Row], bool],
-    wait: Callable[[float], bool],
-    max_requests: int | None = None,
-) -> Result:
-    """One board search.
-
-    `args`: ScraperInput fields (search_term, location, …). `wants(row)`: whether a LinkedIn
-    posting is worth opening. `wait(seconds)`: sleeps, True if the run was cancelled meanwhile.
-    `max_requests`: LinkedIn budget for this search, list page included.
-    """
-    scraper_input = ScraperInput.model_validate(
+def _input(site: Site, args: dict) -> ScraperInput:
+    return ScraperInput.model_validate(
         {
             **args,
             "site_name": [site],
-            "results_wanted": results,
-            "fetch_description": False,  # LinkedIn pages are opened below, selectively
+            "fetch_description": False,  # a LinkedIn posting is read when it's opened
             "description_format": "markdown",
         }
     )
+
+
+def page(site: Site, args: dict, order: Order, start: Cursor) -> Result:
+    """One list page of a board search: exactly one request (two if Indeed refuses the date
+    sort). `args`: ScraperInput fields (search_term, location, …). `start`: None for the first
+    page, else the `next` of the page before."""
     scraper = _LinkedIn() if site == "linkedin" else _Indeed()
-    posts = scraper.scrape(scraper_input)
-    result = Result(error=scraper.error)
-
-    for post in posts:
-        row = to_row(post)
-        if site == "linkedin" and _may_open(scraper, wants(row), wait, max_requests):
-            details = scraper._fetch_details(str(post.id).removeprefix("li-"))
-            if details:  # empty when the page couldn't be read
-                row = to_row(post.model_copy(update=details))
-                result.detailed.add(post.job_url)
-        result.rows.append(row)
-
+    scraper.scraper_input = _input(site, args)
+    result = Result()
+    try:
+        if site == "linkedin":
+            scraper.order = order
+            posts, result.next = _linkedin_page(scraper, int(start or 0))
+        else:
+            posts, result.next = _indeed_page(scraper, order, start)
+        result.rows = [to_row(p) for p in posts]
+    except Exception as e:  # noqa: BLE001 - a board failure must still count its requests
+        log.warning("%s page failed: %s", site, e)
+        result.error = str(e)
+    if site == "indeed":
+        result.detailed = {str(r["job_url"]) for r in result.rows}
     result.requests = scraper.requests
-    result.blocked = scraper.blocked or "blocked" in (scraper.error or "")
+    result.blocked = scraper.blocked or "blocked" in (result.error or "")
     return result
 
 
-def _may_open(
-    scraper: _Counted,
-    wanted: bool,
-    wait: Callable[[float], bool],
-    max_requests: int | None,
-) -> bool:
-    if not wanted or scraper.blocked:
-        return False
-    if max_requests is not None and scraper.requests >= max_requests:
-        return False
-    return not wait(random.uniform(*DETAIL_PAUSE_SECONDS))
+def _linkedin_page(scraper: _LinkedIn, start: int) -> tuple[list[JobPost], Cursor]:
+    scraper.session = create_session(
+        RequestsRotating(None, clear_cookies=True),
+        scraper.scraper_input,
+        LINKEDIN_HEADERS,
+    )
+    response = scraper.session.get(
+        f"{scraper.base_url}/jobs-guest/jobs/api/seeMoreJobPostings/search",
+        params={**scraper._search_params(), "start": start},
+    )
+    check_status(response)
+    cards = BeautifulSoup(response.text, "html.parser").find_all(
+        class_="base-search-card"
+    )
+    if not cards:
+        if response.text.strip() != LINKEDIN_EMPTY_PAGE:
+            raise ValueError("unexpected page with no jobs (blocked?)")
+        return [], None  # the end of the results
+    posts = []
+    for card in cards:
+        job_id = str(card.get("data-entity-urn", "")).split(":")[-1]
+        if not job_id:
+            continue
+        try:
+            posts.append(scraper._process_job(card, job_id))
+        except Exception as e:  # noqa: BLE001 - one odd card shouldn't lose the page
+            log.warning("linkedin card %s skipped: %s", job_id, e)
+    following = start + LINKEDIN_PAGE
+    full = len(cards) >= LINKEDIN_PAGE and following < LINKEDIN_MAX_RESULTS
+    return posts, following if full else None
+
+
+class _Refused(ValueError):
+    """Indeed rejected the query itself (HTTP 400, or errors and no data): not an outage."""
+
+
+INDEED_RETRY_PAUSE = 2.0  # before asking the same page by relevance
+
+
+def _indeed_page(
+    scraper: _Indeed, order: Order, cursor: Cursor
+) -> tuple[list[JobPost], Cursor]:
+    """Only a first page that Indeed refuses by date is asked again by relevance: an outage
+    says nothing about the sort, and a later page's cursor belongs to its date-sorted list."""
+    global _indeed_by_date
+    by_date = order == "recent" and _indeed_by_date
+    try:
+        return _indeed_ask(scraper, by_date, cursor)
+    except _Refused as e:
+        if not by_date or cursor is not None or scraper.blocked:
+            raise
+        log.warning("indeed refused the date sort (%s): asking by relevance", e)
+    time.sleep(INDEED_RETRY_PAUSE)
+    posts = _indeed_ask(scraper, False, cursor)
+    log.warning("indeed refuses the date sort: asking by relevance from now on")
+    _indeed_by_date = False
+    return posts
+
+
+def _indeed_ask(
+    scraper: _Indeed, by_date: bool, cursor: Cursor
+) -> tuple[list[JobPost], Cursor]:
+    inp = scraper.scraper_input
+    code = INDEED_COUNTRIES[inp.country_indeed]
+    domain = INDEED_SUBDOMAINS.get(inp.country_indeed, code.lower())
+    scraper.base_url = f"https://{domain}.indeed.com"
+    scraper.session = create_session(
+        RequestsRotating(None),
+        inp,
+        INDEED_HEADERS
+        | {
+            "indeed-co": code,
+            "indeed-locale": f"{INDEED_LANGUAGES.get(code, 'en')}-{code}",
+        },
+    )
+    scraper.by_date = by_date
+    query = scraper._build_query(
+        scraper._build_filters(), str(cursor) if cursor else None
+    )
+    response = scraper.session.post(Indeed.api_url, json={"query": query})
+    if response.status_code == 400:
+        raise _Refused("response status code 400")
+    check_status(response)
+    data = response.json()
+    found = (data.get("data") or {}).get("jobSearch")
+    if not found:
+        error = f"API error: {data.get('errors')}"
+        raise _Refused(error) if data.get("errors") else ValueError(error)
+    search = JobSearch.model_validate(found)
+    posts = []
+    for r in search.results:
+        if not r.job:
+            continue
+        try:
+            posts.append(scraper._process_job(r.job))
+        except Exception as e:  # noqa: BLE001 - one odd posting shouldn't lose the page
+            log.warning("indeed posting skipped: %s", e)
+    return posts, search.nextCursor if search.results else None
 
 
 # --- One posting from its link ----------------------------------------------------------------
@@ -166,8 +286,11 @@ def open_linkedin(job_id: str) -> Result:
     Title, company, place and date come from the page's JobPosting data (JSON-LD), or its top
     card when that's missing; description, type and pay from JobSpy's own parsing of the same
     page, so a posting opened from a link is stored exactly like one found by a search.
-    `rows` is empty when the page isn't a readable posting (removed, or a login wall).
+    `rows` is empty when the page isn't a readable posting (removed, or a login wall). A page
+    that loads without the posting's text is no posting either; two of those in a row are a
+    block, since that's how LinkedIn throttles without saying so.
     """
+    global _empty_pages
     scraper = _LinkedIn()
     scraper.scraper_input = ScraperInput(
         site_name=["linkedin"], description_format="markdown"
@@ -204,6 +327,19 @@ def open_linkedin(job_id: str) -> Result:
                 response if u == url else fetch(u, *a, **k)
             )
             details = scraper._fetch_details(job_id)
+            if not details.get("description"):
+                _empty_pages += 1
+                log.warning("linkedin posting %s: page without its text", job_id)
+                result.requests = scraper.requests
+                if _empty_pages >= EMPTY_PAGES_BLOCK:
+                    result.blocked, _empty_pages = (
+                        True,
+                        0,
+                    )  # the pause takes it from here
+                else:
+                    result.blocked = scraper.blocked
+                return result
+            _empty_pages = 0
             location = top["location"]
             post = JobPost(
                 id=f"li-{job_id}",

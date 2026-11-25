@@ -1,31 +1,35 @@
-"""Saved postings: the list, one posting from its link or pasted text, how it meets a search."""
+"""A search's results, one posting from its link or pasted text, how it meets a search."""
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import db, fx, job_link
+from .. import db, feed, fx, job_link, scraper
+from ..boards import Order
 from ..i18n import t
-from ..query import Query, match
+from ..query import SITES, Query, match
 
 router = APIRouter()
 
 
-class JobsRequest(BaseModel):
+class FeedRequest(BaseModel):
     query: Query = Field(default_factory=Query)
-    sort: db.Sort = "posted"
-    direction: db.Direction = "desc"
-    offset: int = Field(0, ge=0)
-    limit: int = Field(50, ge=1, le=200)
-    as_of: int | None = Field(
-        None, ge=0
-    )  # from the first page; keeps later pages stable
+    order: Order = "relevant"
 
 
-@router.post("/api/jobs")
-def jobs(req: JobsRequest):
-    return db.search(
-        req.query, req.sort, req.offset, req.limit, req.as_of, req.direction
-    )
+@router.post("/api/feed")
+def jobs_feed(req: FeedRequest):
+    """What the search shows, from the searches read in the last hours: never asks a board.
+    With each board's requests left and why it's on hold, for the "show more" button."""
+    return {
+        **feed.view(req.query, req.order),
+        "boards": {
+            site: {
+                "left": scraper.requests_left(site),
+                "hold": scraper.hold_reason(site),
+            }
+            for site in SITES
+        },
+    }
 
 
 class OpenLinkRequest(BaseModel):
@@ -87,4 +91,6 @@ def jobs_match(body: MatchRequest):
     if job is None:
         raise HTTPException(404, t("score_no_job"))
     _, rates = fx.rates()
-    return {"checks": match(body.query, job, db.hit_places(body.url), rates)}
+    # The cached searches that list it now, and those that did when it was opened.
+    places = sorted(set(feed.places(body.url)) | set(db.job_places(body.url)))
+    return {"checks": match(body.query, job, places, rates)}

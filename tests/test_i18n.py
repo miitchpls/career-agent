@@ -77,7 +77,7 @@ def test_a_run_keeps_the_language_it_started_in(monkeypatch):
     seen = []
     done = threading.Event()
 
-    def run(self, todo, q):
+    def run(self, todo, q, order):
         seen.append(t("busy"))
         done.set()
 

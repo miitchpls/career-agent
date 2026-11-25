@@ -1,22 +1,17 @@
 import { useEffect, useState } from "react"
-import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 
-import { api, type Direction, type PlaceOption, type Query, type Sort } from "@/lib/api"
+import { api, type Order, type PlaceOption, type Query } from "@/lib/api"
 import { useLocale } from "@/lib/i18n"
 
-const PAGE = 50
-
-export function useJobs(query: Query, sort: Sort, direction: Direction) {
-  return useInfiniteQuery({
-    queryKey: ["jobs", query, sort, direction],
-    // Later pages reuse the first page's `as_of`, so rows a running search inserts
-    // don't shift them; a refetch (on invalidation) starts a fresh snapshot.
-    queryFn: ({ pageParam }) => api.jobs(query, sort, direction, pageParam.offset, pageParam.asOf, PAGE),
-    initialPageParam: { offset: 0, asOf: null as number | null },
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, p) => n + p.items.length, 0)
-      return loaded < last.total ? { offset: loaded, asOf: pages[0].as_of } : undefined
-    },
+/**
+ * What the search shows: the board pages the server keeps for a few hours. Reading it never
+ * asks a board, so it's refetched freely (filters, a running search adding pages).
+ */
+export function useFeed(query: Query, order: Order) {
+  return useQuery({
+    queryKey: ["jobs", query, order],
+    queryFn: () => api.feed(query, order),
     placeholderData: keepPreviousData,
   })
 }
