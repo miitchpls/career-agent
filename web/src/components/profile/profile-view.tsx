@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   AlertTriangleIcon,
   AlignLeftIcon,
@@ -111,7 +111,7 @@ import {
 } from "@/lib/profile"
 import { LOCKED_SECTIONS, type CvPrefs } from "@/lib/api"
 import { useCvCount } from "@/lib/tailored-cv"
-import { useCvPrefs, useSaveCvPrefs } from "@/lib/cv-prefs"
+import { useCvPrefs, useCvPrefsReady, useSaveCvPrefs } from "@/lib/cv-prefs"
 import { intlTag, useT } from "@/lib/i18n"
 import { openPreferences } from "@/lib/preferences"
 import { activeEngine, useAiEngines } from "@/lib/use-ai"
@@ -360,7 +360,6 @@ function Mark({ children }: { children: React.ReactNode }) {
 /** The avatar is the photo picker: hover shows a camera, click opens the system file dialog. */
 // The photo's shape on the CV, previewed by the avatar itself.
 const SHAPE: Record<CvPrefs["photoStyle"], string> = {
-  rounded: "rounded-2xl",
   circle: "rounded-full",
   square: "rounded-md",
 }
@@ -374,14 +373,45 @@ function Photo({ profile: p, onChange }: { profile: Profile; onChange: Change })
   const t = all.profileView
   const input = useRef<HTMLInputElement>(null)
   const prefs = useCvPrefs()
+  const prefsReady = useCvPrefsReady()
   const save = useSaveCvPrefs()
-  const shape = SHAPE[prefs.photoStyle]
+  // The photo and its shape show together: a round skeleton until both the saved shape and the
+  // image itself are in, so neither appears in a guess first.
+  const [loaded, setLoaded] = useState<string | null>(null)
+  const ready = prefsReady && (!p.photo || loaded === p.photo)
+  // The shape animates only once shown: the first frame draws it as it is, with no morph.
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    if (!ready || settled) return
+    const id = requestAnimationFrame(() => setSettled(true))
+    return () => cancelAnimationFrame(id)
+  }, [ready, settled])
+  // With no photo yet there is no shape to show: the empty avatar is a circle.
+  const shape = p.photo ? SHAPE[prefs.photoStyle] : SHAPE.circle
   const pick = () => input.current?.click()
   const avatar = (
-    <Avatar className={cn("size-24 shadow-xs transition-[border-radius] duration-300 ease-out", shape, "*:rounded-[inherit] after:rounded-[inherit]")}>
-      {p.photo && <AvatarImage src={p.photo} alt="" className="object-cover" />}
-      <AvatarFallback className="rounded-[inherit] text-2xl font-medium">{initials(p.name)}</AvatarFallback>
-    </Avatar>
+    <span className="relative block">
+      <Avatar
+        className={cn(
+          "size-24 shadow-xs",
+          !ready && "invisible",
+          settled && "transition-[border-radius] duration-300 ease-out",
+          shape,
+          "*:rounded-[inherit] after:rounded-[inherit]",
+        )}
+      >
+        {p.photo && (
+          <AvatarImage
+            src={p.photo}
+            alt=""
+            className="object-cover"
+            onLoadingStatusChange={(s) => s !== "loading" && setLoaded(p.photo)}
+          />
+        )}
+        <AvatarFallback className="rounded-[inherit] text-2xl font-medium">{initials(p.name)}</AvatarFallback>
+      </Avatar>
+      {!ready && <Skeleton className="absolute inset-0 rounded-full" />}
+    </span>
   )
   const badge = "absolute -right-1 -bottom-1 grid size-7 place-items-center rounded-full border-2 border-card bg-foreground text-background shadow-xs"
   return (
@@ -411,10 +441,10 @@ function Photo({ profile: p, onChange }: { profile: Profile; onChange: Change })
               value={prefs.photoStyle}
               onValueChange={(v) => save.mutate({ photoStyle: v as CvPrefs["photoStyle"] })}
             >
-              {(["rounded", "circle", "square"] as const).map((v) => (
+              {(["circle", "square"] as const).map((v) => (
                 <DropdownMenuRadioItem key={v} value={v} onSelect={(e) => e.preventDefault()}>
                   <span className={cn("size-3.5 border border-current", SHAPE[v])} aria-hidden />
-                  {{ rounded: t.photoRounded, circle: t.photoCircle, square: t.photoSquare }[v]}
+                  {{ circle: t.photoCircle, square: t.photoSquare }[v]}
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
@@ -823,12 +853,7 @@ function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }
       icon={WrenchIcon}
       title={t.skills}
       count={p.skills.length}
-      action={
-        <Button variant="ghost" size="xs" onClick={() => setNaming({ from: null, skills: [] })}>
-          <PlusIcon />
-          {t.newCategoryButton}
-        </Button>
-      }
+      action={<AddButton label={t.addSkills} onClick={() => setNaming({ from: null, skills: [] })} />}
     >
       <div className="space-y-3">
         {rows.map(([category, skills]) =>
@@ -1571,11 +1596,12 @@ function GuidancePref({ prefs, onSave }: { prefs: CvPrefs; onSave: (guidance: st
   )
 }
 
-/** A row's label; a hint, when there is one, behind a small (i), the same on every row. */
+/** A row's label; a hint, when there is one, behind a small (i), the same on every row: at the
+ * column's edge, so the (i)s line up however the labels wrap. */
 function PrefLabel({ label, hint }: { label: string; hint?: string }) {
   return (
     <span className="flex min-w-0 items-center gap-1 text-xs leading-tight text-pretty text-muted-foreground">
-      <span>{label}</span>
+      <span className="min-w-0 flex-1">{label}</span>
       {hint && (
         <Tooltip>
           <TooltipTrigger asChild>

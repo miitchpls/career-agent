@@ -54,11 +54,24 @@ export function Field({
 }
 
 /** Section heading inside a long form. */
-export function FormGroup({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+export function FormGroup({
+  title,
+  description,
+  required,
+  children,
+}: {
+  title: string
+  description?: string
+  required?: boolean
+  children: React.ReactNode
+}) {
   return (
     <div className="grid gap-3 border-t pt-5 first:border-t-0 first:pt-0">
       <div>
-        <p className="text-sm font-medium">{title}</p>
+        <p className="text-sm font-medium">
+          {title}
+          {required && <span className="ml-1 text-muted-foreground">*</span>}
+        </p>
         {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
       {children}

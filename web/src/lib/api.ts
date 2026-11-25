@@ -235,7 +235,7 @@ export interface CvPrefs {
   style: CvTemplate
   /** "auto": only where CVs usually carry a photo. */
   photo: "auto" | "always" | "never"
-  photoStyle: "rounded" | "circle" | "square"
+  photoStyle: "circle" | "square"
   /** A line at the bottom of the CV (a data-processing consent, a permit); "" for none. */
   footer: string
   /** Only for postings in these countries (ISO codes, lowercase); empty: on every CV. */

@@ -11,16 +11,23 @@ export const DEFAULT_CV_PREFS: CvPrefs = {
   format: "auto",
   style: "standard",
   photo: "auto",
-  photoStyle: "rounded",
+  photoStyle: "circle",
   footer: "",
   footerCountries: [],
   locked: [],
   guidance: "",
 }
 
+const prefsQuery = { queryKey: ["cv-prefs"], queryFn: api.cv.prefs, staleTime: Infinity }
+
 export function useCvPrefs(): CvPrefs {
-  const { data } = useQuery({ queryKey: ["cv-prefs"], queryFn: api.cv.prefs, staleTime: Infinity })
+  const { data } = useQuery(prefsQuery)
   return data ?? DEFAULT_CV_PREFS
+}
+
+/** Whether the saved preferences have arrived (or failed to): until then the defaults are a guess. */
+export function useCvPrefsReady(): boolean {
+  return !useQuery(prefsQuery).isPending
 }
 
 /**

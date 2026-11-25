@@ -399,7 +399,7 @@ LEVELS = {
     "zh": {'elementary': '初级', 'limited': '有限工作能力', 'professional': '工作熟练', 'full': '专业精通', 'native': '母语'},
 }  # fmt: skip
 
-PhotoStyle = Literal["rounded", "circle", "square"]
+PhotoStyle = Literal["circle", "square"]
 
 
 # --- Escaping and URLs (as build-cv-html.mjs) --------------------------------------------------
@@ -912,7 +912,7 @@ def render(
     marked: frozenset[str] = frozenset(),
     competencies: tuple[str, ...] | list[str] = (),
     footer: str = "",
-    photo_style: PhotoStyle = "rounded",
+    photo_style: PhotoStyle = "circle",
 ) -> str:
     """The CV as an HTML document. Texts in `marked` (bullets, the summary, a project's
     description) are highlighted: the parts a tailored CV changed. `competencies` are a
@@ -930,8 +930,8 @@ def render(
     w = WORDS[lang]
     p = profile
     photo_src = p.photo if photo and p.photo and _PHOTO_SRC.match(p.photo) else ""
-    if photo_style not in ("rounded", "circle", "square"):
-        photo_style = "rounded"
+    if photo_style not in ("circle", "square"):
+        photo_style = "circle"
 
     sections = {
         "EXPERIENCE": _experience(
