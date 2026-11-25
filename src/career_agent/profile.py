@@ -81,6 +81,8 @@ class Experience(_Model):
     start: MonthYear | None = None
     end: MonthYear | None = None
     current: bool = False
+    # One line about the employer under the role (stage, size, sector), as career-ops' `context`.
+    context: str = ""
     bullets: list[str] = []
     skills: list[str] = []
     media: list[Media] = []
@@ -105,6 +107,8 @@ class Education(_Model):
 class Skill(_Model):
     name: str
     inferred: bool = False  # not written in the CV, deduced from it
+    # The CV's skills line it goes on ("Frontend", "Cloud"); "" for the general one.
+    category: str = ""
 
 
 class Language(_Model):
@@ -124,6 +128,17 @@ class Certification(_Model):
     url: str = ""
     skills: list[str] = []
     media: list[Media] = []
+    review: str | None = None
+
+
+class Award(_Model):
+    """An honour or a competition placing, as career-ops' Awards section prints it."""
+
+    id: str
+    title: str = ""
+    issuer: str = ""
+    date: MonthYear | None = None
+    description: str = ""
     review: str | None = None
 
 
@@ -147,6 +162,7 @@ class Profile(_Model):
     headline: str = ""
     location: str = ""
     email: str = ""
+    phone: str = ""
     links: list[Link] = []
     summary: str = ""
     experiences: list[Experience] = []
@@ -155,9 +171,15 @@ class Profile(_Model):
     languages: list[Language] = []
     projects: list[Project] = []
     certifications: list[Certification] = []
+    awards: list[Award] = []
+    interests: list[str] = []
 
     def dump(self) -> dict:
         return self.model_dump(by_alias=True, mode="json")
+
+
+LockedSection = Literal["headline", "summary", "experience", "projects", "skills"]
+LOCKED_SECTIONS: tuple[LockedSection, ...] = LockedSection.__args__
 
 
 class CvPrefs(_Model):
@@ -176,6 +198,14 @@ class CvPrefs(_Model):
     photo: Literal["auto", "always", "never"] = (
         "auto"  # auto: where CVs usually have one
     )
+    photo_style: Literal["rounded", "circle", "square"] = "rounded"
+    # The data-processing consent line Italian CVs end with (career-ops' `consent`).
+    consent: Literal["auto", "always", "never"] = "auto"  # auto: postings in Italy
+    # Sections a tailored CV copies from the profile as they are (career-ops' cv.locked_sections).
+    locked: list[LockedSection] = Field(default=[], max_length=len(LOCKED_SECTIONS))
+    # What every tailored CV should know: the story to tell, house rules ("never 'Senior' in the
+    # title"). career-ops keeps these in modes/_profile.md and modes/_custom.md.
+    guidance: str = Field("", max_length=3000)
 
 
 _CV_PREFS_KEY = "cv_prefs"
@@ -196,8 +226,14 @@ def cv_prefs() -> CvPrefs:
 
 
 def save_cv_prefs(prefs: CvPrefs) -> CvPrefs:
-    db.set_setting(_CV_PREFS_KEY, prefs.model_dump_json())
-    return prefs
+    clean = prefs.model_copy(
+        update={
+            "locked": [s for s in LOCKED_SECTIONS if s in prefs.locked],
+            "guidance": prefs.guidance.strip(),
+        }
+    )
+    db.set_setting(_CV_PREFS_KEY, clean.model_dump_json())
+    return clean
 
 
 # --- What the AI fills in ------------------------------------------------------------------
@@ -232,6 +268,7 @@ EXTRACTION_SCHEMA = _obj(
         "headline": _S,
         "location": _S,
         "email": _S,
+        "phone": _S,
         "links": {"type": "array", "items": _obj({"label": _S, "url": _S})},
         "summary": _S,
         "experiences": {
@@ -250,6 +287,7 @@ EXTRACTION_SCHEMA = _obj(
                     "start": _DATE,
                     "end": _DATE,
                     "current": {"type": "boolean"},
+                    "context": _S,
                     "bullets": _LIST,
                     "skills": _LIST,
                     "evidence": _EVIDENCE,
@@ -277,7 +315,9 @@ EXTRACTION_SCHEMA = _obj(
         },
         "skills": {
             "type": "array",
-            "items": _obj({"name": _S, "inferred": {"type": "boolean"}}),
+            "items": _obj(
+                {"name": _S, "inferred": {"type": "boolean"}, "category": _S}
+            ),
         },
         "languages": {
             "type": "array",
@@ -321,6 +361,20 @@ EXTRACTION_SCHEMA = _obj(
                 }
             ),
         },
+        "awards": {
+            "type": "array",
+            "items": _obj(
+                {
+                    "title": _S,
+                    "issuer": _S,
+                    "date": _DATE,
+                    "description": _S,
+                    "evidence": _EVIDENCE,
+                    "review": _REVIEW,
+                }
+            ),
+        },
+        "interests": _LIST,
     }
 )
 
@@ -347,19 +401,24 @@ has "end": null and "current": true.
 (a promotion, a new team or position) are separate entries, each with its own title, \
 dates and bullets and the same company name; never merge them into one. Projects or \
 clients described within a role stay in that role's bullets.
+- context: a line the CV writes about the employer itself (what it does, its size or \
+stage), not about the role; "" when there is none.
 - bullets: one per achievement or responsibility, as written.
 - skills inside an entry: the tools and skills that entry names. The top-level skills \
 list holds every skill in the CV, each once; set inferred=true only for a skill the CV \
 doesn't name but that an entry clearly implies (e.g. a cloud certification), and keep \
-those few.
+those few. category: the CV's own heading for the group the skill is listed under \
+("Frontend", "Cloud & DevOps"), "" when the CV doesn't group its skills.
 - languages: level is a CEFR level (A1-C2) when the CV gives one; otherwise native \
 (mother tongue), full (fluent/bilingual), professional (working proficiency), limited, \
 or elementary (basic).
 - links: profile URLs (LinkedIn, GitHub, portfolio) with a short label; the email goes \
-in "email", not in links.
+in "email" and the phone number in "phone", not in links.
+- awards: honours, prizes and competition placings (not certifications or courses). \
+interests: hobbies and interests the CV lists, each as a short phrase.
 - headline: the CV's title line under the name, if any; summary: its profile/about \
 section, if any.
-- evidence: for every experience, education, project and certification, copy 5 to 15 \
+- evidence: for every experience, education, project, certification and award, copy 5 to 15 \
 consecutive words exactly as they appear in the CV text where that entry is written. \
 It is checked against the text, so copy it character for character.
 - review: a short note in {notes}, addressed to the CV's owner, when an entry needs \
@@ -461,6 +520,7 @@ def to_profile(raw: dict, text: str) -> Profile:
                 start=_date(x.get("start")),
                 end=end,
                 current=bool(x.get("current")) and end is None,
+                context=_s(x.get("context")),
                 bullets=_strs(x.get("bullets")),
                 skills=_strs(x.get("skills")),
                 review=_review(x, cv, company),
@@ -525,6 +585,21 @@ def to_profile(raw: dict, text: str) -> Profile:
             )
         )
 
+    awards = []
+    for x in items("awards"):
+        if not (title := _s(x.get("title"))):
+            continue
+        awards.append(
+            Award(
+                id=_id(),
+                title=title,
+                issuer=_s(x.get("issuer")),
+                date=_date(x.get("date")),
+                description=_s(x.get("description")),
+                review=_review(x, cv, title),
+            )
+        )
+
     languages = []
     for x in items("languages"):
         if not (name := _s(x.get("name"))):
@@ -544,15 +619,19 @@ def to_profile(raw: dict, text: str) -> Profile:
     skills: list[Skill] = []
     seen: set[str] = set()
 
-    def add_skill(name: str, inferred: bool) -> None:
+    def add_skill(name: str, inferred: bool, category: str = "") -> None:
         if name and name.casefold() not in seen:
             seen.add(name.casefold())
-            skills.append(Skill(name=name, inferred=inferred))
+            skills.append(Skill(name=name, inferred=inferred, category=category[:60]))
 
     for x in items("skills"):
         name = _s(x.get("name"))
         # "Inferred" only if the CV really doesn't name it.
-        add_skill(name, bool(x.get("inferred")) and not _found(name, cv))
+        add_skill(
+            name,
+            bool(x.get("inferred")) and not _found(name, cv),
+            _s(x.get("category")),
+        )
     for entry in [*experiences, *education, *projects, *certifications]:
         for name in entry.skills:
             add_skill(name, False)
@@ -568,6 +647,7 @@ def to_profile(raw: dict, text: str) -> Profile:
         headline=_s(raw.get("headline")),
         location=_s(raw.get("location")),
         email=_s(raw.get("email")),
+        phone=_s(raw.get("phone")),
         links=links,
         summary=_s(raw.get("summary")),
         experiences=experiences,
@@ -576,6 +656,8 @@ def to_profile(raw: dict, text: str) -> Profile:
         languages=languages,
         projects=projects,
         certifications=certifications,
+        awards=awards,
+        interests=_strs(raw.get("interests")),
     )
 
 

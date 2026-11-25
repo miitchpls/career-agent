@@ -81,3 +81,59 @@ class Slot:
     def done(self, run_id: int) -> None:
         with self._lock:
             self._runs.pop(run_id, None)
+
+
+class Pool:
+    """Runs keyed by posting: one at a time per posting, at most `cap` live at once.
+
+    Cancelled runs count against the cap until their process has exited, so cancelling and
+    restarting can't pile up processes."""
+
+    def __init__(self, cap: int) -> None:
+        self.cap = cap
+        self._lock = threading.Lock()
+        self._slots: dict[str, Slot] = {}
+
+    def running(self, key: str) -> bool:
+        with self._lock:
+            slot = self._slots.get(key)
+        return bool(slot and slot.running())
+
+    def idle(self) -> bool:
+        with self._lock:
+            return all(s.idle() for s in self._slots.values())
+
+    def claim(
+        self, key: str, create: Callable[[], int], busy: str, busy_many: str
+    ) -> tuple[Slot, int]:
+        """Record a new run for `key`: RuntimeError(busy) when one is going for it,
+        RuntimeError(busy_many) when the pool is full. One lock for the cap and the claim:
+        two requests can't both take the last place."""
+        with self._lock:
+            live = sum(not s.idle() for s in self._slots.values())
+            slot = self._slots.setdefault(key, Slot())
+            if live >= self.cap and not slot.running():
+                self._prune(key)
+                raise RuntimeError(busy_many)
+            try:
+                return slot, slot.claim(create, busy)
+            except RuntimeError:
+                self._prune(key)
+                raise
+
+    def cancel(self, key: str, on_cancel: Callable[[int], None]) -> None:
+        with self._lock:
+            slot = self._slots.get(key)
+        if slot:
+            slot.cancel(on_cancel)
+
+    def done(self, key: str, slot: Slot, run_id: int) -> None:
+        slot.done(run_id)
+        with self._lock:
+            self._prune(key)
+
+    def _prune(self, key: str) -> None:
+        """Forget a key's slot once nothing runs in it (call with the lock held)."""
+        slot = self._slots.get(key)
+        if slot and slot.idle():
+            del self._slots[key]

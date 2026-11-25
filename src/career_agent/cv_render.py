@@ -52,6 +52,7 @@ WORDS: dict[str, dict[str, str]] = {
         "technical": "Technical",
         "languages": "Languages",
         "present": "Present",
+        "other": "Other",
     },
     "it": {
         "summary": "Profilo",
@@ -66,6 +67,7 @@ WORDS: dict[str, dict[str, str]] = {
         "technical": "Tecniche",
         "languages": "Lingue",
         "present": "oggi",
+        "other": "Altro",
     },
     "de": {
         "summary": "Profil",
@@ -80,6 +82,7 @@ WORDS: dict[str, dict[str, str]] = {
         "technical": "Fachlich",
         "languages": "Sprachen",
         "present": "heute",
+        "other": "Weitere",
     },
     "ko": {
         "summary": "자기소개",
@@ -94,6 +97,7 @@ WORDS: dict[str, dict[str, str]] = {
         "technical": "기술 스택",
         "languages": "외국어",
         "present": "현재",
+        "other": "기타",
     },
 }
 MONTHS = {
@@ -151,6 +155,18 @@ LEVELS = {
            "full": "비즈니스 능통", "native": "원어민"},
 }  # fmt: skip
 
+# The data-processing consent Italian CVs end with, in the CV's language (career-ops' `consent`).
+CONSENT = {
+    "it": "Autorizzo il trattamento dei dati personali contenuti nel mio curriculum vitae ai sensi "
+    "del Regolamento UE 2016/679 (GDPR) e del D.Lgs. 196/2003.",
+    "en": "I authorise the processing of the personal data in this CV under Regulation (EU) "
+    "2016/679 (GDPR).",
+    "de": "Ich willige in die Verarbeitung der personenbezogenen Daten in diesem Lebenslauf gemäß "
+    "der Verordnung (EU) 2016/679 (DSGVO) ein.",
+    "ko": "본 이력서에 포함된 개인정보의 수집 및 이용에 동의합니다.",
+}
+PhotoStyle = Literal["rounded", "circle", "square"]
+
 
 # --- Escaping and URLs (as build-cv-html.mjs) --------------------------------------------------
 
@@ -162,6 +178,20 @@ def esc(text: object) -> str:
     return (
         html.escape(str(text), quote=True).replace("{", "&#123;").replace("}", "&#125;")
     )
+
+
+_BOLD = re.compile(r"\*\*([^*]+?)\*\*")
+
+
+def rich(text: object) -> str:
+    """`esc`, then `**…**` as <strong>, as career-ops does: escaping first, so only the markers
+    it left alone are read, and a bold span can't hold markup."""
+    return _BOLD.sub(r"<strong>\1</strong>", esc(text))
+
+
+def plain(text: str) -> str:
+    """The text without its `**` markers, as a reader (or an ATS) sees it."""
+    return _BOLD.sub(r"\1", text)
 
 
 _SCHEMES = ("mailto:", "tel:", "http:", "https:")
@@ -317,6 +347,9 @@ def _replace_contact_row(source: str, row: str) -> str:
 
 def _contact_row(p: Profile) -> str:
     items = []
+    if p.phone:
+        tel = safe_url("tel:" + re.sub(r"[^\d+]", "", p.phone))
+        items.append(f'<a href="{tel}">{esc(p.phone)}</a>' if tel else esc(p.phone))
     if p.email:
         items.append(f'<a href="{safe_url("mailto:" + p.email)}">{esc(p.email)}</a>')
     for link in p.links:
@@ -435,6 +468,10 @@ def _experience(p: Profile, part: Partial, lang: str, mark, group: bool = True) 
             role = esc(e.role)
             if grouped and period:
                 role += f' <span class="ca-role-period">· {period}</span>'
+            # The employer's line belongs to the company: once, on its first role.
+            context = esc(e.context) if i == 0 or not grouped else ""
+            if grouped and i == 0 and not context:
+                context = next((esc(r.context) for r in g if r.context), "")
             fields = {
                 "COMPANY": esc(e.company),
                 "PERIOD": esc(_period(*_span(g), lang))
@@ -442,11 +479,13 @@ def _experience(p: Profile, part: Partial, lang: str, mark, group: bool = True) 
                 else period,
                 "ROLE": role,
                 "LOCATION": esc(where),
-                "CONTEXT": "",
+                "CONTEXT": context,
                 "BULLETS": bullets,
             }
             entry = fill_entry(
-                part, fields, {"LOCATION_BLOCK": esc(where), "CONTEXT_BLOCK": None}
+                part,
+                fields,
+                {"LOCATION_BLOCK": esc(where), "CONTEXT_BLOCK": context or None},
             )
             if grouped:
                 entry = _with_class(entry, "ca-company" if i == 0 else "ca-role")
@@ -486,7 +525,7 @@ def _education(p: Profile, part: Partial, lang: str) -> str:
     return "\n  ".join(out)
 
 
-def _projects(p: Profile, part: Partial) -> str:
+def _projects(p: Profile, part: Partial, mark) -> str:
     out = []
     for x in p.projects:
         if not x.name:
@@ -494,15 +533,16 @@ def _projects(p: Profile, part: Partial) -> str:
         href = safe_url(x.url)
         name = f'<a href="{href}">{esc(x.name)}</a>' if href else esc(x.name)
         tech = ", ".join(x.skills)
+        desc = mark(x.description) if x.description else ""
         fields = {
             "NAME": name,
             "BADGE": "",
-            "DESC": esc(x.description),
+            "DESC": desc,
             "TECH": esc(tech),
         }
         present = {
             "BADGE_BLOCK": None,
-            "DESC_BLOCK": esc(x.description) or None,
+            "DESC_BLOCK": desc or None,
             "TECH_BLOCK": esc(tech) or None,
         }
         out.append(fill_entry(part, fields, present))
@@ -526,12 +566,52 @@ def _certifications(p: Profile, part: Partial) -> str:
     return "\n    ".join(out)
 
 
-def _skills(p: Profile, part: Partial, lang: str) -> str:
+def _awards(p: Profile, part: Partial) -> str:
+    out = []
+    for a in p.awards:
+        if not a.title:
+            continue
+        year = str(a.date.year) if a.date else ""
+        fields = {"TITLE": esc(a.title), "ORG": esc(a.issuer), "YEAR": esc(year)}
+        out.append(
+            fill_entry(
+                part,
+                fields,
+                {"ORG_BLOCK": esc(a.issuer) or None, "YEAR_BLOCK": esc(year) or None},
+            )
+        )
+    return "\n    ".join(out)
+
+
+def _interests(p: Profile) -> str:
+    """One line, commas. Kept as typed: career-ops lowercases all but the first, which
+    breaks names and acronyms ("Python", "AI ethics")."""
+    return ", ".join(esc(x.strip()) for x in p.interests if x.strip())
+
+
+def skill_groups(p: Profile, lang: str) -> list[tuple[str, list[str]]]:
+    """The skills line by line: one per category, in the order categories first appear.
+    Uncategorised skills go on the general line ("Technical"), or on "Other" after the
+    named ones when there are some."""
+    groups: dict[str, list[str]] = {}
+    for s in p.skills:
+        if s.name:
+            groups.setdefault(s.category.strip(), []).append(s.name)
+    loose = groups.pop("", [])
     w = WORDS[lang]
-    rows = []
-    names = [s.name for s in p.skills]
-    if names:
-        rows.append((w["technical"], ", ".join(names)))
+    rows = list(groups.items())
+    if loose:
+        rows.append((w["other"] if rows else w["technical"], loose))
+    return rows
+
+
+def _skills(
+    p: Profile, part: Partial, lang: str, first: tuple[str, str] | None = None
+) -> str:
+    w = WORDS[lang]
+    rows = [(cat, ", ".join(names)) for cat, names in skill_groups(p, lang)]
+    if first:
+        rows.insert(0, first)
     langs = [
         f"{x.name} ({x.level if x.level in ('A1', 'A2', 'B1', 'B2', 'C1', 'C2') else LEVELS[lang][x.level]})"
         for x in p.languages
@@ -585,15 +665,19 @@ def render(
     page: PageFormat = "a4",
     photo: bool = False,
     marked: frozenset[str] = frozenset(),
+    competencies: tuple[str, ...] | list[str] = (),
+    consent: bool = False,
+    photo_style: PhotoStyle = "rounded",
 ) -> str:
-    """The CV as an HTML document. Texts in `marked` (bullets, the summary) are highlighted:
-    the parts a tailored CV changed."""
+    """The CV as an HTML document. Texts in `marked` (bullets, the summary, a project's
+    description) are highlighted: the parts a tailored CV changed. `competencies` are a
+    tailored CV's keyword tags; `consent` adds the data-processing line at the bottom."""
 
     def mark(text: str) -> str:
         return (
-            f'<mark class="ca-changed">{esc(text)}</mark>'
+            f'<mark class="ca-changed">{rich(text)}</mark>'
             if text in marked
-            else esc(text)
+            else rich(text)
         )
 
     path = TEMPLATES[template]
@@ -601,26 +685,43 @@ def render(
     w = WORDS[lang]
     p = profile
     photo_src = p.photo if photo and p.photo and _PHOTO_SRC.match(p.photo) else ""
+    if photo_style not in ("rounded", "circle", "square"):
+        photo_style = "rounded"
 
     sections = {
         "EXPERIENCE": _experience(
             p, parts["experience"], lang, mark, group=template != "ats"
         ),
-        "PROJECTS": _projects(p, parts["projects"]),
+        "PROJECTS": _projects(p, parts["projects"], mark),
         "EDUCATION": _education(p, parts["education"], lang),
         "CERTIFICATIONS": _certifications(p, parts["certifications"]),
-        "SKILLS": _skills(p, parts["skills"], lang),
+        "AWARDS": _awards(p, parts["awards"]) if "awards" in parts else "",
     }
+    tags = list(dict.fromkeys(c.strip() for c in competencies if c.strip()))
+    # Parsers drop a row of tags whole: the ATS template gets them as a skills line instead,
+    # as career-ops' ats-payload.mjs folds them.
+    folded = (
+        (w["competencies"], ", ".join(tags)) if tags and template == "ats" else None
+    )
+    sections["SKILLS"] = _skills(p, parts["skills"], lang, folded)
+    if folded:
+        tags = []
+    if tags and "competencies" in parts:
+        sections["COMPETENCIES"] = "\n      ".join(
+            fill_entry(parts["competencies"], {"TAG": esc(c)}, {}) for c in tags
+        )
+    else:
+        sections["COMPETENCIES"] = "\n      ".join(
+            f'<span class="competency-tag">{esc(c)}</span>' for c in tags
+        )
     fields = {
         "LANG": lang,
         "PAGE_WIDTH": PAGE_WIDTHS[page],
         "NAME": esc(p.name),
         "SUMMARY_TEXT": mark(p.summary),
-        "COMPETENCIES": "",
-        "AWARDS": "",
-        "INTERESTS": "",
-        "CONSENT": "",
-        "PHOTO": f'<img class="cv-photo cv-photo--rounded" src="{esc(photo_src)}" alt="{esc(p.name)}">'
+        "INTERESTS": _interests(p),
+        "CONSENT": esc(CONSENT[lang]) if consent else "",
+        "PHOTO": f'<img class="cv-photo cv-photo--{photo_style}" src="{esc(photo_src)}" alt="{esc(p.name)}">'
         if photo_src
         else "",
         **sections,
@@ -643,6 +744,9 @@ def render(
             "projects": bool(sections["PROJECTS"]),
             "education": bool(sections["EDUCATION"]),
             "certifications": bool(sections["CERTIFICATIONS"]),
+            "competencies": bool(sections["COMPETENCIES"]),
+            "awards": bool(sections["AWARDS"]),
+            "interests": bool(fields["INTERESTS"]),
             "skills": bool(sections["SKILLS"]),
         },
     )

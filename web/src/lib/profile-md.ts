@@ -1,6 +1,6 @@
 /** The profile as a Markdown CV: for backups, or for tools that read career-ops' cv.md. */
 import { msgs } from "@/lib/i18n"
-import { fmtMonthYear, fmtRange, levelLabel, type Profile } from "@/lib/profile"
+import { fmtMonthYear, fmtRange, levelLabel, skillCategories, type Profile } from "@/lib/profile"
 
 export function toMarkdown(p: Profile): string {
   const t = msgs().profileView
@@ -14,7 +14,7 @@ export function toMarkdown(p: Profile): string {
 
   line(`# ${p.name || "—"}`)
   if (p.headline) line(p.headline)
-  const contacts = [p.location, p.email, ...p.links.map((l) => l.url)].filter(Boolean)
+  const contacts = [p.location, p.email, p.phone, ...p.links.map((l) => l.url)].filter(Boolean)
   if (contacts.length) {
     line()
     line(contacts.join(" · "))
@@ -29,6 +29,7 @@ export function toMarkdown(p: Profile): string {
       line(`### ${[e.role, e.company].filter(Boolean).join(" — ")}`)
       const meta = [fmtRange(e.start, e.end, e.current), e.location].filter(Boolean).join(" · ")
       if (meta) line(meta)
+      if (e.context) line(`*${e.context}*`)
       for (const b of e.bullets) line(`- ${b}`)
       if (e.skills.length) line(`\n${e.skills.join(", ")}`)
       line()
@@ -48,7 +49,12 @@ export function toMarkdown(p: Profile): string {
   }
   if (p.skills.length) {
     section(t.skills)
-    line(p.skills.map((s) => s.name).join(", "))
+    // One line per category, as career-ops' cv.md writes them: "- **Frontend:** Angular, React".
+    const lines = [...skillCategories(p), ""]
+      .map((c) => [c, p.skills.filter((s) => (s.category?.trim() ?? "") === c).map((s) => s.name)] as const)
+      .filter(([, names]) => names.length)
+    if (lines.length === 1 && !lines[0][0]) line(lines[0][1].join(", "))
+    else for (const [c, names] of lines) line(`- **${c || t.noCategory}:** ${names.join(", ")}`)
   }
   if (p.languages.length) {
     section(t.languages)
@@ -69,6 +75,14 @@ export function toMarkdown(p: Profile): string {
       const when = fmtMonthYear(c.issued)
       line(`- ${[c.name, c.issuer, when].filter(Boolean).join(" · ")}`)
     }
+  }
+  if (p.awards.length) {
+    section(t.awards)
+    for (const a of p.awards) line(`- ${[a.title, a.issuer, fmtMonthYear(a.date)].filter(Boolean).join(" · ")}`)
+  }
+  if (p.interests.length) {
+    section(t.interests)
+    line(p.interests.join(", "))
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n"
 }

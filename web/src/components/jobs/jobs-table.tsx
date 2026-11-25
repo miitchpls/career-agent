@@ -196,7 +196,7 @@ export function JobsTable({
             <TableCell className="max-w-0 pl-4">
               <div className="truncate font-medium">
                 {job.title}
-                <CvMark url={job.url} />
+                <CvMark shown={!!job.has_cv} />
                 <ApplicationMark url={job.url} />
               </div>
               <div className="truncate text-xs text-muted-foreground">{job.company ?? "—"}</div>

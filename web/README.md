@@ -24,7 +24,7 @@ src/
     run/              Starting a board search and following its progress
     saved/            Saved searches
     profile/          Profile page: onboarding, import progress, view, edit dialogs
-    cv/               Tailored CV (mock)
+    cv/               Tailored CV, CV page preview, style gallery
     settings/         Preferences: theme, language, AI engine
     ui/               shadcn/ui components, generated (`npx shadcn add …`)
   lib/
@@ -33,6 +33,8 @@ src/
     compose.ts        Parses typed text into filter suggestions (it/en/de/ko words)
     queries.ts        React Query hooks: jobs, run status, saved searches, places
     profile.ts        Profile types, helpers and store (see below)
+    tailored-cv.ts    Tailored CV per posting: polling while written, start, cancel, PDF download
+    cv-prefs.ts       CV preferences and what "auto" means for one posting
     i18n.ts           Locale store and `useT()`
   locales/            it.ts (reference), en.ts, de.ts, ko.ts
 ```

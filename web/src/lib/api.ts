@@ -69,6 +69,8 @@ export interface Job {
   hits: { place: string; label: string | null; keyword: string }[]
   /** The posting's last finished fit score, if any. */
   score: { value: number; decision: ScoreDecision } | null
+  /** Whether a tailored CV was finished for it (`/api/jobs/cv`). */
+  has_cv?: boolean
 }
 
 export interface JobsPage {
@@ -211,7 +213,15 @@ export interface CvPreviewRequest {
   profile: unknown | null
   /** Texts to highlight: what a tailored CV moved. */
   marked?: string[]
+  /** A tailored CV's keyword tags. */
+  competencies?: string[]
+  /** End with the data-processing consent line. */
+  consent?: boolean
 }
+
+/** Sections a tailored CV copies from the profile as they are. */
+export const LOCKED_SECTIONS = ["headline", "summary", "experience", "projects", "skills"] as const
+export type LockedSection = (typeof LOCKED_SECTIONS)[number]
 
 /** How tailored CVs are written: `/api/cv/preferences`. */
 export interface CvPrefs {
@@ -223,6 +233,64 @@ export interface CvPrefs {
   style: CvTemplate
   /** "auto": only where CVs usually carry a photo. */
   photo: "auto" | "always" | "never"
+  photoStyle: "rounded" | "circle" | "square"
+  /** The data-processing consent line; "auto": postings in Italy, where CVs end with it. */
+  consent: "auto" | "always" | "never"
+  locked: LockedSection[]
+  /** What every tailored CV should know: the story to tell, house rules. */
+  guidance: string
+}
+
+// --- Tailored CV (career_agent.tailor) ------------------------------------------------------------
+
+export interface TailoredCvResult {
+  language: CvLanguage
+  /** The CV's content, as a profile. */
+  profile: unknown
+  competencies: string[]
+  /** Texts rewritten or moved, highlighted in the preview. */
+  marked: string[]
+  /** listed: a skill of the profile; supported: its text shows it; gap: no trace of it. */
+  keywords: { term: string; kind: "listed" | "supported" | "gap"; inCv: boolean }[]
+  /** % of the keywords the CV contains. */
+  coverage: number | null
+  /** What the AI says it changed, in the UI's language. */
+  changes: string[]
+  /** What the server's checks undid: `terms` triggered it, `text` is the AI's version. */
+  warnings: {
+    kind: "bullet_restored" | "project_restored" | "summary_trimmed" | "summary_kept" | "headline_kept" | "competency_dropped"
+    terms: string[]
+    text: string
+  }[]
+}
+
+export interface TailoredCv {
+  id: number
+  url: string
+  status: "running" | "ready" | "failed"
+  language: CvLanguage
+  provider: string
+  model: string | null
+  result: TailoredCvResult | null
+  error: string | null
+  created_at: string
+  /** How many CVs were finished for this posting, up to this one. */
+  version: number
+  /** Ready CVs: the profile, the posting or the CV settings changed since. */
+  stale?: boolean
+}
+
+export interface CvState {
+  cv: TailoredCv | null
+  earlier: TailoredCv | null
+}
+
+export interface CvPdfRequest {
+  url: string
+  template: CvTemplate
+  format: "a4" | "letter"
+  photo: boolean
+  consent: boolean
 }
 
 export interface UploadedFile {
@@ -430,6 +498,24 @@ export const api = {
     prefs: () => request<CvPrefs>("/api/cv/preferences"),
     savePrefs: (prefs: CvPrefs) => put<CvPrefs>("/api/cv/preferences", prefs),
     preview: (body: CvPreviewRequest) => post<{ pages: Partial<Record<CvTemplate, string>>; sample: boolean }>("/api/cv/preview", body),
+    get: (url: string) => request<CvState>(`/api/jobs/cv?url=${encodeURIComponent(url)}`),
+    start: (url: string, language: CvLanguage) => post<CvState>("/api/jobs/cv", { url, language }),
+    cancel: (url: string) => del<CvState>(`/api/jobs/cv?url=${encodeURIComponent(url)}`),
+    count: () => request<{ postings: number }>("/api/jobs/cv/count"),
+    /** The PDF file and the name the server gives it. */
+    pdf: async (body: CvPdfRequest): Promise<{ blob: Blob; filename: string }> => {
+      const res = await fetch("/api/jobs/cv/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept-Language": getLocale() },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => null))?.detail
+        throw new Error(typeof detail === "string" ? detail : msgs().common.invalidRequest)
+      }
+      const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1]
+      return { blob: await res.blob(), filename: name ?? "CV.pdf" }
+    },
   },
   profile: {
     get: () => request<ProfileState>("/api/profile"),

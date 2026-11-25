@@ -7,15 +7,19 @@ import {
   BriefcaseIcon,
   CameraIcon,
   CheckIcon,
+  ChevronDownIcon,
   FolderGitIcon,
   GraduationCapIcon,
+  HeartIcon,
   LanguagesIcon,
   LayoutGridIcon,
   LoaderCircleIcon,
   MailIcon,
   MapPinIcon,
   PencilIcon,
+  PhoneIcon,
   PlusIcon,
+  TrophyIcon,
   WrenchIcon,
   XIcon,
 } from "lucide-react"
@@ -23,10 +27,12 @@ import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 
 import { StyleGallery } from "@/components/cv/style-gallery"
-import { MediaStrip, SkillLine } from "@/components/profile/fields"
+import { Field, FormDialog, MediaStrip, SkillLine } from "@/components/profile/fields"
 import { ScorePrefsCard } from "@/components/profile/score-prefs"
 import { ReviewCard } from "@/components/profile/review-panel"
 import {
+  AwardDialog,
+  CategoryDialog,
   CertificationDialog,
   EducationDialog,
   ExperienceDialog,
@@ -50,10 +56,22 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   completeness,
@@ -65,21 +83,26 @@ import {
   levelLabel,
   profileStore,
   removeSkill,
+  renameCategory,
   reviewCount,
+  setSkillCategory,
+  skillCategories,
   skillUses,
   upsert,
   useProfile,
   withSkills,
   withoutLegalForm,
+  type Award,
   type Certification,
   type Education,
   type Experience,
   type Language,
   type Profile,
   type Project,
+  type Skill,
 } from "@/lib/profile"
-import { CV_TEMPLATES, type CvPrefs } from "@/lib/api"
-import { useGenerated } from "@/lib/cv-mock"
+import { CV_TEMPLATES, LOCKED_SECTIONS, type CvPrefs } from "@/lib/api"
+import { useCvCount } from "@/lib/tailored-cv"
 import { useCvPrefs, useSaveCvPrefs } from "@/lib/cv-prefs"
 import { useT } from "@/lib/i18n"
 import { openPreferences } from "@/lib/preferences"
@@ -127,6 +150,8 @@ export function ProfileView() {
           <LanguagesSection profile={profile} onChange={update} />
           <ProjectsSection profile={profile} onChange={update} />
           <Certifications profile={profile} onChange={update} />
+          <Awards profile={profile} onChange={update} />
+          <Interests profile={profile} onChange={update} />
         </div>
         <Aside profile={profile} />
       </div>
@@ -403,6 +428,12 @@ function Identity({ profile: p, onChange }: { profile: Profile; onChange: Change
                   {p.email}
                 </span>
               )}
+              {p.phone && (
+                <span className="inline-flex items-center gap-1.5 tabular-nums">
+                  <PhoneIcon className="size-3.5" />
+                  {p.phone}
+                </span>
+              )}
             </div>
             {p.links.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-0.5">
@@ -559,6 +590,9 @@ function Experiences({ profile: p, onChange }: { profile: Profile; onChange: Cha
                         .join(" · ")}
                     </p>
                     {where.length > 0 && <p className="text-xs text-muted-foreground">{where.join(" · ")}</p>}
+                    {g.find((r) => r.context)?.context && (
+                      <p className="mt-0.5 text-xs text-pretty text-muted-foreground italic">{g.find((r) => r.context)?.context}</p>
+                    )}
                   </div>
                 </div>
                 <ol className="mt-3 space-y-4">
@@ -616,6 +650,7 @@ function ExperienceBody({
           {sub.length > 0 && <p className="text-sm text-muted-foreground">{sub.join(" · ")}</p>}
           <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{fmtRange(e.start, e.end, e.current)}</p>
           {where.length > 0 && <p className="text-xs text-muted-foreground">{where.join(" · ")}</p>}
+          {company && e.context && <p className="mt-0.5 text-xs text-pretty text-muted-foreground italic">{e.context}</p>}
         </div>
         <EditButton label={t.editExperience} onClick={onEdit} />
       </div>
@@ -696,92 +731,75 @@ function EducationSection({ profile: p, onChange }: { profile: Profile; onChange
   )
 }
 
+/** Which skill line the category dialog names: a new one for a skill, or a rename. */
+type CategoryEdit = { skill: string } | { from: string } | null
+
 function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
   const all = useT()
   const t = all.profileView
-  const [draft, setDraft] = useState("")
   const [removing, setRemoving] = useState<string | null>(null)
+  const [naming, setNaming] = useState<CategoryEdit>(null)
   const inferred = p.skills.filter((s) => s.inferred).length
-  const add = () => {
-    const name = draft.trim()
-    if (name) onChange(withSkills(p, [name]))
-    setDraft("")
-  }
+  const categories = skillCategories(p)
+  const lineOf = (s: Skill) => s.category?.trim() ?? ""
+  // One line per category, in the order they first appear; the uncategorised last.
+  const rows: [string, Skill[]][] = categories.length
+    ? [...categories.map((c): [string, Skill[]] => [c, p.skills.filter((s) => lineOf(s) === c)]), ["", p.skills.filter((s) => !lineOf(s))]]
+    : [["", p.skills]]
   const remove = (name: string) => (skillUses(p, name).length ? setRemoving(name) : onChange(removeSkill(p, name)))
+  const add = (name: string, category: string) => {
+    const known = p.skills.find((s) => s.name.toLowerCase() === name.toLowerCase())
+    if (known) onChange(setSkillCategory(p, known.name, category))
+    else onChange({ ...p, skills: [...p.skills, { name, category }] })
+  }
 
   return (
     <Section icon={WrenchIcon} title={t.skills} count={p.skills.length}>
-      <div className="flex flex-wrap gap-1.5">
-        <AnimatePresence initial={false}>
-          {p.skills.map((s) => {
-            const uses = skillUses(p, s.name)
-            return (
-              <motion.span
-                key={s.name}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.12 } }}
-                className={cn(
-                  "group inline-flex h-7 items-center gap-1 rounded-full border pr-1 pl-2.5 text-xs",
-                  s.inferred && "border-dashed border-amber-500/50 bg-amber-500/5",
-                )}
-              >
-                {s.name}
-                {uses.length > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="grid h-4 min-w-4 cursor-default place-items-center rounded-full bg-secondary px-1 text-[10px] text-muted-foreground tabular-nums">
-                        {uses.length}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="mb-1 font-medium">{t.usedIn}</p>
-                      {uses.map((u) => (
-                        <p key={u.id}>{u.label}</p>
-                      ))}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                {s.inferred && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label={t.confirmSkill(s.name)}
-                        className="grid size-5 place-items-center rounded-full text-amber-600 hover:bg-amber-500/15 dark:text-amber-400"
-                        onClick={() => onChange({ ...p, skills: p.skills.map((x) => (x.name === s.name ? { name: x.name } : x)) })}
-                      >
-                        <CheckIcon className="size-3" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>{t.inferred}</TooltipContent>
-                  </Tooltip>
-                )}
-                <button
-                  type="button"
-                  aria-label={t.removeSkill(s.name)}
-                  className="grid size-5 place-items-center rounded-full text-muted-foreground opacity-50 transition-opacity group-hover:opacity-100 hover:bg-muted"
-                  onClick={() => remove(s.name)}
-                >
-                  <XIcon className="size-3" />
-                </button>
-              </motion.span>
-            )
-          })}
-        </AnimatePresence>
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          onBlur={add}
-          placeholder={t.addSkill}
-          className="h-7 w-28 rounded-full border-dashed px-2.5 text-xs shadow-none"
-        />
+      <div className="space-y-3">
+        {rows.map(([category, skills]) =>
+          categories.length && !category && !skills.length ? null : (
+            <div key={category || "-"} className="space-y-1.5">
+              {categories.length > 0 && (
+                <div className="group/line flex h-5 items-center gap-1">
+                  <span className={cn("text-xs font-medium", !category && "text-muted-foreground")}>{category || t.noCategory}</span>
+                  {category && (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={t.renameCategory(category)}
+                      className="opacity-0 transition-opacity group-hover/line:opacity-100 focus-visible:opacity-100"
+                      onClick={() => setNaming({ from: category })}
+                    >
+                      <PencilIcon />
+                    </Button>
+                  )}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                <AnimatePresence initial={false}>
+                  {skills.map((s) => (
+                    <SkillChip
+                      key={s.name}
+                      skill={s}
+                      profile={p}
+                      categories={categories}
+                      onMove={(c) => onChange(setSkillCategory(p, s.name, c))}
+                      onNewCategory={() => setNaming({ skill: s.name })}
+                      onConfirm={() => onChange({ ...p, skills: p.skills.map((x) => (x.name === s.name ? { ...x, inferred: false } : x)) })}
+                      onRemove={() => remove(s.name)}
+                    />
+                  ))}
+                </AnimatePresence>
+                <AddSkill onAdd={(name) => add(name, category)} />
+              </div>
+            </div>
+          ),
+        )}
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">
+      <p className="mt-3 text-xs text-pretty text-muted-foreground">
         {t.skillsHint}
         {inferred > 0 && t.skillsInferredHint}
+        {t.skillsCategoryHint}
       </p>
       <RemoveSkillDialog
         skill={removing}
@@ -789,7 +807,146 @@ function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }
         onOpenChange={(o) => !o && setRemoving(null)}
         onConfirm={() => removing && onChange(removeSkill(p, removing))}
       />
+      <CategoryDialog
+        open={naming !== null}
+        onOpenChange={(o) => !o && setNaming(null)}
+        initial={naming && "from" in naming ? naming.from : ""}
+        taken={categories}
+        onSave={(name) => {
+          if (naming && "from" in naming) onChange(renameCategory(p, naming.from, name))
+          else if (naming) onChange(setSkillCategory(p, naming.skill, name))
+          setNaming(null)
+        }}
+      />
     </Section>
+  )
+}
+
+/** A skill: its name opens the menu that moves it to another line. */
+function SkillChip({
+  skill: s,
+  profile: p,
+  categories,
+  onMove,
+  onNewCategory,
+  onConfirm,
+  onRemove,
+}: {
+  skill: Skill
+  profile: Profile
+  categories: string[]
+  onMove: (category: string) => void
+  onNewCategory: () => void
+  onConfirm: () => void
+  onRemove: () => void
+}) {
+  const t = useT().profileView
+  const uses = skillUses(p, s.name)
+  const NONE = "\u0000"
+  return (
+    <motion.span
+      layout
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.12 } }}
+      className={cn(
+        "group inline-flex h-7 items-center gap-1 rounded-full border pr-1 pl-1 text-xs",
+        s.inferred && "border-dashed border-amber-500/50 bg-amber-500/5",
+      )}
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={t.skillMenu(s.name)}
+            className="h-5 rounded-full px-1.5 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:bg-muted"
+          >
+            {s.name}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-52">
+          <DropdownMenuLabel className="text-xs text-muted-foreground">{t.moveTo}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={s.category?.trim() || NONE} onValueChange={(v) => onMove(v === NONE ? "" : v)}>
+            {categories.map((c) => (
+              <DropdownMenuRadioItem key={c} value={c} className="text-xs">
+                {c}
+              </DropdownMenuRadioItem>
+            ))}
+            <DropdownMenuRadioItem value={NONE} className="text-xs text-muted-foreground">
+              {t.noCategory}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-xs" onSelect={onNewCategory}>
+            <PlusIcon />
+            {t.newCategory}
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" className="text-xs" onSelect={onRemove}>
+            <XIcon />
+            {t.removeSkill(s.name)}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {uses.length > 0 && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="grid h-4 min-w-4 cursor-default place-items-center rounded-full bg-secondary px-1 text-[10px] text-muted-foreground tabular-nums">
+              {uses.length}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="mb-1 font-medium">{t.usedIn}</p>
+            {uses.map((u) => (
+              <p key={u.id}>{u.label}</p>
+            ))}
+          </TooltipContent>
+        </Tooltip>
+      )}
+      {s.inferred && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={t.confirmSkill(s.name)}
+              className="grid size-5 place-items-center rounded-full text-amber-600 hover:bg-amber-500/15 dark:text-amber-400"
+              onClick={onConfirm}
+            >
+              <CheckIcon className="size-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{t.inferred}</TooltipContent>
+        </Tooltip>
+      )}
+      <button
+        type="button"
+        aria-label={t.removeSkill(s.name)}
+        className="grid size-5 place-items-center rounded-full text-muted-foreground opacity-50 transition-opacity group-hover:opacity-100 hover:bg-muted"
+        onClick={onRemove}
+      >
+        <XIcon className="size-3" />
+      </button>
+    </motion.span>
+  )
+}
+
+/** "+ Add" at the end of a line: Enter or leaving the field adds what's typed. */
+function AddSkill({ onAdd, placeholder }: { onAdd: (name: string) => void; placeholder?: string }) {
+  const t = useT().profileView
+  const [draft, setDraft] = useState("")
+  const add = () => {
+    const name = draft.trim()
+    if (name) onAdd(name)
+    setDraft("")
+  }
+  return (
+    <Input
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => e.key === "Enter" && add()}
+      onBlur={add}
+      placeholder={placeholder ?? t.addSkill}
+      className="h-7 w-28 rounded-full border-dashed px-2.5 text-xs shadow-none"
+    />
   )
 }
 
@@ -965,13 +1122,100 @@ function Certifications({ profile: p, onChange }: { profile: Profile; onChange: 
   )
 }
 
+function Awards({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
+  const all = useT()
+  const t = all.profileView
+  const ed = useEditing<Award>()
+  return (
+    <Section icon={TrophyIcon} title={t.awards} count={p.awards.length} action={<AddButton label={t.addAward} onClick={ed.add} />}>
+      {p.awards.length === 0 ? (
+        <EmptyHint onClick={ed.add}>{t.firstAward}</EmptyHint>
+      ) : (
+        <ul className="space-y-5">
+          {p.awards.map((a) => (
+            <li key={a.id} className="group">
+              <EntryRow
+                mark={
+                  <Mark>
+                    <TrophyIcon className="size-4" />
+                  </Mark>
+                }
+                note={a.review}
+                onConfirm={() => onChange({ ...p, awards: upsert(p.awards, { ...a, review: null }) })}
+                onEdit={() => ed.edit(a)}
+              >
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{a.title}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {[a.issuer, a.date && fmtMonthYear(a.date)].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <EditButton label={t.editAward} onClick={() => ed.edit(a)} />
+                </div>
+                {a.description && <p className="mt-1.5 text-sm text-pretty">{a.description}</p>}
+              </EntryRow>
+            </li>
+          ))}
+        </ul>
+      )}
+      <AwardDialog
+        open={ed.open}
+        onOpenChange={ed.onOpenChange}
+        entry={ed.entry}
+        profile={p}
+        onSave={(a) => onChange({ ...p, awards: upsert(p.awards, a) })}
+        onDelete={(a) => onChange({ ...p, awards: p.awards.filter((x) => x.id !== a.id) })}
+      />
+    </Section>
+  )
+}
+
+/** Short phrases, printed on one line by the templates that have the section. */
+function Interests({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
+  const t = useT().profileView
+  const add = (name: string) => {
+    if (!p.interests.some((x) => x.toLowerCase() === name.toLowerCase())) onChange({ ...p, interests: [...p.interests, name] })
+  }
+  return (
+    <Section icon={HeartIcon} title={t.interests} count={p.interests.length}>
+      <div className="flex flex-wrap gap-1.5">
+        <AnimatePresence initial={false}>
+          {p.interests.map((x) => (
+            <motion.span
+              key={x}
+              layout
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.12 } }}
+              className="group inline-flex h-7 items-center gap-1 rounded-full border pr-1 pl-2.5 text-xs"
+            >
+              {x}
+              <button
+                type="button"
+                aria-label={t.removeInterest(x)}
+                className="grid size-5 place-items-center rounded-full text-muted-foreground opacity-50 transition-opacity group-hover:opacity-100 hover:bg-muted"
+                onClick={() => onChange({ ...p, interests: p.interests.filter((y) => y !== x) })}
+              >
+                <XIcon className="size-3" />
+              </button>
+            </motion.span>
+          ))}
+        </AnimatePresence>
+        <AddSkill onAdd={add} placeholder={t.addInterest} />
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">{t.interestsHint}</p>
+    </Section>
+  )
+}
+
 // --- Sidebar ---------------------------------------------------------------------------------
 
 function Aside({ profile }: { profile: Profile }) {
   const all = useT()
   const t = all.profileView
   const { score, missing } = completeness(profile)
-  const generated = useGenerated()
+  const generated = useCvCount()
   return (
     <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
       <Card className="gap-3 px-5 py-4">
@@ -1003,7 +1247,7 @@ function Aside({ profile }: { profile: Profile }) {
 
       <CvPrefsCard />
 
-      <EngineCard generated={generated.size} />
+      <EngineCard generated={generated} />
     </aside>
   )
 }
@@ -1086,24 +1330,130 @@ function CvPrefsCard() {
         onChange={set("photo")}
         options={[["auto", t.photoAuto], ["always", t.photoAlways], ["never", t.photoNever]]}
       />
+      {prefs.photo !== "never" && (
+        <Pref
+          label={t.photoStyle}
+          value={prefs.photoStyle}
+          onChange={set("photoStyle")}
+          options={[["rounded", t.photoRounded], ["circle", t.photoCircle], ["square", t.photoSquare]]}
+        />
+      )}
+      <Pref
+        label={t.consent}
+        hint={t.consentHint}
+        value={prefs.consent}
+        onChange={set("consent")}
+        options={[["auto", t.consentAuto], ["always", t.photoAlways], ["never", t.photoNever]]}
+      />
+      <LockedPref prefs={prefs} onChange={(locked) => save.mutate({ ...prefs, locked })} />
+      <GuidancePref prefs={prefs} onSave={(guidance) => save.mutate({ ...prefs, guidance })} />
     </Card>
+  )
+}
+
+/** Sections a tailored CV copies from the profile as they are. */
+function LockedPref({ prefs, onChange }: { prefs: CvPrefs; onChange: (locked: CvPrefs["locked"]) => void }) {
+  const t = useT().profileView
+  const n = prefs.locked.length
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <PrefLabel label={t.locked} hint={t.lockedHint} />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="h-7 w-40 justify-between px-2.5 text-xs font-normal">
+            <span className="truncate">{n ? t.lockedSome(n) : t.lockedNone}</span>
+            <ChevronDownIcon className="text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {LOCKED_SECTIONS.map((section) => (
+            <DropdownMenuCheckboxItem
+              key={section}
+              className="text-xs"
+              checked={prefs.locked.includes(section)}
+              onSelect={(e) => e.preventDefault()}
+              onCheckedChange={(on) =>
+                onChange(on ? [...prefs.locked, section] : prefs.locked.filter((x) => x !== section))
+              }
+            >
+              {t.sections[section]}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+/** The story and house rules every tailored CV follows (career-ops' _profile.md and _custom.md). */
+function GuidancePref({ prefs, onSave }: { prefs: CvPrefs; onSave: (guidance: string) => void }) {
+  const all = useT()
+  const t = all.profileView
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState(prefs.guidance)
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <PrefLabel label={t.guidance} hint={t.guidanceHint} />
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 w-40 justify-start px-2.5 text-xs font-normal"
+          onClick={() => {
+            setText(prefs.guidance)
+            setOpen(true)
+          }}
+        >
+          <span className={cn("truncate", !prefs.guidance && "text-muted-foreground")}>{prefs.guidance || t.guidanceNone}</span>
+        </Button>
+      </div>
+      <FormDialog open={open} onOpenChange={setOpen} title={t.guidance} description={t.guidanceDialogHint} onSave={() => onSave(text.trim())}>
+        <Field label={t.guidance}>
+          <Textarea
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={3000}
+            placeholder={t.guidancePlaceholder}
+            className="min-h-48"
+          />
+        </Field>
+        <p className="-mt-3 text-right text-xs text-muted-foreground tabular-nums">{text.length} / 3000</p>
+      </FormDialog>
+    </div>
+  )
+}
+
+function PrefLabel({ label, hint }: { label: string; hint?: string }) {
+  if (!hint) return <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="cursor-default text-xs whitespace-nowrap text-muted-foreground underline decoration-dotted underline-offset-4">
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-60">{hint}</TooltipContent>
+    </Tooltip>
   )
 }
 
 function Pref({
   label,
+  hint,
   value,
   onChange,
   options,
 }: {
   label: string
+  hint?: string
   value: string
   onChange: (v: string) => void
   options: [string, string][]
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
+      <PrefLabel label={label} hint={hint} />
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger size="sm" className="h-7 w-40 text-xs" aria-label={label}>
           <SelectValue />

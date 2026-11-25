@@ -7,7 +7,11 @@ import {
   groupByCompany,
   groupSpan,
   profileStore,
+  renameCategory,
   reviewCount,
+  setSkillCategory,
+  skillCategories,
+  withDefaults,
   withoutLegalForm,
   withoutReview,
   type Experience,
@@ -129,6 +133,39 @@ describe("markdown export", () => {
     expect(md).toContain("### Data Engineer — Lumen")
     expect(md).toContain("- Pipeline Kafka per 50 milioni di eventi al giorno.")
     expect(md).toContain("Kafka, AWS")
+  })
+})
+
+describe("skill lines", () => {
+  const p: Profile = {
+    ...EMPTY_PROFILE,
+    skills: [{ name: "Go", category: "Languages" }, { name: "React", category: "Frontend" }, { name: "Docker" }, { name: "Rust", category: "Languages" }],
+  }
+
+  it("lists the categories in the order they first appear", () => {
+    expect(skillCategories(p)).toEqual(["Languages", "Frontend"])
+  })
+
+  it("moves one skill, renames or dissolves a line, and merges into an existing one", () => {
+    expect(setSkillCategory(p, "Docker", " Cloud ").skills[2]).toEqual({ name: "Docker", category: "Cloud" })
+    const renamed = renameCategory(p, "Languages", "Linguaggi")
+    expect(renamed.skills.filter((s) => s.category === "Linguaggi").map((s) => s.name)).toEqual(["Go", "Rust"])
+    expect(skillCategories(renameCategory(p, "Frontend", "Languages"))).toEqual(["Languages"])
+    expect(skillCategories(renameCategory(p, "Frontend", ""))).toEqual(["Languages"])
+  })
+
+  it("exports one line per category, like career-ops' cv.md", () => {
+    const md = toMarkdown({ ...p, name: "X" })
+    expect(md).toContain("- **Languages:** Go, Rust")
+    expect(md).toContain("- **Frontend:** React")
+    expect(md).toMatch(/- \*\*.+:\*\* Docker/)
+  })
+})
+
+describe("profiles from older versions", () => {
+  it("get the fields added since", () => {
+    const old = { name: "A", skills: [] } as unknown
+    expect(withDefaults(old)).toMatchObject({ name: "A", phone: "", awards: [], interests: [] })
   })
 })
 

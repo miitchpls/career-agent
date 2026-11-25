@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import Markdown from "react-markdown"
 import {
@@ -15,7 +15,7 @@ import {
   XIcon,
 } from "lucide-react"
 
-import { TailoredCv, type CvPhase } from "@/components/cv/tailored-cv"
+import { TailoredCv } from "@/components/cv/tailored-cv"
 
 import { ApplyControl, ApplyNudge } from "@/components/jobs/apply-control"
 import { PastePosting } from "@/components/jobs/paste-posting"
@@ -35,8 +35,9 @@ import { formatScore, shownScore, useCanScore, useScore, useStartScore } from "@
 import { describe } from "@/lib/search-match"
 import { cn } from "@/lib/utils"
 import { parseStoredJobTypes } from "@/lib/job-types"
-import { useGenerated } from "@/lib/cv-mock"
-import { hasProfile, useProfile } from "@/lib/profile"
+import { resolveCv, useCvPrefs } from "@/lib/cv-prefs"
+import { useProfile } from "@/lib/profile"
+import { shownCv, useCanTailor, useStartCv, useTailoredCv } from "@/lib/tailored-cv"
 
 type Tab = "job" | "fit" | "cv"
 
@@ -155,8 +156,13 @@ function JobDetails({
   onPaste: (url: string, posting: PastedPosting) => Promise<void>
 }) {
   const t = useT().jobs
-  const state = useProfile()
-  const already = useGenerated().has(job.url)
+  const { profile } = useProfile()
+  const prefs = useCvPrefs()
+  const cvState = useTailoredCv(job.url).data
+  const cv = shownCv(cvState)
+  const writing = cvState?.cv?.status === "running"
+  const startCv = useStartCv(job.url)
+  const canTailor = useCanTailor(job)
   const [tab, setTab] = useState<Tab>("job")
   const scoreState = useScore(job.url).data
   const fit = shownScore(scoreState)
@@ -170,12 +176,12 @@ function JobDetails({
     // What's missing (profile, engine, text) the tab says.
     if (canScore && !scoring && !startScore.isPending) startScore.mutate()
   }
-  const [phase, setPhase] = useState<CvPhase>(already ? "done" : "idle")
   const generate = () => {
     setTab("cv")
-    if (hasProfile(state)) setPhase("generating")
+    // What's missing (profile, engine, text) the tab says.
+    if (canTailor && !writing && !startCv.isPending)
+      startCv.mutate(resolveCv(prefs, job, !!profile.photo).language)
   }
-  const done = useCallback(() => setPhase("done"), [])
   // Gone to the board's page: on coming back, ask whether the user applied. Only once the page
   // was really left (another tab or window) and is back: a posting opened in a background tab
   // leaves nothing to come back from, and a later unrelated return shouldn't ask.
@@ -247,9 +253,9 @@ function JobDetails({
               {t.scoreFit}
             </Button>
           ) : (
-            phase === "idle" && (
+            !cv && (
               <Button variant="outline" size="sm" onClick={generate}>
-                <FilePenLineIcon />
+                {writing || startCv.isPending ? <LoaderCircleIcon className="animate-spin" /> : <FilePenLineIcon />}
                 {t.generateCv}
               </Button>
             )
@@ -275,7 +281,11 @@ function JobDetails({
           <TabsTrigger value="cv" className="flex-none px-0">
             <FileUserIcon />
             {t.tabCv}
-            {already && <span className="size-1.5 rounded-full bg-emerald-500" />}
+            {writing ? (
+              <LoaderCircleIcon className="size-3 animate-spin text-muted-foreground" />
+            ) : (
+              cv && <span className="size-1.5 rounded-full bg-emerald-500" />
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -287,13 +297,7 @@ function JobDetails({
             <ScorePanel job={job} onOpenProfile={onOpenProfile} />
           </TabsContent>
           <TabsContent value="cv">
-            <TailoredCv
-              job={job}
-              phase={phase}
-              onGenerate={generate}
-              onDone={done}
-              onOpenProfile={onOpenProfile}
-            />
+            <TailoredCv job={job} onOpenProfile={onOpenProfile} />
           </TabsContent>
         </ScrollArea>
       </Tabs>
