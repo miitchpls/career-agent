@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useLocation, useNavigate } from "react-router"
 import { AlertCircleIcon, MoreHorizontalIcon, Settings2Icon } from "lucide-react"
-import { parseAsInteger, parseAsStringLiteral, useQueryState } from "nuqs"
 import { AnimatePresence, motion, type Transition } from "motion/react"
 
 import { Composer } from "@/components/composer/composer"
@@ -23,9 +23,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, type Job, type PastedPosting, type SavedSearch } from "@/lib/api"
+import type { Application } from "@/lib/applications"
 import type { LinkSite } from "@/lib/job-link"
+import { applicationItem, legacyPath, parseRoute, postingItem, postingUrl, routePath, type AppTab, type JobTab, type Route } from "@/lib/routes"
 import { CLEARED, activeCount, fromQuery, toQuery, useFilters, type FilterState } from "@/lib/filters"
 import { useJobs, useRunStatus } from "@/lib/queries"
 import { useT } from "@/lib/i18n"
@@ -135,37 +137,98 @@ function Results({
   )
 }
 
+/** In-app navigation's history state: the entry was pushed from the app, so "back" leaves it. */
+interface NavState {
+  back?: boolean
+}
+
 export default function App() {
   // Every component below re-renders on a language change, so plain `msgs()` calls stay current.
-  const t = useT().app
+  const all = useT()
+  const t = all.app
   const [filters, setFilters] = useFilters()
   const query = useMemo(() => toQuery(filters), [filters])
   const { data: status } = useRunStatus()
-  const [open, setOpen] = useState<Job | null>(null)
-  const [pending, setPending] = useState<PendingJob | null>(null)
   const client = useQueryClient()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const route: Route = parseRoute(location.pathname) ?? { page: "jobs", item: null, tab: "posting" }
+  const navState = (location.state ?? {}) as NavState
+
+  // Addresses the app doesn't have go home; the old ?view= ones to their page.
+  useEffect(() => {
+    const legacy = location.pathname === "/" ? legacyPath(location.search) : null
+    if (legacy) navigate(legacy, { replace: true })
+    else if (!parseRoute(location.pathname)) navigate({ pathname: "/", search: location.search }, { replace: true })
+  }, [location.pathname, location.search, navigate])
+
+  // The search's filters live in the postings page's query string; coming back from another
+  // page brings them back. Read from the window: nuqs writes them with history.replaceState,
+  // which the router's own location doesn't see.
+  const jobsSearch = useRef(location.search)
+
+  /**
+   * Show `next`. Opening a posting or an application from the app pushes an entry marked
+   * `back`, so closing it steps back instead of adding one; switching to another while one is
+   * open replaces it (back then leaves the list, not the previous sheet). Tabs replace too.
+   */
+  const go = (next: Route, { replace = false, keepBack = false } = {}) => {
+    if (route.page === "jobs") jobsSearch.current = window.location.search
+    const search = next.page === "jobs" ? jobsSearch.current : ""
+    const opening = next.page !== "profile" && !!next.item
+    const state: NavState = keepBack ? navState : { back: opening }
+    navigate({ pathname: routePath(next), search }, { replace, state })
+  }
+  /** Back to the page under the sheet: a step back when the sheet was opened from it. */
+  const closeItem = () => {
+    if (route.page === "profile") return
+    if (navState.back) navigate(-1)
+    else go({ ...route, item: null } as Route, { replace: true })
+  }
+
+  // --- Postings ---------------------------------------------------------------------------
+
+  const jobItem = route.page === "jobs" ? route.item : null
+  const jobTab: JobTab = route.page === "jobs" ? route.tab : "posting"
+  // The open posting, from the database by its id (no request to the board). Opening one from
+  // the list or a link seeds it, so the sheet fills at once.
+  // The same query as an application's sheet (by link, never asking the board): saving the
+  // posting from either refreshes both.
+  const jobKey = (item: string | null) => ["job-saved", item ? postingUrl(item)?.url : null, filters.cur]
+  const jobQuery = useQuery({
+    queryKey: jobKey(jobItem),
+    queryFn: () => api.savedJob(postingUrl(jobItem!)!.url, filters.cur),
+    select: (d) => d.job,
+    enabled: !!jobItem,
+    staleTime: 30_000,
+  })
+  const [pending, setPending] = useState<PendingJob | null>(null)
   // Only the latest link may fill the sheet: closing it, or pasting another, drops a late answer.
   const linkRun = useRef(0)
+  const openJobItem = (item: string, tab: JobTab = "posting") =>
+    go({ page: "jobs", item, tab }, { replace: !!jobItem, keepBack: !!jobItem })
+  const showJob = (job: Job) => {
+    const item = postingItem(job.url)
+    if (!item) return
+    client.setQueryData(jobKey(item), { job })
+    linkRun.current++
+    setPending(null)
+    openJobItem(item, jobItem === item ? jobTab : "posting")
+  }
   const closeSheet = () => {
     linkRun.current++
-    setOpen(null)
     setPending(null)
-  }
-  const openJob = (job: Job) => {
-    linkRun.current++
-    setPending(null)
-    setOpen(job)
+    if (jobItem) closeItem()
   }
   const openLink = async (url: string, site: LinkSite) => {
     const run = ++linkRun.current
-    setOpen(null)
+    // Shown over the posting open now, which the new one then replaces in the history.
     setPending({ url, site, error: null })
     try {
       const { job, known } = await api.openLink(url, filters.cur)
       if (run !== linkRun.current) return
       if (!known) void client.invalidateQueries({ queryKey: ["jobs"] })
-      setPending(null)
-      setOpen(job)
+      showJob(job)
     } catch (e) {
       if (run === linkRun.current) setPending({ url, site, error: (e as Error).message })
     }
@@ -180,32 +243,39 @@ export default function App() {
       // The pasted text may fill the work mode or the place the checks read.
       void client.invalidateQueries({ queryKey: ["job-match", url] })
     }
-    setPending(null)
-    setOpen(job)
+    showJob(job)
   }
+  // An address with a posting id: loading, or not among the saved ones (then it can be read
+  // from the board, or pasted, as from a link).
+  const board = jobItem ? postingUrl(jobItem) : null
+  const sheetPending: PendingJob | null =
+    pending ??
+    (board && jobQuery.isPending
+      ? { url: board.url, site: board.site, error: null }
+      : board && !jobQuery.data
+        ? { url: board.url, site: board.site, error: jobQuery.isError ? jobQuery.error.message : all.link.notSaved }
+        : null)
+
+  // --- Pages ------------------------------------------------------------------------------
+
+  const openApplication = (id: number) => {
+    linkRun.current++
+    setPending(null)
+    const app = client.getQueryData<Application[]>(["applications"])?.find((a) => a.id === id)
+    go({ page: "applications", item: app ? applicationItem(app) : `app-${id}`, tab: "progress" })
+    window.scrollTo({ top: 0 })
+  }
+  const openPage = (page: "jobs" | "applications" | "profile") => {
+    linkRun.current++
+    setPending(null)
+    go(page === "profile" ? { page } : page === "jobs" ? { page, item: null, tab: "posting" } : { page, item: null, tab: "progress" })
+    window.scrollTo({ top: 0 })
+  }
+  const openProfile = () => openPage("profile")
+  const view = route.page === "jobs" ? null : route.page
+
   // Results show only after the user runs the query; a shared link with filters opens straight on them.
   const [submitted, setSubmitted] = useState(() => hasQuery(filters))
-  // Profile and applications are separate pages in the URL (?view=…), so back and forward work.
-  const [view, setView] = useQueryState(
-    "view",
-    parseAsStringLiteral(["profilo", "candidature"] as const).withOptions({ history: "push" }),
-  )
-  // The application whose sheet is open on the Applications page (?app=…).
-  const [, setAppParam] = useQueryState("app", parseAsInteger.withOptions({ history: "push" }))
-  const openApplication = (id: number) => {
-    closeSheet()
-    void setView("candidature")
-    // One step back from the application returns to the posting: the view's push is the entry.
-    void setAppParam(id, { history: "replace" })
-    window.scrollTo({ top: 0 })
-  }
-  const openSection = (v: "profilo" | "candidature") => {
-    closeSheet()
-    setView(v)
-    void setAppParam(null, { history: "replace" })
-    window.scrollTo({ top: 0 })
-  }
-  const openProfile = () => openSection("profilo")
 
   // Emptying the query sends the bar back to the middle of the page
   // (state adjusted during render, React's pattern for "reset state when a value changes").
@@ -232,8 +302,7 @@ export default function App() {
   const runSaved = useStartSearch(() => setSubmitted(true))
 
   const loadSaved = (s: SavedSearch) => {
-    setView(null)
-    void setAppParam(null, { history: "replace" })
+    if (route.page !== "jobs") openPage("jobs")
     setFilters({ ...fromQuery(s.query), sort: filters.sort, dir: filters.dir })
     setSubmitted(true)
   }
@@ -242,8 +311,9 @@ export default function App() {
     runSaved.mutate({ saved: s })
   }
   const goHome = () => {
-    setView(null)
-    void setAppParam(null, { history: "replace" })
+    linkRun.current++
+    setPending(null)
+    navigate("/", { state: {} })
     setFilters({ ...CLEARED, q: null })
     setSubmitted(false)
   }
@@ -262,11 +332,7 @@ export default function App() {
             <span className="text-sm font-medium">career-agent</span>
           </button>
           <div className="ml-auto flex items-center gap-1">
-            <MainNav view={view ?? "offerte"} onChange={(v) => {
-                if (v !== "offerte") return openSection(v)
-                void setView(null)
-                void setAppParam(null, { history: "replace" })
-              }} />
+            <MainNav page={route.page} onChange={openPage} />
             <span className="mx-2 h-5 w-px bg-border" aria-hidden />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -291,11 +357,25 @@ export default function App() {
         </div>
       </header>
 
-      {view === "candidature" ? (
+      {route.page === "applications" ? (
         <main className="flex-1">
-          <ApplicationsPage onOpenProfile={openProfile} />
+          <ApplicationsPage
+            item={route.item}
+            tab={route.tab}
+            onOpen={(app, replace = false) => {
+              if (app === null) return closeItem()
+              const item = typeof app === "number" ? `app-${app}` : applicationItem(app)
+              // Replacing keeps the tab: it only rewrites the address of the one open.
+              go(
+                { page: "applications", item, tab: replace ? route.tab : "progress" },
+                { replace: replace || !!route.item, keepBack: replace || !!route.item },
+              )
+            }}
+            onTab={(tab: AppTab) => go({ ...route, tab }, { replace: true, keepBack: true })}
+            onOpenProfile={openProfile}
+          />
         </main>
-      ) : view === "profilo" ? (
+      ) : route.page === "profile" ? (
         <main className="flex-1">
           <ProfilePage />
         </main>
@@ -363,7 +443,7 @@ export default function App() {
             >
               <Results
                 filters={filters}
-                onOpen={openJob}
+                onOpen={showJob}
                 onClearFilters={goHome}
                 onLoadSaved={loadSaved}
                 onRunSaved={runSavedSearch}
@@ -375,9 +455,11 @@ export default function App() {
       )}
 
       <JobSheet
-        job={open}
-        pending={pending}
+        job={route.page === "jobs" && !pending ? (jobQuery.data ?? null) : null}
+        pending={route.page === "jobs" ? sheetPending : null}
         query={submitted && !view ? query : null}
+        tab={jobTab}
+        onTab={(tab) => jobItem && go({ page: "jobs", item: jobItem, tab }, { replace: true, keepBack: true })}
         onClose={closeSheet}
         onPaste={pasteJob}
         onOpenProfile={openProfile}

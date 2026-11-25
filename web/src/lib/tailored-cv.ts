@@ -5,7 +5,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { api, type CvLanguage, type CvPdfRequest, type CvState, type Job, type TailoredCv } from "@/lib/api"
+import { api, type CvLanguage, type CvOverrides, type CvPdfRequest, type CvPrefs, type CvState, type Job, type TailoredCv } from "@/lib/api"
+import { resolveCv, useCvPrefs, type ResolvedCv } from "@/lib/cv-prefs"
 import { msgs } from "@/lib/i18n"
 import { hasProfile, useProfile } from "@/lib/profile"
 import { activeEngine, useAiEngines } from "@/lib/use-ai"
@@ -75,6 +76,77 @@ export function useDownloadCv() {
     },
     onError: (e) => toast.error(msgs().cv.pdfFailed, { description: e.message }),
   })
+}
+
+// --- One posting's own settings -------------------------------------------------------------
+
+export const NO_OVERRIDES: CvOverrides = {
+  language: null,
+  format: null,
+  style: null,
+  photo: null,
+  photoStyle: null,
+  consent: null,
+  locked: null,
+  notes: "",
+}
+
+/** The settings that differ from the defaults for this posting. */
+export const OVERRIDABLE = ["language", "format", "style", "photo", "photoStyle", "consent", "locked"] as const
+
+/** The defaults with the posting's own settings applied (the notes stay apart). */
+export function applyOverrides(prefs: CvPrefs, o: CvOverrides): CvPrefs {
+  const out = { ...prefs } as Record<string, unknown>
+  for (const k of OVERRIDABLE) if (o[k] !== null) out[k] = o[k]
+  return out as unknown as CvPrefs
+}
+
+/** How many settings the posting changes. */
+export const overrideCount = (o: CvOverrides) => OVERRIDABLE.filter((k) => o[k] !== null).length + (o.notes ? 1 : 0)
+
+const settingsKey = (url: string) => ["cv-settings", url]
+
+export function useCvSettings(url: string): CvOverrides {
+  return useQuery({ queryKey: settingsKey(url), queryFn: () => api.cv.settings(url), staleTime: Infinity }).data ?? NO_OVERRIDES
+}
+
+/**
+ * Shown at once, saved one after the other (a scope runs them in order, so the last change
+ * is the one stored). When the last one settles, what the server holds is read back, and the
+ * CV's state too: a setting that steers the writing makes the finished CV stale.
+ */
+export function useSaveCvSettings(url: string) {
+  const client = useQueryClient()
+  const mutationKey = ["cv-settings-save", url]
+  return useMutation({
+    mutationKey,
+    scope: { id: `cv-settings:${url}` },
+    mutationFn: (next: CvOverrides) => api.cv.saveSettings(url, next),
+    onMutate: async (next) => {
+      await client.cancelQueries({ queryKey: settingsKey(url) })
+      client.setQueryData(settingsKey(url), next)
+    },
+    onError: (e) => toast.error(msgs().profile.saveFailed, { description: e.message }),
+    onSettled: () => {
+      if (client.isMutating({ mutationKey }) > 1) return // a later change is on its way
+      void client.invalidateQueries({ queryKey: settingsKey(url) })
+      void client.invalidateQueries({ queryKey: key(url) })
+    },
+  })
+}
+
+/** What a CV for this posting looks like: the defaults, the posting's own settings, "auto"
+ * resolved for it. */
+export function useCvLook(job: Pick<Job, "url" | "location" | "description">): {
+  look: ResolvedCv
+  prefs: CvPrefs
+  overrides: CvOverrides
+} {
+  const defaults = useCvPrefs()
+  const overrides = useCvSettings(job.url)
+  const { profile } = useProfile()
+  const prefs = applyOverrides(defaults, overrides)
+  return { look: resolveCv(prefs, job, !!profile.photo), prefs, overrides }
 }
 
 export type { CvPdfRequest }

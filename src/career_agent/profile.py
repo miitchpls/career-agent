@@ -178,25 +178,26 @@ LockedSection = Literal["headline", "summary", "experience", "projects", "skills
 LOCKED_SECTIONS: tuple[LockedSection, ...] = LockedSection.__args__
 
 
+LanguagePref = Literal["job", "it", "en", "de", "ko"]  # job: the posting's language
+FormatPref = Literal["auto", "a4", "letter"]  # auto: Letter in the US and Canada
+# career-ops' CV templates (cv_render.TEMPLATES)
+StylePref = Literal[
+    "standard", "modern", "compact", "executive", "leadership", "jake", "ats"
+]
+AutoPref = Literal["auto", "always", "never"]
+PhotoStylePref = Literal["rounded", "circle", "square"]
+
+
 class CvPrefs(Model):
     """How tailored CVs are written. Settings, not profile data: no revision per change."""
 
-    language: Literal["job", "it", "en", "de", "ko"] = (
-        "job"  # job: the posting's language
-    )
-    format: Literal["auto", "a4", "letter"] = (
-        "auto"  # auto: Letter in the US and Canada
-    )
-    # career-ops' CV templates (cv_render.TEMPLATES)
-    style: Literal[
-        "standard", "modern", "compact", "executive", "leadership", "jake", "ats"
-    ] = "standard"
-    photo: Literal["auto", "always", "never"] = (
-        "auto"  # auto: where CVs usually have one
-    )
-    photo_style: Literal["rounded", "circle", "square"] = "rounded"
+    language: LanguagePref = "job"
+    format: FormatPref = "auto"
+    style: StylePref = "standard"
+    photo: AutoPref = "auto"  # auto: where CVs usually have one
+    photo_style: PhotoStylePref = "rounded"
     # The data-processing consent line Italian CVs end with (career-ops' `consent`).
-    consent: Literal["auto", "always", "never"] = "auto"  # auto: postings in Italy
+    consent: AutoPref = "auto"  # auto: postings in Italy
     # Sections a tailored CV copies from the profile as they are (career-ops' cv.locked_sections).
     locked: list[LockedSection] = Field(default=[], max_length=len(LOCKED_SECTIONS))
     # What every tailored CV should know: the story to tell, house rules ("never 'Senior' in the
@@ -219,6 +220,73 @@ def cv_prefs() -> CvPrefs:
         return CvPrefs.model_validate(data)
     except ValueError:  # unreadable, or written by an older version: the defaults
         return CvPrefs()
+
+
+class CvOverrides(Model):
+    """One posting's CV settings. Each one set replaces the default for that posting only;
+    `notes` adds to the default guidance."""
+
+    language: LanguagePref | None = None
+    format: FormatPref | None = None
+    style: StylePref | None = None
+    photo: AutoPref | None = None
+    photo_style: PhotoStylePref | None = None
+    consent: AutoPref | None = None
+    locked: list[LockedSection] | None = Field(None, max_length=len(LOCKED_SECTIONS))
+    notes: str = Field("", max_length=1500)
+
+    def empty(self) -> bool:
+        return not self.notes and all(
+            getattr(self, k) is None for k in type(self).model_fields if k != "notes"
+        )
+
+    def apply(self, prefs: CvPrefs) -> CvPrefs:
+        """The settings a CV for this posting uses."""
+        changes = {
+            k: getattr(self, k)
+            for k in type(self).model_fields
+            if k != "notes" and getattr(self, k) is not None
+        }
+        if self.notes:
+            changes["guidance"] = "\n\n".join(
+                x
+                for x in (prefs.guidance, f"For this posting only:\n{self.notes}")
+                if x
+            )
+        return prefs.model_copy(update=changes)
+
+
+def _overrides_key(url: str) -> str:
+    return f"cv_overrides:{url}"
+
+
+def cv_overrides(url: str) -> CvOverrides:
+    raw = db.get_setting(_overrides_key(url))
+    try:
+        return CvOverrides.model_validate_json(raw) if raw else CvOverrides()
+    except ValueError:  # unreadable, or written by an older version: none
+        return CvOverrides()
+
+
+def save_cv_overrides(url: str, o: CvOverrides) -> CvOverrides:
+    clean = o.model_copy(
+        update={
+            "locked": None
+            if o.locked is None
+            else [s for s in LOCKED_SECTIONS if s in o.locked],
+            "notes": o.notes.strip(),
+        }
+    )
+    if clean.empty():
+        db.delete_setting(_overrides_key(url))
+    else:
+        db.set_setting(_overrides_key(url), clean.model_dump_json())
+    return clean
+
+
+def effective_cv_prefs(url: str) -> CvPrefs:
+    """The defaults with the posting's own settings applied."""
+    return cv_overrides(url).apply(cv_prefs())
 
 
 def save_cv_prefs(prefs: CvPrefs) -> CvPrefs:

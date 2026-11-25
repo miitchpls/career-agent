@@ -33,7 +33,8 @@ src/
     compose.ts        Parses typed text into filter suggestions (it/en/de/ko words)
     queries.ts        React Query hooks: jobs, run status, saved searches, places
     profile.ts        Profile types, helpers and store (see below)
-    tailored-cv.ts    Tailored CV per posting: polling while written, start, cancel, PDF download
+    tailored-cv.ts    Tailored CV per posting: polling, start, cancel, PDF, the posting's own settings
+    routes.ts         Page and item addresses (/jobs/<id>/<tab>, /applications/…, /profile)
     cv-prefs.ts       CV preferences and what "auto" means for one posting
     i18n.ts           Locale store and `useT()`
   locales/            it.ts (reference), en.ts, de.ts, ko.ts
@@ -41,7 +42,7 @@ src/
 
 ## Conventions
 
-**State.** Filters live in the URL, so a link reproduces a search. Server data goes through React Query. The
+**State.** Pages and open sheets are paths (React Router, `lib/routes.ts`); filters live in the query string (nuqs), so a link reproduces a search. Server data goes through React Query. The
 profile has its own store (`lib/profile.ts`, read with `useProfile()`), because the header, the profile page and
 the posting sheet share it and its saves need ordering:
 

@@ -2,7 +2,8 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ThemeProvider } from "next-themes"
-import { NuqsAdapter } from "nuqs/adapters/react"
+import { NuqsAdapter } from "nuqs/adapters/react-router/v7"
+import { BrowserRouter } from "react-router"
 
 import App from "@/App"
 import { Toaster } from "@/components/ui/sonner"
@@ -20,6 +21,7 @@ void profileStore.load()
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <BrowserRouter>
       <NuqsAdapter>
         <QueryClientProvider client={queryClient}>
           <TooltipProvider delayDuration={300}>
@@ -28,6 +30,7 @@ createRoot(document.getElementById("root")!).render(
           </TooltipProvider>
         </QueryClientProvider>
       </NuqsAdapter>
+      </BrowserRouter>
     </ThemeProvider>
   </StrictMode>,
 )

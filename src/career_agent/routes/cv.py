@@ -6,14 +6,19 @@ import unicodedata
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from .. import ai, cv_render, db, pdf, tailor
 from ..i18n import t
 from ..profile import (
+    CvOverrides,
     CvPrefs,
+    PhotoStylePref,
     Profile,
+    cv_overrides,
     cv_prefs,
+    effective_cv_prefs,
+    save_cv_overrides,
     save_cv_prefs,
 )
 from ..workers import tailorer
@@ -45,6 +50,22 @@ def cv_start(body: CvRequest):
     except RuntimeError as e:
         raise HTTPException(409, str(e)) from e
     return tailor.state(body.url)
+
+
+class CvSettingsBody(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+    settings: CvOverrides
+
+
+@router.get("/api/jobs/cv/settings")
+def cv_settings_get(url: str):
+    """A posting's own CV settings: each one set replaces the default for it only."""
+    return cv_overrides(url).model_dump(by_alias=True)
+
+
+@router.put("/api/jobs/cv/settings")
+def cv_settings_put(body: CvSettingsBody):
+    return save_cv_overrides(body.url, body.settings).model_dump(by_alias=True)
 
 
 @router.get("/api/jobs/cv/count")
@@ -106,7 +127,7 @@ def cv_pdf(body: CvPdfRequest):
             body.photo,
             competencies=result["competencies"],
             consent=body.consent,
-            photo_style=cv_prefs().photo_style,
+            photo_style=effective_cv_prefs(body.url).photo_style,
         )
     except ValueError as e:
         raise HTTPException(500, t("cv_render_failed")) from e
@@ -148,6 +169,10 @@ class PreviewRequest(BaseModel):
     # A tailored CV's keyword tags, and whether to end with the data-processing consent.
     competencies: list[str] = Field(default_factory=list, max_length=12)
     consent: bool = False
+    # A posting's own photo shape; by default the saved preference. The UI sends camelCase.
+    photo_style: PhotoStylePref | None = Field(
+        None, validation_alias=AliasChoices("photoStyle", "photo_style")
+    )
 
 
 @router.post("/api/cv/preview")
@@ -155,7 +180,7 @@ def cv_preview(req: PreviewRequest):
     """CV templates filled with a profile, as HTML documents: one request for a whole gallery."""
     profile = req.profile or cv_render.sample_profile()
     marked = frozenset(req.marked)
-    style = cv_prefs().photo_style
+    style = req.photo_style or cv_prefs().photo_style
     try:
         pages = {
             tid: cv_render.render(

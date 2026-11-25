@@ -217,6 +217,8 @@ export interface CvPreviewRequest {
   competencies?: string[]
   /** End with the data-processing consent line. */
   consent?: boolean
+  /** A posting's own photo shape; by default the saved preference. */
+  photoStyle?: CvPrefs["photoStyle"]
 }
 
 /** Sections a tailored CV copies from the profile as they are. */
@@ -283,6 +285,19 @@ export interface TailoredCv {
 export interface CvState {
   cv: TailoredCv | null
   earlier: TailoredCv | null
+}
+
+/** One posting's own CV settings: each one set (not null) replaces the default for it only. */
+export interface CvOverrides {
+  language: CvPrefs["language"] | null
+  format: CvPrefs["format"] | null
+  style: CvPrefs["style"] | null
+  photo: CvPrefs["photo"] | null
+  photoStyle: CvPrefs["photoStyle"] | null
+  consent: CvPrefs["consent"] | null
+  locked: LockedSection[] | null
+  /** Added to the default guidance, for this posting only. */
+  notes: string
 }
 
 export interface CvPdfRequest {
@@ -502,6 +517,8 @@ export const api = {
     start: (url: string, language: CvLanguage) => post<CvState>("/api/jobs/cv", { url, language }),
     cancel: (url: string) => del<CvState>(`/api/jobs/cv?url=${encodeURIComponent(url)}`),
     count: () => request<{ postings: number }>("/api/jobs/cv/count"),
+    settings: (url: string) => request<CvOverrides>(`/api/jobs/cv/settings?url=${encodeURIComponent(url)}`),
+    saveSettings: (url: string, settings: CvOverrides) => put<CvOverrides>("/api/jobs/cv/settings", { url, settings }),
     /** The PDF file and the name the server gives it. */
     pdf: async (body: CvPdfRequest): Promise<{ blob: Blob; filename: string }> => {
       const res = await fetch("/api/jobs/cv/pdf", {

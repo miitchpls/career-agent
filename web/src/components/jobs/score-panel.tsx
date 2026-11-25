@@ -2,6 +2,7 @@ import { useState } from "react"
 import { AlertTriangleIcon, CheckIcon, GaugeIcon, LoaderCircleIcon, MinusIcon, RefreshCwIcon, XIcon } from "lucide-react"
 
 import { ScorePrefsDialog } from "@/components/profile/score-prefs"
+import { LinkButton } from "@/components/link-button"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -135,18 +136,6 @@ export function ScorePanel({ job, onOpenProfile }: { job: Job; onOpenProfile: ()
       )}
       <ScorePrefsDialog open={editPrefs} onOpenChange={setEditPrefs} />
     </div>
-  )
-}
-
-function LinkButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-foreground underline decoration-foreground/25 underline-offset-4 hover:decoration-foreground/60"
-    >
-      {children}
-    </button>
   )
 }
 

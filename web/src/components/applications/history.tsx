@@ -2,6 +2,7 @@ import { useMemo } from "react"
 import { WorkflowIcon } from "lucide-react"
 
 import { ApplicationSheet, Source } from "@/components/applications/application-sheet"
+import type { AppTab } from "@/lib/routes"
 import { Chip, SearchBox, SortMenu } from "@/components/applications/filter-bar"
 import { StatusMenu } from "@/components/applications/status"
 import { Button } from "@/components/ui/button"
@@ -31,6 +32,8 @@ export function History({
   onClearPick,
   openId,
   onOpenId,
+  tab,
+  onTab,
   filters,
   onFilters,
   onOpenProfile,
@@ -49,6 +52,9 @@ export function History({
   /** The application whose sheet is open. */
   openId: number | null
   onOpenId: (id: number | null) => void
+  /** The open sheet's tab, from the address. */
+  tab: AppTab
+  onTab: (tab: AppTab) => void
 }) {
   const t = useT().applications
   // Chart pick, then the bar's filters and order; the status groups count what's left.
@@ -162,7 +168,14 @@ export function History({
       <Sheet open={!!open} onOpenChange={(o) => !o && onOpenId(null)}>
         {/* As wide as a posting's sheet: the posting and the CV are read here too. */}
         <SheetContent className="flex flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl data-[side=right]:lg:max-w-3xl">
-          {open && <ApplicationSheet key={open.id} app={open} onOpenProfile={onOpenProfile} onRemoved={() => onOpenId(null)} />}
+          {open && <ApplicationSheet
+              key={open.id}
+              app={open}
+              tab={tab}
+              onTab={onTab}
+              onOpenProfile={onOpenProfile}
+              onRemoved={() => onOpenId(null)}
+            />}
         </SheetContent>
       </Sheet>
     </div>

@@ -352,3 +352,16 @@ def test_ats_gets_the_competencies_as_a_skills_line():
     body = page.split("</head>")[1]
     assert "competency-tag" not in body
     assert "Core Competencies" in body and "Event-driven, Go" in body
+
+
+def test_preview_takes_a_postings_own_photo_shape():
+    p = cv_render.sample_profile().model_copy(
+        update={"photo": "data:image/png;base64,AAAA"}
+    )
+    body = {"templates": ["standard"], "photo": True, "profile": p.dump()}
+    page = client.post("/api/cv/preview", json={**body, "photoStyle": "circle"}).json()[
+        "pages"
+    ]["standard"]
+    assert "cv-photo--circle" in page
+    page = client.post("/api/cv/preview", json=body).json()["pages"]["standard"]
+    assert "cv-photo--rounded" in page  # the saved preference
