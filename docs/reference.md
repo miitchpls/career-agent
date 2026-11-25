@@ -74,6 +74,11 @@ Once it's opened, it stays where it was even if its page says something against 
 is required, a lower salary, another work mode): the row is marked **Outside filters**, and the posting's sheet
 opens on a warning that says which filters it misses.
 
+A posting you're not interested in can be hidden, from its row (the button at the end, shown on hover) or from its
+sheet. It leaves every search's results, whichever search finds it again, with a few seconds to undo. The count of
+hidden ones sits next to the results' count: click it to see them, dimmed, each with a button to restore it. Hiding
+asks nothing of the board.
+
 | Filter | URL parameter | Matches |
 |---|---|---|
 | Where | `where=Zurigo:ch:2657896:Zurigo~onsite.hybrid\|*~remote` | Scopes separated by `\|` are OR-ed. Inside a scope, places are OR-ed, modes are OR-ed, and places AND modes must both match. `*` is anywhere. |
@@ -336,7 +341,7 @@ Everything lives in `data/` (git-ignored):
 
 | Path | Contents |
 |---|---|
-| `data/jobs.db` | SQLite database: the postings you opened, saved searches, board budgets and pauses, settings, profile |
+| `data/jobs.db` | SQLite database: the postings you opened or hid, saved searches, board budgets and pauses, settings, profile |
 | `data/documents/` | Uploaded CVs, named by their SHA-256 |
 | `data/profile-files/` | Photos and attachments |
 
@@ -415,6 +420,7 @@ tests/
 | `GET /api/places?q=` | City suggestions |
 | `POST /api/jobs/open` | Open a posting (from the list or a link) and store it: from the database or the cached Indeed list when possible, else read from its board |
 | `POST /api/jobs/paste` | A posting the board wouldn't show, saved under its link from the text the user copied |
+| `GET/POST/DELETE /api/dismissed` | Postings hidden from the results (`url`; the list holds only links) · hide one · show it again (`?url=`) |
 | `GET/PUT /api/ai` | AI engines found, saved choice |
 | `GET/PUT /api/cv/preferences` | CV language, format, style, photo, footer, fixed sections, guidance |
 | `GET /api/jobs/cv?url=` · `POST /api/jobs/cv` · `DELETE /api/jobs/cv?url=` | A posting's tailored CV (and the last finished one) · start (`language`) · cancel |

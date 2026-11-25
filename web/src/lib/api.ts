@@ -508,6 +508,13 @@ export const api = {
   /** A saved posting by its link, or null: never asks the board. */
   savedJob: (url: string, currency: string) =>
     request<{ job: Job | null }>(`/api/jobs/saved?url=${encodeURIComponent(url)}&currency=${currency}`),
+  /** Postings hidden from the results: their links only. Never asks a board. */
+  dismissed: {
+    list: () => request<{ urls: string[] }>("/api/dismissed"),
+    add: (job: Pick<Job, "url" | "site" | "title" | "company">) =>
+      post<{ ok: true }>("/api/dismissed", { url: job.url, site: job.site, title: job.title, company: job.company }),
+    remove: (url: string) => del<{ ok: true; restored: boolean }>(`/api/dismissed?url=${encodeURIComponent(url)}`),
+  },
   /** A posting the board wouldn't show, from the text the user copied: no request is made. */
   pasteJob: (url: string, posting: PastedPosting, currency: string) =>
     post<{ job: Job; known: boolean }>("/api/jobs/paste", { url, ...posting, currency }),

@@ -230,6 +230,25 @@ export const tr: Messages = {
     position: "Pozisyon",
     location: "Yer",
     site: "İş sitesi",
+    hide: "Gizle",
+    hideHint: "İlanı gizle",
+    hideSheetHint: "İlgilenmiyor musunuz? Tüm aramaların sonuçlarından kaybolur; dilediğiniz zaman geri getirebilirsiniz.",
+    restore: "Geri getir",
+    restoreHint: "Arama sonuçlarına geri koyar",
+    hidden: "İlan gizlendi",
+    undo: "Geri al",
+    hideFailed: "Gizlenemedi",
+    restoreFailed: "Geri getirilemedi",
+    hiddenMark: "Gizli",
+    hiddenCount: (n) => `${n} gizli`,
+    showHiddenHint: "Gizli ilanları da göster",
+    hideHiddenHint: "Gizli ilanları yeniden gizle",
+    allHidden: "Tüm ilanları gizlediniz",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "Filtrelere uyan tek ilan gizli. Daha fazla sayfa yükleyin ya da ona yeniden göz atın."
+        : `Filtrelere uyan ${n} ilanın tümü gizli. Daha fazla sayfa yükleyin ya da onlara yeniden göz atın.`,
+    showHidden: "Gizlileri göster",
   },
 
   saved: {

@@ -232,6 +232,25 @@ export const ko: Messages = {
     position: "직무",
     location: "위치",
     site: "채용 사이트",
+    hide: "숨기기",
+    hideHint: "채용공고 숨기기",
+    hideSheetHint: "관심 없나요? 모든 검색 결과에서 사라지며, 언제든 복원할 수 있습니다.",
+    restore: "복원",
+    restoreHint: "검색 결과에 다시 표시합니다",
+    hidden: "채용공고를 숨겼습니다",
+    undo: "실행 취소",
+    hideFailed: "숨기지 못했습니다",
+    restoreFailed: "복원하지 못했습니다",
+    hiddenMark: "숨김",
+    hiddenCount: (n) => `${n}건 숨김`,
+    showHiddenHint: "숨긴 채용공고도 표시",
+    hideHiddenHint: "숨긴 채용공고를 다시 숨기기",
+    allHidden: "모든 채용공고를 숨겼습니다",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "필터와 일치하는 유일한 채용공고가 숨겨져 있습니다. 다음 페이지를 불러오거나 다시 확인하세요."
+        : `필터와 일치하는 채용공고 ${n}건이 모두 숨겨져 있습니다. 다음 페이지를 불러오거나 다시 확인하세요.`,
+    showHidden: "숨긴 공고 보기",
   },
 
   saved: {

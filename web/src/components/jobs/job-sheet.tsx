@@ -7,12 +7,14 @@ import {
   Building2Icon,
   CircleHelpIcon,
   ClipboardPasteIcon,
+  EyeOffIcon,
   FilePenLineIcon,
   FileUserIcon,
   GaugeIcon,
   LoaderCircleIcon,
   MapPinIcon,
   TriangleAlertIcon,
+  Undo2Icon,
   XIcon,
 } from "lucide-react"
 
@@ -141,9 +143,12 @@ export function JobSheet({
   pending = null,
   query = null,
   listed = false,
+  dismissed = false,
   tab,
   onTab,
   onClose,
+  onDismiss,
+  onRestore,
   onPaste,
   onOpenProfile,
   onOpenApplication,
@@ -159,7 +164,13 @@ export function JobSheet({
   query?: Query | null
   /** It's in the search's list with the "outside filters" mark (`Job.unmet`). */
   listed?: boolean
+  /** The user hid it from the results. */
+  dismissed?: boolean
   onClose: () => void
+  /** "Not interested": hide it from the results (the sheet closes). */
+  onDismiss: (job: Job) => void
+  /** Show a hidden posting in the results again. */
+  onRestore: (job: Job) => void
   /** Saves the text the user copied for a posting the board wouldn't show, or showed without text. */
   onPaste: (url: string, posting: PastedPosting) => Promise<void>
   onOpenProfile: () => void
@@ -176,8 +187,11 @@ export function JobSheet({
             job={job}
             query={query}
             listed={listed}
+            dismissed={dismissed}
             tab={tab}
             onTab={onTab}
+            onDismiss={onDismiss}
+            onRestore={onRestore}
             onOpenProfile={onOpenProfile}
             onPaste={onPaste}
             onOpenApplication={onOpenApplication}
@@ -194,8 +208,11 @@ function JobDetails({
   job,
   query,
   listed,
+  dismissed,
   tab,
   onTab: setTab,
+  onDismiss,
+  onRestore,
   onOpenProfile,
   onPaste,
   onOpenApplication,
@@ -204,6 +221,9 @@ function JobDetails({
   job: Job
   query: Query | null
   listed: boolean
+  dismissed: boolean
+  onDismiss: (job: Job) => void
+  onRestore: (job: Job) => void
   tab: JobTab
   onTab: (tab: JobTab) => void
   onOpenProfile: () => void
@@ -313,6 +333,21 @@ function JobDetails({
             )
           )}
           <ApplyControl job={job} onOpenApplication={onOpenApplication} />
+          {/* Apart from the steps forward: the way out of a posting that isn't for you. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto text-muted-foreground hover:text-foreground"
+                onClick={() => (dismissed ? onRestore(job) : onDismiss(job))}
+              >
+                {dismissed ? <Undo2Icon /> : <EyeOffIcon />}
+                {dismissed ? t.restore : t.hide}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-64">{dismissed ? t.restoreHint : t.hideSheetHint}</TooltipContent>
+          </Tooltip>
         </div>
       </SheetHeader>
 

@@ -234,6 +234,25 @@ export const it = {
     position: "Posizione",
     location: "Luogo",
     site: "Portale",
+    hide: "Nascondi",
+    hideHint: "Nascondi offerta",
+    hideSheetHint: "Non ti interessa? Sparisce dai risultati di ogni ricerca, e puoi sempre ripristinarla.",
+    restore: "Ripristina",
+    restoreHint: "La rimette nei risultati delle ricerche",
+    hidden: "Offerta nascosta",
+    undo: "Annulla",
+    hideFailed: "Non è stato possibile nasconderla",
+    restoreFailed: "Non è stato possibile ripristinarla",
+    hiddenMark: "Nascosta",
+    hiddenCount: (n: number) => (n === 1 ? "1 nascosta" : `${n} nascoste`),
+    showHiddenHint: "Mostra anche le offerte nascoste",
+    hideHiddenHint: "Torna a nascondere le offerte nascoste",
+    allHidden: "Hai nascosto tutte le offerte",
+    allHiddenHint: (n: number) =>
+      n === 1
+        ? "L'unica offerta che corrisponde ai filtri è nascosta. Mostra altre pagine o rivedila."
+        : `Le ${n} offerte che corrispondono ai filtri sono tutte nascoste. Mostra altre pagine o rivedile.`,
+    showHidden: "Mostra le nascoste",
   },
 
   saved: {

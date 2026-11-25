@@ -232,6 +232,25 @@ export const nl: Messages = {
     position: "Functie",
     location: "Plaats",
     site: "Vacaturesite",
+    hide: "Verbergen",
+    hideHint: "Vacature verbergen",
+    hideSheetHint: "Geen interesse? Hij verdwijnt uit de resultaten van elke zoekopdracht, en je kunt hem altijd terugzetten.",
+    restore: "Terugzetten",
+    restoreHint: "Zet hem terug in de zoekresultaten",
+    hidden: "Vacature verborgen",
+    undo: "Ongedaan maken",
+    hideFailed: "Verbergen is mislukt",
+    restoreFailed: "Terugzetten is mislukt",
+    hiddenMark: "Verborgen",
+    hiddenCount: (n) => `${n} verborgen`,
+    showHiddenHint: "Ook de verborgen vacatures tonen",
+    hideHiddenHint: "De verborgen vacatures weer verbergen",
+    allHidden: "Je hebt alle vacatures verborgen",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "De enige vacature die bij de filters past, is verborgen. Laad meer pagina's of bekijk hem opnieuw."
+        : `Alle ${n} vacatures die bij de filters passen, zijn verborgen. Laad meer pagina's of bekijk ze opnieuw.`,
+    showHidden: "Verborgen tonen",
   },
 
   saved: {

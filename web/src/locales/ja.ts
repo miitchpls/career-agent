@@ -230,6 +230,25 @@ export const ja: Messages = {
     position: "職種",
     location: "場所",
     site: "求人サイト",
+    hide: "非表示",
+    hideHint: "求人を非表示にする",
+    hideSheetHint: "興味がない求人は、すべての検索結果から消えます。いつでも元に戻せます。",
+    restore: "元に戻す",
+    restoreHint: "検索結果に再び表示します",
+    hidden: "求人を非表示にしました",
+    undo: "取り消す",
+    hideFailed: "非表示にできませんでした",
+    restoreFailed: "元に戻せませんでした",
+    hiddenMark: "非表示",
+    hiddenCount: (n) => `${n}件を非表示`,
+    showHiddenHint: "非表示の求人も表示する",
+    hideHiddenHint: "非表示の求人を再び隠す",
+    allHidden: "すべての求人を非表示にしました",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "フィルターに合う唯一の求人は非表示です。次のページを読み込むか、もう一度確認してください。"
+        : `フィルターに合う${n}件の求人はすべて非表示です。次のページを読み込むか、もう一度確認してください。`,
+    showHidden: "非表示を表示",
   },
 
   saved: {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router"
-import { AlertCircleIcon, Loader2Icon, MoreHorizontalIcon, RefreshCwIcon, Settings2Icon } from "lucide-react"
+import { AlertCircleIcon, EyeIcon, EyeOffIcon, Loader2Icon, MoreHorizontalIcon, RefreshCwIcon, Settings2Icon } from "lucide-react"
 import { AnimatePresence, motion, type Transition } from "motion/react"
 
 import { Logo, useNeedleSpin } from "@/components/brand/logo"
@@ -32,6 +32,7 @@ import type { LinkSite } from "@/lib/job-link"
 import { applicationItem, legacyPath, parseRoute, postingItem, postingUrl, routePath, type AppTab, type JobTab, type Route } from "@/lib/routes"
 import { CLEARED, activeCount, fromQuery, toQuery, useFilters, type FilterState } from "@/lib/filters"
 import { useFeed, useRunStatus } from "@/lib/queries"
+import { useDismiss, useDismissed } from "@/lib/dismissed"
 import { ago } from "@/lib/format"
 import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -42,6 +43,8 @@ const SPRING: Transition = { type: "spring", stiffness: 260, damping: 32, mass: 
 const hasQuery = (f: FilterState) => activeCount(f) > 0 || !!f.q
 /** A query the boards can be asked with: at least a place and a title. */
 const searchable = (q: Query) => q.scopes.length > 0 && q.title_any.length > 0
+/** Hiding from the sheet waits for it to slide away (sheet.tsx: duration-200), so the row's exit shows. */
+const SHEET_CLOSE_MS = 200
 
 
 function Results({
@@ -68,6 +71,13 @@ function Results({
   const busy = running || start.isPending
   const data = feed.data
   const items = data?.items ?? []
+  const dismissed = useDismissed()
+  const { hide, restore } = useDismiss()
+  const hiddenCount = items.reduce((n, j) => n + (dismissed.urls.has(j.url) ? 1 : 0), 0)
+  // «N nascoste» pressed: the hidden ones show too. It lets go once none is left to show.
+  const [showHidden, setShowHidden] = useState(false)
+  if (showHidden && hiddenCount === 0) setShowHidden(false)
+  const shownCount = showHidden ? items.length : items.length - hiddenCount
   // Some of this query's searches are read and still fresh: «Aggiorna» reads them again.
   const loadedAny = !!data && data.missing < data.searches
   const askLinkedIn = query.sites.length === 0 || query.sites.includes("linkedin")
@@ -84,14 +94,46 @@ function Results({
         <h2 className="text-sm font-medium">{t.jobs}</h2>
         {data && data.loaded > 0 && (
           <motion.span
-            key={`${items.length}/${data.loaded}`}
+            key={`${shownCount}/${data.loaded}`}
             initial={{ opacity: 0, y: -2 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-xs text-muted-foreground tabular-nums"
           >
-            {items.length === data.loaded ? data.loaded : t.of(items.length, data.loaded)}
+            {shownCount === data.loaded ? data.loaded : t.of(shownCount, data.loaded)}
           </motion.span>
         )}
+        <AnimatePresence initial={false}>
+          {hiddenCount > 0 && (
+            <motion.div
+              key="hidden"
+              layout
+              initial={{ opacity: 0, scale: 0.85, filter: "blur(2px)" }}
+              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+              exit={{ opacity: 0, scale: 0.85, filter: "blur(2px)", transition: { duration: 0.12 } }}
+              transition={{ type: "spring", stiffness: 500, damping: 32 }}
+            >
+              <Button
+                variant="ghost"
+                size="xs"
+                aria-pressed={showHidden}
+                title={showHidden ? all.jobs.hideHiddenHint : all.jobs.showHiddenHint}
+                onClick={() => setShowHidden((v) => !v)}
+                className={cn("-my-1 text-muted-foreground tabular-nums", showHidden && "bg-muted text-foreground")}
+              >
+                {showHidden ? <EyeIcon /> : <EyeOffIcon />}
+                {/* Each new count drops in, so a hidden row is seen landing here. */}
+                <motion.span
+                  key={hiddenCount}
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ type: "spring", stiffness: 600, damping: 30 }}
+                >
+                  {all.jobs.hiddenCount(hiddenCount)}
+                </motion.span>
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {data?.fetched_at && <span className="text-xs text-muted-foreground">{t.updated(ago(data.fetched_at))}</span>}
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <ToggleGroup
@@ -145,9 +187,14 @@ function Results({
       <div className="overflow-hidden rounded-xl border bg-card">
         <JobsTable
           jobs={items}
-          loading={feed.isPending}
+          loading={feed.isPending || !dismissed.ready}
           loaded={data?.loaded ?? 0}
+          dismissed={dismissed.urls}
+          showDismissed={showHidden}
           onOpen={onOpen}
+          onDismiss={hide}
+          onRestore={(job) => restore(job.url)}
+          onShowDismissed={() => setShowHidden(true)}
           onClearFilters={onClearFilters}
           searching={running}
           searchAction={<StartSearchButton query={query} order={order} running={running} label={t.searchPortals} prominent />}
@@ -241,6 +288,13 @@ export default function App() {
   // The search's results, from the same cache the list reads (never a board request): whether
   // the open posting is in them, marked as outside the filters.
   const listedFeed = useFeed(query, filters.order)
+  const dismissed = useDismissed()
+  const { hide, restore } = useDismiss()
+  /** "Not interested", from the sheet: it closes, then the row leaves the list behind it. */
+  const hideFromSheet = (job: Job) => {
+    closeSheet()
+    window.setTimeout(() => hide(job), SHEET_CLOSE_MS)
+  }
   const [pending, setPending] = useState<PendingJob | null>(null)
   // Only the latest link may fill the sheet: closing it, or pasting another, drops a late answer.
   const linkRun = useRef(0)
@@ -506,6 +560,9 @@ export default function App() {
         pending={route.page === "jobs" ? sheetPending : null}
         query={submitted && !view ? query : null}
         listed={!!jobQuery.data && !!listedFeed.data?.items.some((i) => i.url === jobQuery.data?.url && i.unmet?.length)}
+        dismissed={!!jobQuery.data && dismissed.urls.has(jobQuery.data.url)}
+        onDismiss={hideFromSheet}
+        onRestore={(job) => restore(job.url)}
         tab={jobTab}
         onTab={(tab) => jobItem && go({ page: "jobs", item: jobItem, tab }, { replace: true, keepBack: true })}
         onClose={closeSheet}

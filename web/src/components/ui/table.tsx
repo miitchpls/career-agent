@@ -5,9 +5,11 @@ import { cn } from "cn"
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
+    // overflow-y-hidden: overflow-x-auto alone makes the y axis scroll too, so rows mid layout
+    // animation (gliding up from below) flashed a vertical scrollbar. A table never scrolls in y.
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className="relative w-full overflow-x-auto overflow-y-hidden"
     >
       <table
         data-slot="table"

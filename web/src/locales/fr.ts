@@ -232,6 +232,25 @@ export const fr: Messages = {
     position: "Poste",
     location: "Lieu",
     site: "Site d'emploi",
+    hide: "Masquer",
+    hideHint: "Masquer l'offre",
+    hideSheetHint: "Pas intéressé ? Elle disparaît des résultats de toutes les recherches, et vous pouvez toujours la rétablir.",
+    restore: "Rétablir",
+    restoreHint: "La remet dans les résultats",
+    hidden: "Offre masquée",
+    undo: "Annuler",
+    hideFailed: "Impossible de la masquer",
+    restoreFailed: "Impossible de la rétablir",
+    hiddenMark: "Masquée",
+    hiddenCount: (n) => (n === 1 ? "1 masquée" : `${n} masquées`),
+    showHiddenHint: "Afficher aussi les offres masquées",
+    hideHiddenHint: "Masquer à nouveau les offres masquées",
+    allHidden: "Vous avez masqué toutes les offres",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "La seule offre qui correspond aux filtres est masquée. Chargez d'autres pages ou revoyez-la."
+        : `Les ${n} offres qui correspondent aux filtres sont masquées. Chargez d'autres pages ou revoyez-les.`,
+    showHidden: "Afficher les masquées",
   },
 
   saved: {
