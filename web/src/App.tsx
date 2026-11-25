@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertCircleIcon, MoreHorizontalIcon, Settings2Icon } from "lucide-react"
-import { parseAsStringLiteral, useQueryState } from "nuqs"
+import { parseAsInteger, parseAsStringLiteral, useQueryState } from "nuqs"
 import { AnimatePresence, motion, type Transition } from "motion/react"
 
 import { Composer } from "@/components/composer/composer"
@@ -8,6 +8,7 @@ import { MainNav } from "@/components/profile/main-nav"
 import { ProfilePage } from "@/components/profile/profile-page"
 import { JobSheet, type PendingJob } from "@/components/jobs/job-sheet"
 import { OpenLink } from "@/components/jobs/open-link"
+import { ApplicationsPage } from "@/components/applications/applications-page"
 import { JobsTable } from "@/components/jobs/jobs-table"
 import { RunProgress } from "@/components/run/run-progress"
 import { PreferencesDialog } from "@/components/settings/preferences-dialog"
@@ -184,13 +185,27 @@ export default function App() {
   }
   // Results show only after the user runs the query; a shared link with filters opens straight on them.
   const [submitted, setSubmitted] = useState(() => hasQuery(filters))
-  // The profile is a separate page in the URL (?view=profilo), so back and forward work.
-  const [view, setView] = useQueryState("view", parseAsStringLiteral(["profilo"] as const).withOptions({ history: "push" }))
-  const openProfile = () => {
+  // Profile and applications are separate pages in the URL (?view=…), so back and forward work.
+  const [view, setView] = useQueryState(
+    "view",
+    parseAsStringLiteral(["profilo", "candidature"] as const).withOptions({ history: "push" }),
+  )
+  // The application whose sheet is open on the Applications page (?app=…).
+  const [, setAppParam] = useQueryState("app", parseAsInteger.withOptions({ history: "push" }))
+  const openApplication = (id: number) => {
     closeSheet()
-    setView("profilo")
+    void setView("candidature")
+    // One step back from the application returns to the posting: the view's push is the entry.
+    void setAppParam(id, { history: "replace" })
     window.scrollTo({ top: 0 })
   }
+  const openSection = (v: "profilo" | "candidature") => {
+    closeSheet()
+    setView(v)
+    void setAppParam(null, { history: "replace" })
+    window.scrollTo({ top: 0 })
+  }
+  const openProfile = () => openSection("profilo")
 
   // Emptying the query sends the bar back to the middle of the page
   // (state adjusted during render, React's pattern for "reset state when a value changes").
@@ -218,6 +233,7 @@ export default function App() {
 
   const loadSaved = (s: SavedSearch) => {
     setView(null)
+    void setAppParam(null, { history: "replace" })
     setFilters({ ...fromQuery(s.query), sort: filters.sort, dir: filters.dir })
     setSubmitted(true)
   }
@@ -227,6 +243,7 @@ export default function App() {
   }
   const goHome = () => {
     setView(null)
+    void setAppParam(null, { history: "replace" })
     setFilters({ ...CLEARED, q: null })
     setSubmitted(false)
   }
@@ -245,7 +262,11 @@ export default function App() {
             <span className="text-sm font-medium">career-agent</span>
           </button>
           <div className="ml-auto flex items-center gap-1">
-            <MainNav view={view ?? "offerte"} onChange={(v) => (v === "profilo" ? openProfile() : setView(null))} />
+            <MainNav view={view ?? "offerte"} onChange={(v) => {
+                if (v !== "offerte") return openSection(v)
+                void setView(null)
+                void setAppParam(null, { history: "replace" })
+              }} />
             <span className="mx-2 h-5 w-px bg-border" aria-hidden />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -270,7 +291,11 @@ export default function App() {
         </div>
       </header>
 
-      {view === "profilo" ? (
+      {view === "candidature" ? (
+        <main className="flex-1">
+          <ApplicationsPage onOpenProfile={openProfile} />
+        </main>
+      ) : view === "profilo" ? (
         <main className="flex-1">
           <ProfilePage />
         </main>
@@ -356,6 +381,7 @@ export default function App() {
         onClose={closeSheet}
         onPaste={pasteJob}
         onOpenProfile={openProfile}
+        onOpenApplication={openApplication}
       />
     </div>
   )

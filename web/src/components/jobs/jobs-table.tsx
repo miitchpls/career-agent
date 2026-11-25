@@ -2,6 +2,7 @@ import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, InboxIcon, SearchXIcon, ty
 import { AnimatePresence, motion, type Variants } from "motion/react"
 
 import { CvMark } from "@/components/cv/tailored-cv"
+import { ApplicationMark } from "@/components/jobs/apply-control"
 import { SiteMark, WorkModeBadge } from "@/components/jobs/work-mode-badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -196,6 +197,7 @@ export function JobsTable({
               <div className="truncate font-medium">
                 {job.title}
                 <CvMark url={job.url} />
+                <ApplicationMark url={job.url} />
               </div>
               <div className="truncate text-xs text-muted-foreground">{job.company ?? "—"}</div>
             </TableCell>

@@ -4,7 +4,7 @@ import { useT } from "@/lib/i18n"
 import { useProfile } from "@/lib/profile"
 import { cn } from "@/lib/utils"
 
-export type View = "offerte" | "profilo"
+export type View = "offerte" | "candidature" | "profilo"
 
 /** Top-level sections, beside the logo. The active pill slides between tabs. */
 export function MainNav({ view, onChange }: { view: View; onChange: (v: View) => void }) {
@@ -12,6 +12,7 @@ export function MainNav({ view, onChange }: { view: View; onChange: (v: View) =>
   const { stage } = useProfile()
   const tabs: { id: View; label: string; dot?: boolean }[] = [
     { id: "offerte", label: t.jobs },
+    { id: "candidature", label: t.applications },
     { id: "profilo", label: t.profile, dot: stage === "review" },
   ]
   return (
