@@ -73,6 +73,12 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "de": "Limit von {n} Anfragen an {site} in den letzten 24 Stunden erreicht: versuche es später",
         "ko": "최근 24시간 동안 {site} 요청 한도 {n}회에 도달했습니다: 나중에 다시 시도하세요",
     },
+    "expired": {
+        "it": "ricerca scaduta nel frattempo: premi Aggiorna",
+        "en": "the search expired meanwhile: press Refresh",
+        "de": "die Suche ist inzwischen abgelaufen: drücke Aktualisieren",
+        "ko": "그사이 검색이 만료되었습니다: 새로고침을 누르세요",
+    },
     "throttled": {
         "it": "il portale ha limitato le richieste: riprova più tardi",
         "en": "the job board throttled the requests: try again later",

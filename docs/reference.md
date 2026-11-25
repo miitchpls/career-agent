@@ -108,8 +108,9 @@ time, so "anywhere" scopes skip Indeed.
   never moves: newest first within a page, else the searches take turns, each in its board's own order.
 - **Cache**: the pages read are kept in memory, from the first page, for **3 hours** by relevance and **1 hour**
   newest first. All the pages of a search expire together, so they always belong to one snapshot (a page read
-  hours after the one before would repeat or skip postings that moved meanwhile). **Refresh** reads the first pages
-  again. A restart empties the cache.
+  hours after the one before would repeat or skip postings that moved meanwhile). Past that, the pages stay on screen
+  for 10 more minutes, but nothing builds on them: **Show more** then reads the whole query again from its first
+  pages. **Refresh** reads the first pages again. A restart empties the cache.
 
 ### Staying under the boards' limits
 

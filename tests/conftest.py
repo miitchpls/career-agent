@@ -15,7 +15,7 @@ def tmp_db(tmp_path, monkeypatch):
 def empty_feed(monkeypatch):
     """Every test starts with no cached search, and the boards' memory reset."""
     feed.clear()
-    monkeypatch.setattr(boards, "_empty_pages", 0)
+    monkeypatch.setattr(boards, "_empty_pages", [])
     monkeypatch.setattr(boards, "_indeed_by_date", True)
     monkeypatch.setattr(scraper, "_last_request", {})
     monkeypatch.setattr(boards, "INDEED_RETRY_PAUSE", 0)

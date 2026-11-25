@@ -160,17 +160,32 @@ def test_refresh_reads_the_first_page_again_and_drops_the_rest(boards_answer):
     assert [i["url"] for i in feed.view(query(), "relevant")["items"]] == ["u9"]
 
 
-def test_a_cached_search_expires(boards_answer, monkeypatch):
+def test_a_cached_search_expires(boards_answer):
     calls = boards_answer(page(row("u1")), page(), page(row("u2")), page())
     scraper.Runner().start(query())
     (k,) = [k for k in feed._streams if k.startswith("linkedin")]
-    old = datetime.now(UTC) - feed.TTL["relevant"] - timedelta(minutes=1)
     for stream in feed._streams.values():
-        stream.started = old
-    assert feed.get(k) is None
-    assert feed.view(query(), "relevant")["missing"] == 2
+        stream.started -= feed.TTL["relevant"] + timedelta(minutes=1)
+    assert feed.get(k) is None  # no longer fresh: new reads won't build on it
+    assert (
+        feed.view(query(), "relevant")["missing"] == 0
+    )  # still shown, for a few minutes
+    for stream in feed._streams.values():
+        stream.started -= feed.GRACE
+    assert feed.view(query(), "relevant")["missing"] == 2  # gone
+    assert feed.cached("u1") is None and feed.places("u1") == []
     scraper.Runner().start(query())
     assert len(calls) == 4
+
+
+def test_old_searches_are_dropped_from_memory(boards_answer):
+    boards_answer(page(row("u1")), page(), page(row("b1")), page())
+    scraper.Runner().start(query())
+    for stream in feed._streams.values():
+        stream.started -= feed.TTL["relevant"] + feed.GRACE
+    scraper.Runner().start(query(scopes=[{"places": [BASEL]}]))
+    # Only Basel's are left: the old Zurich ones were freed.
+    assert len(feed._streams) == 2 and all("|basilea|ch|" in k for k in feed._streams)
 
 
 def test_a_recent_order_expires_sooner():
@@ -283,20 +298,42 @@ def test_job_types_are_normalised_from_jobspy():
     assert scraper.normalize_job_type(None) is None
 
 
-def test_a_search_that_expires_while_waiting_reads_its_first_page_again(
-    boards_answer, monkeypatch
-):
+def test_more_over_an_expired_search_reads_the_whole_query_again(boards_answer):
+    """A lone fresh first page would reshuffle what's shown: every search starts over."""
+    calls = boards_answer(
+        page(row("u1"), next=10),
+        page(row("i1"), next="relevance:c2"),
+        page(row("u9"), next=10),
+        page(row("i9")),
+    )
+    scraper.Runner().start(query())
+    (li,) = [s for k, s in feed._streams.items() if k.startswith("linkedin")]
+    li.started -= feed.TTL["relevant"] + timedelta(minutes=1)
+    summary = scraper.Runner().start(query(), more=True)
+    assert summary["queries"] == 2 and [c["start"] for c in calls[2:]] == [None, None]
+    assert [i["url"] for i in feed.view(query(), "relevant")["items"]] == ["u9", "i9"]
+
+
+def test_a_page_for_a_search_dropped_meanwhile_is_reported(boards_answer, monkeypatch):
+    boards_answer(page(row("u1"), next=10), page(row("u2"), next=20))
     only = query(sites=["linkedin"])
-    calls = boards_answer(page(row("u1"), next=10), page(row("u9"), next=10))
     scraper.Runner().start(only)
-    real_get, asked = feed.get, []
+    monkeypatch.setattr(feed, "add_page", lambda *a, **k: None)
+    r = scraper.Runner()
+    r.start(only, more=True)
+    assert (r.state.steps[0].status, r.state.steps[0].error) == (
+        "error",
+        "ricerca scaduta nel frattempo: premi Aggiorna",
+    )
 
-    def expiring(k):  # fresh when "more" is planned, gone when its turn comes
-        asked.append(k)
-        return real_get(k) if len(asked) == 1 else None
 
-    monkeypatch.setattr(feed, "get", expiring)
-    scraper.Runner().start(only, more=True)
-    assert len(asked) == 2 and [c["start"] for c in calls] == [None, None]
-    monkeypatch.setattr(feed, "get", real_get)
-    assert [i["url"] for i in feed.view(only, "relevant")["items"]] == ["u9"]
+def test_off_title_postings_are_cached_for_queries_with_other_titles(boards_answer):
+    boards_answer(page(row("u1"), row("u2", title="Backend developer")), page())
+    r = scraper.Runner()
+    r.start(query())
+    assert (r.state.steps[0].found, r.state.steps[0].off_title) == (1, 1)
+    wider = query(titles=("python", "backend developer"))
+    # The "python" searches are cached, and their page shows it under these titles.
+    assert scraper.Runner().start(wider)["recent"] == 2
+    shown = [i["url"] for i in feed.view(wider, "relevant")["items"]]
+    assert shown == ["u1", "u2"]

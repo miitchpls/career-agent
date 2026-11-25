@@ -56,10 +56,13 @@ LINKEDIN_PAGE = 10  # postings on a LinkedIn list page (fixed by LinkedIn)
 # Postings asked per Indeed page. One request could bring 100, but then one Indeed page would
 # bury LinkedIn's 10 in the merged list; 25 keeps the boards side by side.
 INDEED_PAGE = 25
-# Posting pages that answer 200 without the posting, in a row: a throttle that doesn't say so.
-# One can be a removed posting; two count as a block.
+# Posting pages that answer 200 without the posting: a throttle that doesn't say so. One can
+# be a removed posting; two in a row within half an hour count as a block.
 EMPTY_PAGES_BLOCK = 2
-_empty_pages = 0
+EMPTY_PAGES_WINDOW = 30 * 60  # seconds
+_empty_pages: list[
+    float
+] = []  # monotonic times of the text-less pages since the last good one
 
 Row = dict[str, object]
 Cursor = int | str | None
@@ -209,6 +212,15 @@ def _linkedin_page(scraper: _LinkedIn, start: int) -> tuple[list[JobPost], Curso
     return posts, following if full else None
 
 
+def _empty_page_is_a_block() -> bool:
+    now = time.monotonic()
+    _empty_pages[:] = [t for t in _empty_pages if now - t < EMPTY_PAGES_WINDOW] + [now]
+    if len(_empty_pages) < EMPTY_PAGES_BLOCK:
+        return False
+    _empty_pages.clear()  # the pause takes it from here
+    return True
+
+
 class _Refused(ValueError):
     """Indeed rejected the query itself (HTTP 400, or errors and no data): not an outage."""
 
@@ -220,17 +232,21 @@ def _indeed_page(
     scraper: _Indeed, order: Order, cursor: Cursor
 ) -> tuple[list[JobPost], Cursor]:
     """Only a first page that Indeed refuses by date is asked again by relevance: an outage
-    says nothing about the sort, and a later page's cursor belongs to its date-sorted list."""
+    says nothing about the sort. A later page is asked the way its search's first page was:
+    the cursor says so ("date:…" / "relevance:…"), since a cursor belongs to one sort's list."""
     global _indeed_by_date
+    if cursor:
+        sort, _, raw = str(cursor).partition(":")
+        return _indeed_ask(scraper, sort == "date", raw)
     by_date = order == "recent" and _indeed_by_date
     try:
-        return _indeed_ask(scraper, by_date, cursor)
+        return _indeed_ask(scraper, by_date, None)
     except _Refused as e:
-        if not by_date or cursor is not None or scraper.blocked:
+        if not by_date or scraper.blocked:
             raise
         log.warning("indeed refused the date sort (%s): asking by relevance", e)
     time.sleep(INDEED_RETRY_PAUSE)
-    posts = _indeed_ask(scraper, False, cursor)
+    posts = _indeed_ask(scraper, False, None)
     log.warning("indeed refuses the date sort: asking by relevance from now on")
     _indeed_by_date = False
     return posts
@@ -274,7 +290,9 @@ def _indeed_ask(
             posts.append(scraper._process_job(r.job))
         except Exception as e:  # noqa: BLE001 - one odd posting shouldn't lose the page
             log.warning("indeed posting skipped: %s", e)
-    return posts, search.nextCursor if search.results else None
+    following = search.nextCursor if search.results else None
+    sort = "date" if by_date else "relevance"
+    return posts, f"{sort}:{following}" if following else None
 
 
 # --- One posting from its link ----------------------------------------------------------------
@@ -290,7 +308,6 @@ def open_linkedin(job_id: str) -> Result:
     that loads without the posting's text is no posting either; two of those in a row are a
     block, since that's how LinkedIn throttles without saying so.
     """
-    global _empty_pages
     scraper = _LinkedIn()
     scraper.scraper_input = ScraperInput(
         site_name=["linkedin"], description_format="markdown"
@@ -328,18 +345,11 @@ def open_linkedin(job_id: str) -> Result:
             )
             details = scraper._fetch_details(job_id)
             if not details.get("description"):
-                _empty_pages += 1
                 log.warning("linkedin posting %s: page without its text", job_id)
                 result.requests = scraper.requests
-                if _empty_pages >= EMPTY_PAGES_BLOCK:
-                    result.blocked, _empty_pages = (
-                        True,
-                        0,
-                    )  # the pause takes it from here
-                else:
-                    result.blocked = scraper.blocked
+                result.blocked = scraper.blocked or _empty_page_is_a_block()
                 return result
-            _empty_pages = 0
+            _empty_pages.clear()
             location = top["location"]
             post = JobPost(
                 id=f"li-{job_id}",

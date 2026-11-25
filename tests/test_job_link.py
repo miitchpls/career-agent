@@ -432,7 +432,9 @@ def test_a_posting_a_search_brought_with_its_text_is_saved_without_a_request(
     r = open_(url)
     assert r.status_code == 200 and r.json()["known"] is False
     assert db.get_job(url)["description"] == "Go, ibrido"
-    assert db.job_places(url) == [pq.place_key]  # where the search that listed it looked
+    assert db.job_places(url) == [
+        pq.place_key
+    ]  # where the search that listed it looked
     assert db.requests_since("indeed", datetime.now(UTC) - timedelta(minutes=1)) == 0
 
 
@@ -447,3 +449,48 @@ def test_opening_waits_its_turn_after_the_boards_last_request(monkeypatch):
     )
     assert open_(CANONICAL).status_code == 200
     assert slept == [4.5] and "linkedin" in scraper._last_request
+
+
+def test_a_saved_posting_found_again_keeps_the_new_place(monkeypatch):
+    from career_agent import feed
+    from career_agent.query import Query, plan
+
+    db.save_job(
+        {"url": CANONICAL, "site": "linkedin", "title": "Go", "work_mode": "remote"}
+    )
+    q = Query.model_validate(
+        {
+            "scopes": [{"places": [{"city": "Basilea", "country": "ch"}]}],
+            "title_any": ["go"],
+            "sites": ["linkedin"],
+        }
+    )
+    (pq,), _, _ = plan(q)
+    card = {"url": CANONICAL, "title": "Go"}
+    feed.add_page(
+        feed.key(pq, q, "relevant"), pq, "relevant", [card], set(), None, True
+    )
+    assert open_(CANONICAL).json()["known"] is True
+    assert db.job_places(CANONICAL) == [pq.place_key]
+
+
+def test_a_pause_a_run_records_while_this_waits_stops_the_open(monkeypatch):
+    """The hold is checked under the board's lock, after whoever held it is done."""
+    from career_agent import scraper
+
+    real_lock = scraper.board_lock("linkedin")
+
+    class PausingFirst:
+        def __enter__(self):
+            real_lock.acquire()
+            db.pause_board("linkedin", datetime.now(UTC) + timedelta(minutes=45))
+
+        def __exit__(self, *_):
+            real_lock.release()
+
+    monkeypatch.setattr(scraper, "board_lock", lambda site: PausingFirst())
+    monkeypatch.setattr(
+        boards, "open_linkedin", lambda *_: pytest.fail("asked LinkedIn")
+    )
+    r = open_(CANONICAL)
+    assert r.status_code == 409

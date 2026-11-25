@@ -11,6 +11,11 @@ a page read hours after the one before would repeat or skip postings that moved 
 Everything a user repeats by accident (a reload, back and forth between pages, flipping the
 order and back) happens well within that, and those repeats are what looks like a bot. The
 "refresh" button reads a search again whenever the user wants. A restart empties the cache.
+
+Past that, a stream lingers a few minutes (GRACE) before it's dropped: a run that set out on
+it while it was fresh can still add its page, and what's on screen doesn't vanish under the
+user mid-run. New reads ("show more", a repeated search) only build on fresh streams; "show
+more" over a stream that's no longer fresh reads the whole query from its first pages.
 """
 
 import threading
@@ -26,6 +31,7 @@ TTL: dict[Order, timedelta] = {
     "relevant": timedelta(hours=3),
     "recent": timedelta(hours=1),
 }
+GRACE = timedelta(minutes=10)
 
 
 @dataclass
@@ -44,7 +50,12 @@ class Stream:
     """Where the following page starts; None = no more pages."""
 
     def fresh(self, now: datetime) -> bool:
+        """New reads may build on it."""
         return now - self.started < TTL[self.order]
+
+    def kept(self, now: datetime) -> bool:
+        """It's still shown, and a run under way may add to it."""
+        return now - self.started < TTL[self.order] + GRACE
 
     def hit(self) -> dict:
         return {
@@ -62,14 +73,18 @@ def key(pq: PlannedQuery, q: Query, order: Order) -> str:
     return f"{pq.fingerprint(q.posted_within)}|{order}"
 
 
-def get(k: str) -> Stream | None:
-    """The stream under `k`, if it's still fresh."""
+def get(k: str, *, shown: bool = False) -> Stream | None:
+    """The stream under `k` if it's fresh; with `shown`, if it's still kept."""
     with _lock:
         stream = _streams.get(k)
-        if stream and not stream.fresh(datetime.now(UTC)):
-            del _streams[k]
-            return None
-        return stream
+        now = datetime.now(UTC)
+        ok = stream and (stream.kept(now) if shown else stream.fresh(now))
+        return stream if ok else None
+
+
+def _kept() -> list[Stream]:
+    now = datetime.now(UTC)
+    return [s for s in _streams.values() if s.kept(now)]
 
 
 def add_page(
@@ -82,10 +97,13 @@ def add_page(
     first: bool,
 ) -> Stream | None:
     """Record a list page read for `k`; the first page starts the stream over. A later page
-    whose stream expired meanwhile is dropped (None): it belongs to a snapshot that's gone."""
+    whose stream is gone (past its grace) is dropped (None): its snapshot no longer exists."""
     with _lock:
+        now = datetime.now(UTC)
+        for gone in [x for x, s in _streams.items() if not s.kept(now)]:
+            del _streams[gone]  # nothing else ever frees memory
         stream = None if first else _streams.get(k)
-        if not first and (stream is None or not stream.fresh(datetime.now(UTC))):
+        if not first and stream is None:
             return None
         if stream is None:
             stream = Stream(
@@ -111,7 +129,7 @@ def clear() -> None:
 def cached(url: str) -> tuple[dict, bool] | None:
     """A posting some cached search returned, and whether its text came with it."""
     with _lock:
-        for stream in _streams.values():
+        for stream in _kept():
             for job in chain.from_iterable(stream.pages):
                 if job["url"] == url:
                     return job, url in stream.detailed
@@ -124,7 +142,7 @@ def places(url: str) -> list[str]:
         return sorted(
             {
                 s.place_key
-                for s in _streams.values()
+                for s in _kept()
                 if any(j["url"] == url for j in chain.from_iterable(s.pages))
             }
         )
@@ -156,7 +174,7 @@ def view(q: Query, order: Order) -> dict:
     queries, _, errors = plan(q)
     if errors:
         queries = []
-    streams = [get(key(pq, q, order)) for pq in queries]
+    streams = [get(key(pq, q, order), shown=True) for pq in queries]
     loaded = [s for s in streams if s]
     fx_date, rates = fx.rates()
 

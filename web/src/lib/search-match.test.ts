@@ -1,8 +1,7 @@
 import { describe as group, expect, it } from "vitest"
 
 import { setLocale } from "@/lib/i18n"
-import type { Query } from "@/lib/api"
-import { describe, excludes, missedFilters } from "@/lib/search-match"
+import { describe, missedFilters } from "@/lib/search-match"
 
 group("search match", () => {
   it("says the unmet conditions in words, with what was searched", () => {
@@ -27,16 +26,7 @@ group("search match", () => {
   })
 })
 
-group("excludes", () => {
-  const q = { salary_unknown: false, job_type_unknown: true } as Query
-  it("follows the filters' choices on what a posting doesn't state", () => {
-    expect(excludes({ kind: "salary", state: "unknown" }, q)).toBe(true)
-    expect(excludes({ kind: "job_type", state: "unknown" }, q)).toBe(false)
-    expect(excludes({ kind: "mode", state: "unknown" }, q)).toBe(true)
-    expect(excludes({ kind: "place", state: "unknown" }, q)).toBe(false)
-    expect(excludes({ kind: "posted", state: "no" }, q)).toBe(true)
-    expect(excludes({ kind: "salary", state: "ok" }, q)).toBe(false)
-  })
+group("missedFilters", () => {
   it("names the filters missed", () => {
     setLocale("it")
     expect(missedFilters(["salary", "mode"])).toBe("stipendio, modalità")

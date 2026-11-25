@@ -116,6 +116,8 @@ def test_the_endpoint_reads_the_saved_posting_and_where_searches_found_it():
     r = client.post("/api/jobs/match", json={"url": "u", "query": q.model_dump()})
     checks = [("place", "ok"), ("mode", "no"), ("salary", "unknown")]
     assert [(c["kind"], c["state"]) for c in r.json()["checks"]] == checks
+    # Only what keeps it out of the results: the mode; an unknown salary is allowed here.
+    assert [c["excludes"] for c in r.json()["checks"]] == [False, True, False]
     # Once the search expires, the places stored when it was opened still answer.
     db.save_job(posting, feed.places("u"))
     feed.clear()

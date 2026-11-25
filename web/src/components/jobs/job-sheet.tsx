@@ -34,7 +34,7 @@ import type { JobTab } from "@/lib/routes"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
 import { useT } from "@/lib/i18n"
 import { formatScore, shownScore, useCanScore, useScore, useStartScore } from "@/lib/job-score"
-import { describe, excludes, type MatchLine } from "@/lib/search-match"
+import { describe, type MatchLine } from "@/lib/search-match"
 import { cn } from "@/lib/utils"
 import { parseStoredJobTypes } from "@/lib/job-types"
 import { shownCv, useCanTailor, useCvLook, useStartCv, useTailoredCv } from "@/lib/tailored-cv"
@@ -48,16 +48,21 @@ const MATCH_ICON = {
 /** The current search's conditions, met or not by this posting (no AI: the same rules as the filters). */
 function SearchMatch({ url, query, listed }: { url: string; query: Query; listed: boolean }) {
   const t = useT().match
-  // Only what the check reads: editing the title words or the free text doesn't refetch.
-  const { scopes, salary_min, salary_currency, job_types, posted_within } = query
+  // Only what the check reads (the "unknown" choices decide what excludes): editing the title
+  // words or the free text doesn't refetch.
+  const { scopes, salary_min, salary_currency, salary_unknown, job_types, job_type_unknown, posted_within } = query
   const { data } = useQuery({
-    queryKey: ["job-match", url, JSON.stringify([scopes, salary_min, salary_currency, job_types, posted_within])],
+    queryKey: [
+      "job-match",
+      url,
+      JSON.stringify([scopes, salary_min, salary_currency, salary_unknown, job_types, job_type_unknown, posted_within]),
+    ],
     queryFn: () => api.match(url, query),
     staleTime: 30_000,
   })
   const checks = data?.checks ?? []
   const said = (keep: boolean) =>
-    checks.filter((c) => excludes(c, query) === keep).map(describe).filter((l): l is MatchLine => l !== null)
+    checks.filter((c) => !!c.excludes === keep).map(describe).filter((l): l is MatchLine => l !== null)
   // What keeps it out of the results leads, as a warning; the rest stays quiet chips.
   const off = said(true)
   const lines = said(false)

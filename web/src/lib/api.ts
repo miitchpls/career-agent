@@ -471,6 +471,8 @@ export interface MatchCheck {
   value?: string | number | string[] | null
   expected?: number | string[]
   currency?: string
+  /** It keeps the posting out of the search's results (the server's rule, as for the list). */
+  excludes?: boolean
 }
 
 /** A posting copied by the user from the board's page, when the board won't show it to us. */

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from .. import db, feed, fx, job_link, scraper
 from ..boards import Order
 from ..i18n import t
-from ..query import SITES, Query, match
+from ..query import SITES, Query, match, unmet
 
 router = APIRouter()
 
@@ -23,10 +23,7 @@ def jobs_feed(req: FeedRequest):
     return {
         **feed.view(req.query, req.order),
         "boards": {
-            site: {
-                "left": scraper.requests_left(site),
-                "hold": scraper.hold_reason(site),
-            }
+            site: dict(zip(("left", "hold"), scraper.board_state(site), strict=True))
             for site in SITES
         },
     }
@@ -93,4 +90,7 @@ def jobs_match(body: MatchRequest):
     _, rates = fx.rates()
     # The cached searches that list it now, and those that did when it was opened.
     places = sorted(set(feed.places(body.url)) | set(db.job_places(body.url)))
-    return {"checks": match(body.query, job, places, rates)}
+    # `excludes`: the check keeps it out of the search's results (the list's same rule).
+    out = unmet(body.query, job, places, rates, detailed=True)
+    checks = match(body.query, job, places, rates)
+    return {"checks": [{**c, "excludes": c["kind"] in out} for c in checks]}

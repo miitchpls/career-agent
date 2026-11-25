@@ -83,6 +83,9 @@ def open_link(raw: str, currency: str) -> tuple[dict, bool]:
         raise LinkError(t("link_unsupported"), 400)
     known = db.find_job(link.site, link.key, currency)
     if known:
+        db.add_places(
+            known["url"], feed.places(link.url)
+        )  # where it was just found again
         return known, True
     if link.site == "indeed" and boards.indeed_country(_host(link.url)) is None:
         raise LinkError(t("link_unsupported"), 400)
@@ -92,11 +95,12 @@ def open_link(raw: str, currency: str) -> tuple[dict, bool]:
         return db.find_job(link.site, link.key, currency), False
 
     site = link.site
-    hold = scraper.hold_reason(site)
-    if hold:
-        raise LinkError(hold, 409)
-    # Same pacing as a search: opening postings one after another isn't a burst either.
+    # Same pacing as a search: opening postings one after another isn't a burst either. The
+    # hold is checked, and a block recorded, under the board's lock: a run waiting for it then
+    # sees the pause, and this doesn't ask a board a run has just seen throttle.
     with scraper.board_lock(site):
+        if hold := scraper.hold_reason(site):
+            raise LinkError(hold, 409)
         time.sleep(scraper.turn_wait(site))
         try:
             result = (
@@ -106,10 +110,10 @@ def open_link(raw: str, currency: str) -> tuple[dict, bool]:
             )
         finally:
             scraper.asked(site)
-    db.record_requests(site, result.requests)
-    if result.blocked:
-        until = scraper.block(site)
-        raise LinkError(scraper.paused_message(site, until), 409)
+        db.record_requests(site, result.requests)
+        if result.blocked:
+            until = scraper.block(site)
+            raise LinkError(scraper.paused_message(site, until), 409)
     if result.error and not result.rows:
         raise LinkError(t("link_failed", site=scraper.SITE_NAME[site]), 502)
     if not result.rows:

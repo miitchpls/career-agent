@@ -267,20 +267,35 @@ def save_job(job: dict, places: list[str] = ()) -> bool:
     for one already stored, refresh `last_seen` and add the places. New: True."""
     now = _now()
     with connect() as conn:
-        row = conn.execute(
-            "SELECT places FROM jobs WHERE url = ?", (job["url"],)
-        ).fetchone()
-        if row:
-            known = set(filter(None, (row["places"] or "").split(",")))
+        if _merge_places(conn, job["url"], places):
             conn.execute(
-                "UPDATE jobs SET last_seen = ?, places = ? WHERE url = ?",
-                (now, _places_text(known | set(places)), job["url"]),
+                "UPDATE jobs SET last_seen = ? WHERE url = ?", (now, job["url"])
             )
             return False
         conn.execute(
             f"INSERT INTO jobs ({', '.join(JOB_COLUMNS)}, first_seen, last_seen, places) "
             f"VALUES ({', '.join('?' * (len(JOB_COLUMNS) + 3))})",
             [job.get(c) for c in JOB_COLUMNS] + [now, now, _places_text(set(places))],
+        )
+    return True
+
+
+def add_places(url: str, places: list[str]) -> None:
+    """Add to an opened posting the places of searches that found it (again)."""
+    with connect() as conn:
+        _merge_places(conn, url, places)
+
+
+def _merge_places(conn: sqlite3.Connection, url: str, places: list[str]) -> bool:
+    """Add `places` to a stored posting's; False if it isn't stored."""
+    row = conn.execute("SELECT places FROM jobs WHERE url = ?", (url,)).fetchone()
+    if not row:
+        return False
+    known = set(filter(None, (row["places"] or "").split(",")))
+    if not set(places) <= known:
+        conn.execute(
+            "UPDATE jobs SET places = ? WHERE url = ?",
+            (_places_text(known | set(places)), url),
         )
     return True
 

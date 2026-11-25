@@ -172,26 +172,28 @@ def _budgets(site: Site) -> list[tuple[str, int, timedelta]]:
     return budgets
 
 
-def requests_left(site: Site) -> int | None:
-    """Requests `site` may still get under all its rolling budgets; None = no budget."""
+def board_state(site: Site) -> tuple[int | None, str | None]:
+    """Requests `site` may still get under all its rolling budgets (None: no budget), and
+    why it must be left alone right now (for the UI; None if it may be asked)."""
     now = datetime.now(UTC)
-    left = [
-        max(n - db.requests_since(site, now - window), 0)
-        for _, n, window in _budgets(site)
+    used = [
+        (key, n, db.requests_since(site, now - window))
+        for key, n, window in _budgets(site)
     ]
-    return min(left) if left else None
+    left = min((max(n - u, 0) for _, n, u in used), default=None)
+    until = db.board_paused_until(site)
+    if until:
+        return left, paused_message(site, until)
+    spent = (t(key, n=n, site=SITE_NAME[site]) for key, n, u in used if u >= n)
+    return left, next(spent, None)
+
+
+def requests_left(site: Site) -> int | None:
+    return board_state(site)[0]
 
 
 def hold_reason(site: Site) -> str | None:
-    """Why `site` must be left alone right now (for the UI); None if it may be asked."""
-    until = db.board_paused_until(site)
-    if until:
-        return paused_message(site, until)
-    now = datetime.now(UTC)
-    for key, n, window in _budgets(site):
-        if db.requests_since(site, now - window) >= n:
-            return t(key, n=n, site=SITE_NAME[site])
-    return None
+    return board_state(site)[1]
 
 
 def block(site: Site) -> datetime:
@@ -319,8 +321,9 @@ class Runner:
         """Plan and start a run in the background. Returns a summary for the UI.
 
         Reads each search's first page, unless it's cached. `more`: the next page of each
-        search instead (the first, for one not cached). `force`: read the first pages again
-        even when cached («Aggiorna»); budgets and pauses still apply.
+        search instead; if one of them is no longer fresh, the whole query is read again from
+        its first pages (a lone new first page would reshuffle what's shown). `force`: read
+        the first pages again even when cached («Aggiorna»); budgets and pauses still apply.
         """
         if self.state.running:  # fail fast, before plan() possibly hits the geocoder
             raise RuntimeError(t("busy"))
@@ -330,6 +333,11 @@ class Runner:
         if not queries:
             raise ValueError(t("nothing_to_run"))
 
+        if more and any(feed.get(feed.key(pq, q, order)) is None for pq in queries):
+            log.info(
+                "show more over an expired search: reading the query from the start"
+            )
+            more, force = False, True
         holds = {site: hold_reason(site) for site in {pq.site for pq in queries}}
         steps, todo = [], []
         for pq in _taking_turns(queries):
@@ -398,11 +406,12 @@ class Runner:
                 if self._cancel.is_set():
                     break
                 step = s.steps[td.index]
-                # A board can go on hold mid-run: it throttled us, or a budget ran out.
-                if reason := hold_reason(td.pq.site):
-                    step.status, step.error = "skipped", reason
-                    continue
                 with board_lock(td.pq.site):
+                    # A board can go on hold mid-run: it throttled us (here, or while a
+                    # posting was being opened), or a budget ran out.
+                    if reason := hold_reason(td.pq.site):
+                        step.status, step.error = "skipped", reason
+                        continue
                     if self._wait_for(td.pq.site):
                         break
                     s.phase, s.current, s.pause_seconds = "searching", td.index, None
@@ -424,8 +433,6 @@ class Runner:
     def _search(self, td: _Todo, step: Step, q: Query, order: Order) -> None:
         """One list page: fills `step` and adds what it finds to the cache."""
         pq = td.pq
-        if td.start is not None and feed.get(td.key) is None:
-            td.start = None  # it expired while waiting: its next page means nothing now
         tag = (
             f"[{pq.site}] {pq.keyword!r} @ {pq.place_label} ({order}, from {td.start})"
         )
@@ -442,23 +449,26 @@ class Runner:
         if result.error:
             log.warning("%s board error: %s", tag, result.error)
 
+        # Kept whatever the title: the cache is shared by every query with this search, and
+        # their title filters differ (the view applies each one's).
         jobs = []
         for row in result.rows:
-            if not _in_country(pq, str(row["location"] or "")):
-                step.abroad += 1
-            elif not title_matches(q, str(row["title"] or "")):
-                step.off_title += 1  # the query could never show it
-            else:
+            if _in_country(pq, str(row["location"] or "")):
                 jobs.append(job_row(pq.site, row))
+            else:
+                step.abroad += 1
+        shown = [j for j in jobs if title_matches(q, str(j["title"] or ""))]
+        step.off_title = len(jobs) - len(shown)
+        step.found = len(shown)
+        step.new = step.found - db.count_opened([j["url"] for j in shown])
         failed = result.blocked or (result.error and not result.rows)
-        if not failed:
-            feed.add_page(
-                td.key, pq, order, jobs, result.detailed, result.next, td.start is None
-            )
-        step.found = len(jobs)
-        step.new = step.found - db.count_opened([j["url"] for j in jobs])
+        added = failed or feed.add_page(
+            td.key, pq, order, jobs, result.detailed, result.next, td.start is None
+        )
 
-        if result.blocked:
+        if not added:  # its search was dropped meanwhile: the page has nowhere to go
+            step.status, step.error = "error", t("expired")
+        elif result.blocked:
             until = block(pq.site)
             step.status, step.error = "error", paused_message(pq.site, until)
         elif result.error and not result.rows:

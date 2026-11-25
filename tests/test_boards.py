@@ -127,14 +127,24 @@ REFUSED = Response(
 def test_an_indeed_page_brings_the_text_and_the_next_cursor(monkeypatch):
     sent = fake_board(monkeypatch, indeed_page(), indeed_page(cursor=None))
     first = boards.page("indeed", INDEED_ARGS, "relevant", None)
-    assert first.requests == 1 and first.next == "c2"
+    assert first.requests == 1 and first.next == "relevance:c2"
     (row,) = first.rows
     assert "Spark" in row["description"] and first.detailed == {row["job_url"]}
-    last = boards.page("indeed", INDEED_ARGS, "recent", first.next)
+    last = boards.page("indeed", INDEED_ARGS, "relevant", first.next)
     assert last.next is None
     q1, q2 = (r["query"] for r in sent)
     assert "sort: RELEVANCE" in q1 and "limit: 25" in q1 and "cursor:" not in q1
-    assert "sort: DATE" in q2 and 'cursor: "c2"' in q2
+    assert "sort: RELEVANCE" in q2 and 'cursor: "c2"' in q2
+
+
+def test_a_later_indeed_page_keeps_its_first_pages_sort(monkeypatch):
+    """A cursor belongs to one sort's list, whatever happened to the date sort meanwhile."""
+    sent = fake_board(monkeypatch, indeed_page(), indeed_page())
+    first = boards.page("indeed", INDEED_ARGS, "recent", None)
+    assert first.next == "date:c2"
+    monkeypatch.setattr(boards, "_indeed_by_date", False)  # another search fell back
+    boards.page("indeed", INDEED_ARGS, "recent", first.next)
+    assert ["sort: DATE" in r["query"] for r in sent] == [True, True]
 
 
 def test_indeed_falls_back_to_relevance_if_it_refuses_the_date_sort(monkeypatch):
@@ -161,7 +171,7 @@ def test_a_bad_request_by_date_is_a_refused_sort(monkeypatch):
 def test_a_later_page_refused_by_date_isnt_asked_by_relevance(monkeypatch):
     """Its cursor belongs to the date-sorted list: asking it by relevance would mix them."""
     sent = fake_board(monkeypatch, REFUSED)
-    r = boards.page("indeed", INDEED_ARGS, "recent", "c2")
+    r = boards.page("indeed", INDEED_ARGS, "recent", "date:c2")
     assert r.error and len(sent) == 1 and boards._indeed_by_date
 
 
@@ -194,6 +204,20 @@ def test_two_postings_in_a_row_without_their_text_are_a_block(monkeypatch):
     assert boards.open_linkedin("4").blocked
     # The block's pause takes over: after it, one removed posting isn't a new block.
     assert not boards.open_linkedin("5").blocked
+
+
+def test_text_less_pages_far_apart_arent_a_block(monkeypatch):
+    view = "https://www.linkedin.com/jobs/view/{}"
+    fake_board(
+        monkeypatch,
+        Response(POSTING.format(text=""), url=view.format(1)),
+        Response(POSTING.format(text=""), url=view.format(2)),
+    )
+    assert not boards.open_linkedin("1").blocked
+    boards._empty_pages[:] = [
+        t - boards.EMPTY_PAGES_WINDOW for t in boards._empty_pages
+    ]
+    assert not boards.open_linkedin("2").blocked  # the first one is too old to count
 
 
 def test_the_session_hook_counts_requests_and_spots_throttling():
