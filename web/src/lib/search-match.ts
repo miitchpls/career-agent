@@ -11,6 +11,12 @@ export interface MatchLine {
 const list = (items: string[]) => items.join(msgs().match.or)
 const money = (n: number, cur: string) => `${cur} ${compact(n)}`
 
+/** "stipendio, modalità": the filters a posting misses, named. */
+export const missedFilters = (kinds: MatchCheck["kind"][]) => {
+  const t = msgs().match
+  return kinds.map((k) => t.kinds[k]).join(t.list)
+}
+
 /**
  * The sheet's words for one check: what departs from the search, or can't be told. A met one
  * is null: the posting was found by the search, so saying it matches ("✓ Basel") is noise.

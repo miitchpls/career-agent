@@ -2,9 +2,9 @@ from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
-from career_agent import db
+from career_agent import db, feed
 from career_agent.app import app
-from career_agent.query import Place, Query, Scope, match
+from career_agent.query import Place, Query, Scope, match, plan
 
 client = TestClient(app)
 
@@ -59,9 +59,18 @@ def test_without_a_place_of_its_own_the_place_is_unknown():
             Scope(places=[TORONTO], modes=["remote"]),
         ]
     )
-    # Opened from a link, or found only by an "anywhere" search: every group may apply.
-    assert states(q, hits=["link"]) == {"place": "unknown", "mode": "ok"}
-    assert states(q, hits=["*"]) == {"place": "unknown", "mode": "ok"}
+    # Found by no search we know of (opened from a link): every group may apply.
+    assert states(q, hits=[]) == {"place": "unknown", "mode": "ok"}
+    # Found only by an "anywhere" search: none of these groups is known to apply.
+    assert states(q, hits=["*"]) == {"place": "unknown"}
+
+
+def test_found_anywhere_only_the_groups_without_places_apply():
+    q = Query(scopes=[Scope(places=[BASEL]), Scope(anywhere=True, modes=["remote"])])
+    # An on-site job an "anywhere, remote" search returned: not in Basel, not remote.
+    onsite = JOB | {"work_mode": "onsite"}
+    assert states(q, onsite, hits=["*"]) == {"place": "unknown", "mode": "no"}
+    assert states(q, JOB | {"work_mode": "remote"}, hits=["*"])["mode"] == "ok"
 
 
 def test_salary_uses_the_top_of_the_range_in_the_searchs_currency():
@@ -85,28 +94,35 @@ def test_job_type_and_age():
     }
 
 
-def test_the_endpoint_reads_the_saved_posting_and_its_hits():
-    db.save_many(
-        [
-            {
-                "url": "u",
-                "site": "linkedin",
-                "title": "Go",
-                "work_mode": "remote",
-                "description": "x",
-            }
-        ],
-        "geo:1",
-        "Basel",
-        "go",
+def test_the_endpoint_reads_the_saved_posting_and_where_searches_found_it():
+    posting = {
+        "url": "u",
+        "site": "linkedin",
+        "title": "Go",
+        "work_mode": "remote",
+        "description": "x",
+    }
+    db.save_job(posting)
+    q = Query(
+        scopes=[Scope(places=[BASEL], modes=["hybrid"])],
+        title_any=["go"],
+        salary_min=90,
+        sites=["linkedin"],
     )
-    q = Query(scopes=[Scope(places=[BASEL], modes=["hybrid"])], salary_min=90)
+    (pq,), _, _ = plan(q)
+    feed.add_page(
+        feed.key(pq, q, "relevant"), pq, "relevant", [posting], set(), None, True
+    )
     r = client.post("/api/jobs/match", json={"url": "u", "query": q.model_dump()})
-    assert [(c["kind"], c["state"]) for c in r.json()["checks"]] == [
-        ("place", "ok"),
-        ("mode", "no"),
-        ("salary", "unknown"),
-    ]
+    checks = [("place", "ok"), ("mode", "no"), ("salary", "unknown")]
+    assert [(c["kind"], c["state"]) for c in r.json()["checks"]] == checks
+    # Only what keeps it out of the results: the mode; an unknown salary is allowed here.
+    assert [c["excludes"] for c in r.json()["checks"]] == [False, True, False]
+    # Once the search expires, the places stored when it was opened still answer.
+    db.save_job(posting, feed.places("u"))
+    feed.clear()
+    r = client.post("/api/jobs/match", json={"url": "u", "query": q.model_dump()})
+    assert [(c["kind"], c["state"]) for c in r.json()["checks"]] == checks
     assert (
         client.post("/api/jobs/match", json={"url": "nope", "query": {}}).status_code
         == 404

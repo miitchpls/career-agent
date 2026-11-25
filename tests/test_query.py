@@ -1,6 +1,6 @@
 import pytest
 
-from career_agent.query import BoardPlace, Place, Query, plan, where
+from career_agent.query import BoardPlace, Place, Query, passes, plan
 
 
 def q(**kw) -> Query:
@@ -8,35 +8,6 @@ def q(**kw) -> Query:
 
 
 ZURICH = {"city": "Zurigo", "country": "ch"}
-
-
-def test_where_combines_scopes_with_or_and_filters_with_and():
-    w = where(
-        q(
-            scopes=[
-                {"places": [ZURICH], "modes": ["onsite", "hybrid"]},
-                {"anywhere": True, "modes": ["remote"]},
-            ],
-            title_any=["python developer"],
-            title_none=["senior"],
-            salary_min=100,
-            salary_currency="EUR",
-        )
-    ).inline()
-    assert "h.place IN ('zurigo|ch')" in w
-    assert ") OR (work_mode IN ('remote'))" in w
-    assert "lower(title) LIKE '%python%' AND lower(title) LIKE '%developer%'" in w
-    assert "NOT (lower(title) LIKE '%senior%')" in w
-    assert (
-        "(COALESCE(max_amount, min_amount) * 1.0 / CASE upper(currency) WHEN 'EUR' THEN 1.0"
-        in w
-    )
-    assert ">= 100000" in w
-    assert w.count("\n  AND ") == 3
-
-
-def test_where_is_empty_without_filters():
-    assert where(Query()).text == ""
 
 
 def test_geo_place_matches_both_its_id_and_legacy_key():
@@ -123,7 +94,7 @@ def test_salary_currency_defaults_to_chf():
     assert Query().salary_currency == "CHF"
 
 
-def test_title_matches_mirrors_the_sql_filter():
+def test_title_matches_every_word_of_a_phrase():
     from career_agent.query import title_matches
 
     q = Query.model_validate(
@@ -152,3 +123,54 @@ def test_korea_is_searched_on_indeed_too():
     )
     assert not errors
     assert {s.site for s in searches} == {"linkedin", "indeed"}
+
+
+ROW = {
+    "url": "u",
+    "title": "Python developer",
+    "company": "Acme",
+    "description": "",
+    "work_mode": "unknown",
+    "job_type": None,
+    "date_posted": None,
+    "min_amount": None,
+    "max_amount": None,
+    "currency": None,
+}
+STRICT = {
+    "scopes": [{"places": [ZURICH], "modes": ["hybrid"]}],
+    "title_any": ["python"],
+    "salary_min": 80,
+    "salary_unknown": False,
+    "job_types": ["fulltime"],
+    "job_type_unknown": False,
+}
+
+
+def test_what_a_list_card_doesnt_say_cant_exclude_it():
+    """A LinkedIn card has no salary, type or text: unknown passes until it's opened."""
+    keys = ["zurigo|ch"]
+    assert passes(q(**STRICT), ROW, keys, {}, detailed=False)
+    assert not passes(q(**STRICT), ROW, keys, {}, detailed=True)
+
+
+def test_what_a_posting_says_against_the_filters_excludes_it():
+    keys = ["zurigo|ch"]
+    remote = ROW | {"work_mode": "remote"}
+    assert not passes(q(**STRICT), remote, keys, {}, detailed=False)
+    known = ROW | {
+        "work_mode": "hybrid",
+        "job_type": ",fulltime,",
+        "max_amount": 90_000,
+        "currency": "CHF",
+    }
+    assert passes(q(**STRICT), known, keys, {"CHF": 1.0}, detailed=True)
+    cheap = known | {"max_amount": 60_000}
+    assert not passes(q(**STRICT), cheap, keys, {"CHF": 1.0}, detailed=True)
+
+
+def test_title_and_free_text_filter_the_results():
+    query = q(title_any=["python"], title_none=["senior"], search="acme")
+    assert passes(query, ROW, [], {}, detailed=False)
+    assert not passes(query, ROW | {"title": "Senior Python dev"}, [], {}, False)
+    assert not passes(query, ROW | {"company": "Beta"}, [], {}, detailed=False)

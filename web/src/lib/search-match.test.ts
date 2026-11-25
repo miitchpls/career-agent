@@ -1,7 +1,7 @@
 import { describe as group, expect, it } from "vitest"
 
 import { setLocale } from "@/lib/i18n"
-import { describe } from "@/lib/search-match"
+import { describe, missedFilters } from "@/lib/search-match"
 
 group("search match", () => {
   it("says the unmet conditions in words, with what was searched", () => {
@@ -23,5 +23,12 @@ group("search match", () => {
     expect(describe({ kind: "job_type", state: "ok", value: ["fulltime"], expected: ["fulltime"] })).toBeNull()
     expect(describe({ kind: "posted", state: "ok", value: "2026-11-23", expected: 24 })).toBeNull()
     expect(describe({ kind: "posted", state: "unknown", value: null, expected: 24 })?.text).toBe("Data non indicata")
+  })
+})
+
+group("missedFilters", () => {
+  it("names the filters missed", () => {
+    setLocale("it")
+    expect(missedFilters(["salary", "mode"])).toBe("stipendio, modalità")
   })
 })

@@ -1,6 +1,7 @@
-"""Composable job query: one model drives both the DB filter (SQL) and the scrape plan.
+"""Composable job query: one model drives the board searches (plan) and the filters applied
+to what they return (passes).
 
-Semantics (mirrors a SQL WHERE):
+Semantics:
   - different filters are AND-ed
   - `scopes` are OR-ed; inside a scope: (place IN places) AND (work_mode IN modes)
   - `title_any` is OR-ed; every word of a phrase must appear in the title
@@ -143,36 +144,7 @@ class Query(BaseModel):
         return list(self.sites) or list(SITES)
 
 
-# --------------------------------------------------------------------------- SQL
-
-
-@dataclass
-class Sql:
-    text: str
-    params: list
-
-    def inline(self) -> str:
-        """Human-readable SQL with literals substituted (display only, never executed)."""
-        out, it = [], iter(self.params)
-        for ch in self.text:
-            if ch == "?":
-                v = next(it)
-                out.append(
-                    str(v)
-                    if isinstance(v, (int, float))
-                    else "'" + str(v).replace("'", "''") + "'"
-                )
-            else:
-                out.append(ch)
-        return "".join(out)
-
-
-def _like_all(column: str, phrase: str) -> Sql:
-    words = phrase.split()
-    return Sql(
-        " AND ".join(f"lower({column}) LIKE ?" for _ in words),
-        [f"%{w}%" for w in words],
-    )
+# --------------------------------------------------------------------------- filters
 
 
 def title_matches(q: Query, title: str) -> bool:
@@ -186,116 +158,6 @@ def title_matches(q: Query, title: str) -> bool:
     return (not q.title_any or any(map(has, q.title_any))) and not any(
         map(has, q.title_none)
     )
-
-
-def _join(parts: list[Sql], op: str) -> Sql:
-    if len(parts) == 1:
-        return parts[0]
-    return Sql(
-        f" {op} ".join(f"({p.text})" for p in parts),
-        [x for p in parts for x in p.params],
-    )
-
-
-def _in(column: str, values: list) -> Sql:
-    return Sql(f"{column} IN ({', '.join('?' * len(values))})", list(values))
-
-
-def salary_in(currency: str, rates: dict[str, float]) -> Sql:
-    """SQL for a posting's salary (top of the range) converted to `currency`.
-
-    NULL when the posting has no salary or its currency isn't in `rates`.
-    """
-    cases = " ".join("WHEN ? THEN ?" for _ in rates)
-    return Sql(
-        f"(COALESCE(max_amount, min_amount) * ? / CASE upper(currency) {cases} END)",
-        [rates.get(currency, 1.0), *(x for pair in rates.items() for x in pair)],
-    )
-
-
-def conditions(q: Query, rates: dict[str, float] | None = None) -> list[Sql]:
-    """WHERE predicates, AND-ed by the caller. Each one is only present if its filter is set."""
-    conds: list[Sql] = []
-
-    scope_parts = []
-    for s in q.scopes:
-        parts = []
-        if not s.anywhere and s.places:
-            keys = [k for p in s.places for k in p.keys]
-            parts.append(
-                Sql(
-                    f"EXISTS (SELECT 1 FROM hits h WHERE h.url = jobs.url AND h.place IN ({', '.join('?' * len(keys))}))",
-                    keys,
-                )
-            )
-        if s.modes:
-            parts.append(_in("work_mode", s.modes))
-        scope_parts.append(_join(parts, "AND") if parts else Sql("1 = 1", []))
-    if scope_parts:
-        conds.append(_join(scope_parts, "OR"))
-
-    if q.title_any:
-        conds.append(_join([_like_all("title", p) for p in q.title_any], "OR"))
-    for p in q.title_none:
-        c = _like_all("title", p)
-        conds.append(Sql(f"NOT ({c.text})", c.params))
-
-    if q.salary_min is not None:
-        amount = salary_in(q.salary_currency, rates or fx.FALLBACK)
-        c = Sql(f"{amount.text} >= ?", [*amount.params, q.salary_min * 1000])
-        if q.salary_unknown:
-            c = Sql(
-                f"({c.text}) OR ({amount.text} IS NULL)", [*c.params, *amount.params]
-            )
-        conds.append(c)
-
-    if q.job_types:
-        # Stored as ",fulltime,contract,": match whole tokens.
-        c = _join([Sql("job_type LIKE ?", [f"%,{t},%"]) for t in q.job_types], "OR")
-        if q.job_type_unknown:
-            c = Sql(f"({c.text}) OR (job_type IS NULL)", c.params)
-        conds.append(c)
-
-    if q.posted_within:
-        cutoff = (date.today() - timedelta(hours=q.posted_within)).isoformat()
-        conds.append(Sql("(date_posted IS NULL OR date_posted >= ?)", [cutoff]))
-
-    if q.sites:
-        conds.append(_in("site", q.sites))
-
-    if q.search.strip():
-        term = f"%{q.search.strip().lower()}%"
-        conds.append(
-            Sql(
-                "(lower(title) LIKE ? OR lower(company) LIKE ? OR lower(description) LIKE ?)",
-                [term] * 3,
-            )
-        )
-    return conds
-
-
-def _wrapped(text: str) -> bool:
-    """True if the whole expression is enclosed in one pair of parentheses."""
-    if not (text.startswith("(") and text.endswith(")")):
-        return False
-    depth = 0
-    for i, ch in enumerate(text):
-        depth += ch == "("
-        depth -= ch == ")"
-        if depth == 0 and i < len(text) - 1:
-            return False
-    return True
-
-
-def where(q: Query, rates: dict[str, float] | None = None) -> Sql:
-    conds = conditions(q, rates)
-    if not conds:
-        return Sql("", [])
-    texts = [
-        f"({c.text})" if " OR " in c.text and not _wrapped(c.text) else c.text
-        for c in conds
-    ]
-    return Sql("WHERE " + "\n  AND ".join(texts), [x for c in conds for x in c.params])
 
 
 # --------------------------------------------------------------------------- one posting
@@ -315,12 +177,17 @@ def match(
         out.append({"kind": kind, "state": state, **values})
 
     placed = [s for s in q.scopes if not s.anywhere and s.places]
-    # A posting opened from a link, or found only by "anywhere" searches, has no place of
-    # its own: whether it's in the search's places is unknown, and every group may apply.
-    hits = set(hit_places) - {"link", ANYWHERE_KEY}
+    # `hit_places`: where the searches that found it looked ("*" for anywhere). Found only by
+    # "anywhere" searches, it's in none of the places as far as we know: only the groups
+    # without places apply. Found by none we know of (a pasted link), every group may.
+    hits = set(hit_places) - {ANYWHERE_KEY}
     if placed and not hits:
         add("place", "unknown")
-        in_place = list(q.scopes)
+        in_place = (
+            [s for s in q.scopes if s.anywhere or not s.places]
+            if hit_places
+            else list(q.scopes)
+        )
     else:
         # Groups whose place condition holds (anywhere, or a place the posting was found in).
         in_place = [
@@ -370,6 +237,48 @@ def match(
         state = "unknown" if not posted else "ok" if posted >= cutoff else "no"
         add("posted", state, value=posted, expected=q.posted_within)
     return out
+
+
+def passes(
+    q: Query, job: dict, places: list[str], rates: dict[str, float], detailed: bool
+) -> bool:
+    """Whether a posting a search returned shows under the query's filters.
+
+    `places`: the place keys of the searches that found it. `detailed`: whether its text was
+    read (Indeed rows, opened postings). A LinkedIn list card has no salary, type or text, so
+    until it's opened what it doesn't say can't exclude it, whatever the "unknown" choices.
+    """
+    if not title_matches(q, str(job.get("title") or "")):
+        return False
+    term = q.search.strip().lower()
+    if term and not any(
+        term in str(job.get(k) or "").lower()
+        for k in ("title", "company", "description")
+    ):
+        return False
+    return not unmet(q, job, places, rates, detailed)
+
+
+def unmet(
+    q: Query, job: dict, places: list[str], rates: dict[str, float], detailed: bool
+) -> list[Check]:
+    """The checks of `match` that exclude the posting: what it states against the filters,
+    and, once its text was read, what it doesn't state where the query wants it stated."""
+    keep_unknown = {
+        "mode": False,  # an unknown mode passes only when "unknown" is asked (then it's ok)
+        "salary": q.salary_unknown,
+        "job_type": q.job_type_unknown,
+    }
+    return [
+        c["kind"]
+        for c in match(q, job, places, rates)
+        if c["state"] == "no"
+        or (
+            c["state"] == "unknown"
+            and detailed
+            and not keep_unknown.get(c["kind"], True)
+        )
+    ]
 
 
 # --------------------------------------------------------------------------- scrape plan

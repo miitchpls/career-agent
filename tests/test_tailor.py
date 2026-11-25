@@ -342,7 +342,7 @@ def test_generate_a_cv_and_see_it_go_stale(monkeypatch):
         client.post("/api/jobs/cv", json={"url": URL, "language": "en"}).status_code
         == 404
     )
-    db.save_many([JOB], "geo:1", "Zurigo", "go")
+    db.save_job(JOB)
     r = client.post("/api/jobs/cv", json={"url": URL, "language": "en"})
     assert r.status_code == 400  # no profile yet
     client.put("/api/profile", json={"profile": PROFILE})
@@ -355,8 +355,7 @@ def test_generate_a_cv_and_see_it_go_stale(monkeypatch):
     assert "<posting>" in calls[0]["prompt"] and "Giulia" not in calls[0]["prompt"]
     assert c["result"]["coverage"] == 83
     # The list knows which postings have one.
-    items = client.post("/api/jobs", json={}).json()["items"]
-    assert items[0]["has_cv"] is True
+    assert db.opened([URL], "CHF", {})[URL]["has_cv"] is True
     # A new revision of the profile makes it stale; the CV settings that steer it too.
     client.put("/api/profile", json={"profile": {**PROFILE, "summary": "Changed."}})
     assert client.get("/api/jobs/cv", params={"url": URL}).json()["cv"]["stale"]
@@ -366,7 +365,7 @@ def test_generate_a_cv_and_see_it_go_stale(monkeypatch):
 
 
 def test_a_failed_run_keeps_the_last_cv(monkeypatch):
-    db.save_many([JOB], "geo:1", "Zurigo", "go")
+    db.save_job(JOB)
     client.put("/api/profile", json={"profile": PROFILE})
     _engine(monkeypatch, answer())
     client.post("/api/jobs/cv", json={"url": URL, "language": "en"})
@@ -380,7 +379,7 @@ def test_a_failed_run_keeps_the_last_cv(monkeypatch):
 
 
 def test_the_score_steers_the_cv_only_for_this_profile(monkeypatch):
-    db.save_many([JOB], "geo:1", "Zurigo", "go")
+    db.save_job(JOB)
     saved = client.put("/api/profile", json={"profile": PROFILE}).json()
     rev = db.latest_profile()["id"]
     sid = db.create_score(URL, rev, "x", "claude", None)
@@ -399,7 +398,7 @@ def test_the_score_steers_the_cv_only_for_this_profile(monkeypatch):
 
 
 def test_pdf_of_the_last_cv(monkeypatch):
-    db.save_many([JOB], "geo:1", "Zurigo", "go")
+    db.save_job(JOB)
     client.put("/api/profile", json={"profile": PROFILE})
     body = {"url": URL, "template": "standard", "format": "a4"}
     assert client.post("/api/jobs/cv/pdf", json=body).status_code == 404
@@ -552,7 +551,7 @@ def test_newest_playwright_build_by_number(monkeypatch, tmp_path):
 
 
 def test_a_postings_own_cv_settings_change_only_its_cv(monkeypatch):
-    db.save_many([JOB], "geo:1", "Zurigo", "go")
+    db.save_job(JOB)
     client.put("/api/profile", json={"profile": PROFILE})
     client.put(
         "/api/cv/preferences", json={"guidance": "Never 'Senior'.", "style": "jake"}

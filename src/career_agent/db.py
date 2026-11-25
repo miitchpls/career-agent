@@ -1,17 +1,20 @@
-"""SQLite storage. `jobs` holds one row per posting; `hits` records which search found it."""
+"""SQLite storage. `jobs` holds the postings the user opened (with their text), never a
+search's list: those live in memory for a while (feed.py)."""
 
 import json
+import logging
 import sqlite3
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Literal
 
 from . import fx
-from .query import Query, Sql, salary_in, where
+from .query import Query
+
+log = logging.getLogger(__name__)
 
 DB_PATH = Path("data/jobs.db")
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 12
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -28,20 +31,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     currency    TEXT,
     description TEXT,
     first_seen  TEXT NOT NULL,
-    last_seen   TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS hits (
-    url     TEXT NOT NULL REFERENCES jobs(url) ON DELETE CASCADE,
-    place   TEXT NOT NULL,          -- "geo:<id>", legacy "city|cc", or "*" for anywhere
-    label   TEXT,                   -- human name of the place, e.g. "Zurigo"
-    keyword TEXT NOT NULL,
-    seen_at TEXT NOT NULL,
-    PRIMARY KEY (url, place, keyword)
-);
-CREATE INDEX IF NOT EXISTS hits_place ON hits(place);
-CREATE TABLE IF NOT EXISTS board_searches (
-    fingerprint TEXT PRIMARY KEY,   -- site|keyword|place|remote|hours_old (PlannedQuery.fingerprint)
-    ran_at      TEXT NOT NULL       -- last successful run, UTC ISO
+    last_seen   TEXT NOT NULL,
+    places      TEXT                -- ",geo:1,*,": where the searches that found it looked
 );
 CREATE TABLE IF NOT EXISTS board_requests (
     site     TEXT NOT NULL,
@@ -51,7 +42,8 @@ CREATE TABLE IF NOT EXISTS board_requests (
 CREATE INDEX IF NOT EXISTS board_requests_at ON board_requests(site, made_at);
 CREATE TABLE IF NOT EXISTS board_pauses (
     site  TEXT PRIMARY KEY,         -- a board that throttled us is left alone until then
-    until TEXT NOT NULL             -- UTC ISO
+    until TEXT NOT NULL,            -- UTC ISO
+    strikes INTEGER NOT NULL DEFAULT 1  -- pauses in a row, each one longer
 );
 CREATE TABLE IF NOT EXISTS saved_searches (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -187,23 +179,6 @@ JOB_COLUMNS = (
     "description",
 )
 
-Sort = Literal["posted", "salary"]
-Direction = Literal["desc", "asc"]
-
-
-def order_by(
-    sort: Sort, direction: Direction, currency: str, rates: dict[str, float]
-) -> Sql:
-    """ORDER BY clause. Postings without the value always go last, whatever the direction;
-    salaries are compared after converting them to `currency`."""
-    d = "ASC" if direction == "asc" else "DESC"
-    if sort == "posted":
-        return Sql(f"date_posted IS NULL, date_posted {d}, first_seen {d}", [])
-    amount = salary_in(currency, rates)
-    return Sql(
-        f"{amount.text} IS NULL, {amount.text} {d}", [*amount.params, *amount.params]
-    )
-
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
@@ -230,136 +205,158 @@ def init() -> None:
             conn.executescript("DROP TABLE IF EXISTS hits; DROP TABLE IF EXISTS jobs;")
         conn.executescript(SCHEMA)
         hit_columns = {r["name"] for r in conn.execute("PRAGMA table_info(hits)")}
-        if "label" not in hit_columns:  # v2 -> v3
+        if hit_columns and "label" not in hit_columns:  # v2 -> v3 (gone since v12)
             conn.execute("ALTER TABLE hits ADD COLUMN label TEXT")
         job_columns = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
         if "job_type" not in job_columns:  # v3 -> v4
             conn.execute("ALTER TABLE jobs ADD COLUMN job_type TEXT")
+        if "places" not in job_columns:  # v11 -> v12
+            conn.execute("ALTER TABLE jobs ADD COLUMN places TEXT")
+        pause_columns = {
+            r["name"] for r in conn.execute("PRAGMA table_info(board_pauses)")
+        }
+        if "strikes" not in pause_columns:  # v10 -> v11
+            conn.execute(
+                "ALTER TABLE board_pauses ADD COLUMN strikes INTEGER NOT NULL DEFAULT 1"
+            )
+        if 2 <= version < 12:
+            _keep_opened_jobs(conn)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
-def save_many(jobs: list[dict], place: str, label: str, keyword: str) -> int:
-    """Insert or refresh jobs from one board search and record their hits, in one transaction.
+def _keep_opened_jobs(conn: sqlite3.Connection) -> None:
+    """v11 -> v12: `jobs` held every posting a search found; now only those the user opened.
 
-    Returns how many jobs were new.
+    Kept: postings opened from a link, scored, with a CV, or tracked as an application. The
+    database is copied next to itself first (jobs.before-v12.db), since this deletes rows.
     """
-    if not jobs:
-        return 0
-    now = _now()
-    new = 0
-    with connect() as conn:
-        for job in jobs:
-            known = conn.execute(
-                "SELECT 1 FROM jobs WHERE url = ?", (job["url"],)
-            ).fetchone()
-            if known:
-                conn.execute(
-                    "UPDATE jobs SET last_seen = ? WHERE url = ?", (now, job["url"])
-                )
-            else:
-                conn.execute(
-                    f"INSERT INTO jobs ({', '.join(JOB_COLUMNS)}, first_seen, last_seen) "
-                    f"VALUES ({', '.join('?' * (len(JOB_COLUMNS) + 2))})",
-                    [job.get(c) for c in JOB_COLUMNS] + [now, now],
-                )
-                new += 1
-            conn.execute(
-                "INSERT OR REPLACE INTO hits (url, place, label, keyword, seen_at) VALUES (?, ?, ?, ?, ?)",
-                (job["url"], place, label, keyword, now),
-            )
-    return new
-
-
-def is_known(url: str) -> bool:
-    with connect() as conn:
-        return (
-            conn.execute("SELECT 1 FROM jobs WHERE url = ?", (url,)).fetchone()
-            is not None
+    tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master")}
+    used = [
+        "SELECT url FROM job_scores",
+        "SELECT url FROM job_cvs",
+        "SELECT url FROM applications",
+    ]
+    if "hits" in tables:
+        used.append("SELECT url FROM hits WHERE place = 'link'")
+    unused = f"FROM jobs WHERE url NOT IN ({' UNION '.join(used)})"
+    gone = conn.execute(f"SELECT count(*) {unused}").fetchone()[0]
+    if gone:
+        backup = DB_PATH.with_name(f"{DB_PATH.stem}.before-v12{DB_PATH.suffix}")
+        copy = sqlite3.connect(backup)
+        try:
+            conn.backup(copy)
+        finally:
+            copy.close()
+        conn.execute(f"DELETE {unused}")
+        log.warning("removed %d postings never opened; a copy is in %s", gone, backup)
+    if "hits" in tables:  # where the kept postings were found, before the table goes
+        conn.execute(
+            "UPDATE jobs SET places = (SELECT ',' || group_concat(DISTINCT place) || ',' "
+            "FROM hits WHERE hits.url = jobs.url AND place != 'link')"
         )
+    conn.execute("DROP TABLE IF EXISTS hits")
+    conn.execute("DROP TABLE IF EXISTS board_searches")
 
 
-def search(
-    q: Query,
-    sort: Sort,
-    offset: int,
-    limit: int,
-    as_of: int | None = None,
-    direction: Direction = "desc",
-) -> dict:
-    """One page of matching jobs.
+def _places_text(places: set[str]) -> str | None:
+    return f",{','.join(sorted(places))}," if places else None
 
-    `as_of` pins pagination to the jobs that existed when the first page was read (rowid),
-    so rows inserted by a running search don't shift later pages. The client gets it back
-    from the first page and passes it along.
-    """
-    fx_date, rates = fx.rates()
-    w = where(q, rates)
-    order = order_by(sort, direction, q.salary_currency, rates)
+
+def save_job(job: dict, places: list[str] = ()) -> bool:
+    """Store an opened posting (`JOB_COLUMNS`) and the places of the searches that found it;
+    for one already stored, refresh `last_seen` and add the places. New: True."""
+    now = _now()
     with connect() as conn:
-        if as_of is None:
-            as_of = conn.execute("SELECT COALESCE(max(rowid), 0) FROM jobs").fetchone()[
-                0
-            ]
-        pinned = f"{w.text} {'AND' if w.text else 'WHERE'} jobs.rowid <= ?"
-        total = conn.execute(
-            f"SELECT count(*) FROM jobs {pinned}", [*w.params, as_of]
+        if _merge_places(conn, job["url"], places):
+            conn.execute(
+                "UPDATE jobs SET last_seen = ? WHERE url = ?", (now, job["url"])
+            )
+            return False
+        conn.execute(
+            f"INSERT INTO jobs ({', '.join(JOB_COLUMNS)}, first_seen, last_seen, places) "
+            f"VALUES ({', '.join('?' * (len(JOB_COLUMNS) + 3))})",
+            [job.get(c) for c in JOB_COLUMNS] + [now, now, _places_text(set(places))],
+        )
+    return True
+
+
+def add_places(url: str, places: list[str]) -> None:
+    """Add to an opened posting the places of searches that found it (again)."""
+    with connect() as conn:
+        _merge_places(conn, url, places)
+
+
+def _merge_places(conn: sqlite3.Connection, url: str, places: list[str]) -> bool:
+    """Add `places` to a stored posting's; False if it isn't stored."""
+    row = conn.execute("SELECT places FROM jobs WHERE url = ?", (url,)).fetchone()
+    if not row:
+        return False
+    known = set(filter(None, (row["places"] or "").split(",")))
+    if not set(places) <= known:
+        conn.execute(
+            "UPDATE jobs SET places = ? WHERE url = ?",
+            (_places_text(known | set(places)), url),
+        )
+    return True
+
+
+def job_places(url: str) -> list[str]:
+    """Where the searches that found an opened posting looked (place keys, "*")."""
+    with connect() as conn:
+        row = conn.execute("SELECT places FROM jobs WHERE url = ?", (url,)).fetchone()
+    return sorted(filter(None, (row["places"] or "").split(","))) if row else []
+
+
+def count_opened(urls: list[str]) -> int:
+    """How many of `urls` the user opened."""
+    if not urls:
+        return 0
+    with connect() as conn:
+        return conn.execute(
+            f"SELECT count(*) FROM jobs WHERE url IN ({', '.join('?' * len(urls))})",
+            urls,
         ).fetchone()[0]
-        overall = conn.execute(
-            "SELECT count(*) FROM jobs WHERE rowid <= ?", (as_of,)
-        ).fetchone()[0]
+
+
+def opened(urls: list[str], currency: str, rates: dict[str, float]) -> dict[str, dict]:
+    """The postings among `urls` the user opened, as list items, by url."""
+    if not urls:
+        return {}
+    with connect() as conn:
         rows = conn.execute(
-            f"SELECT * FROM jobs {pinned} ORDER BY {order.text}, url LIMIT ? OFFSET ?",
-            [*w.params, as_of, *order.params, limit, offset],
+            f"SELECT * FROM jobs WHERE url IN ({', '.join('?' * len(urls))})", urls
         ).fetchall()
-        items = _items(conn, rows, q.salary_currency, rates)
-    return {
-        "items": items,
-        "total": total,
-        "overall": overall,
-        "as_of": as_of,
-        "fx_date": fx_date,
-    }
+        return {i["url"]: i for i in _items(conn, rows, currency, rates)}
 
 
 def _items(conn, rows, currency: str, rates: dict[str, float]) -> list[dict]:
-    """Job rows as the API returns them: with the salary in `currency` and their hits."""
-    items = [dict(r) for r in rows]
+    """Job rows as the API returns them: with the salary in `currency`, the last finished
+    score and whether a CV was written."""
+    items = [{**dict(r), "opened": True, "hits": []} for r in rows]
     for i in items:
-        i["salary_converted"] = _converted(i, currency, rates)
+        i["salary_converted"] = converted(i, currency, rates)
     if items:
         urls = [i["url"] for i in items]
-        hits = conn.execute(
-            f"SELECT url, place, label, keyword FROM hits WHERE url IN ({', '.join('?' * len(urls))})",
-            urls,
-        ).fetchall()
-        by_url: dict[str, list] = {}
-        for h in hits:
-            by_url.setdefault(h["url"], []).append(
-                {"place": h["place"], "label": h["label"], "keyword": h["keyword"]}
-            )
-        for i in items:
-            i["hits"] = by_url.get(i["url"], [])
-        # The last finished score of each posting, for the list.
+        marks = ", ".join("?" * len(urls))
         scores = conn.execute(
             f"SELECT url, value, decision FROM job_scores WHERE id IN ("
             f"SELECT max(id) FROM job_scores WHERE status = 'ready' "
-            f"AND url IN ({', '.join('?' * len(urls))}) GROUP BY url)",
+            f"AND url IN ({marks}) GROUP BY url)",
             urls,
         ).fetchall()
         by_score = {
             r["url"]: {"value": r["value"], "decision": r["decision"]} for r in scores
         }
-        for i in items:
-            i["score"] = by_score.get(i["url"])
         with_cv = {
             r["url"]
             for r in conn.execute(
                 f"SELECT DISTINCT url FROM job_cvs WHERE status = 'ready' "
-                f"AND url IN ({', '.join('?' * len(urls))})",
+                f"AND url IN ({marks})",
                 urls,
             )
         }
         for i in items:
+            i["score"] = by_score.get(i["url"])
             i["has_cv"] = i["url"] in with_cv
     return items
 
@@ -387,13 +384,6 @@ def get_job(url: str) -> dict | None:
     return dict(row) if row else None
 
 
-def hit_places(url: str) -> list[str]:
-    """The places (hits.place keys) where searches found a posting."""
-    with connect() as conn:
-        rows = conn.execute("SELECT DISTINCT place FROM hits WHERE url = ?", (url,))
-        return [r["place"] for r in rows]
-
-
 def fill_job(url: str, **fields) -> None:
     """Fill a saved posting's text fields (a pasted description, for one the board left empty)."""
     assert fields and set(fields) <= {"description", "company", "location", "work_mode"}
@@ -402,7 +392,7 @@ def fill_job(url: str, **fields) -> None:
         conn.execute(f"UPDATE jobs SET {sets} WHERE url = ?", [*fields.values(), url])
 
 
-def _converted(job: dict, currency: str, rates: dict[str, float]) -> dict | None:
+def converted(job: dict, currency: str, rates: dict[str, float]) -> dict | None:
     """The posting's salary range in the filter's currency, when it's stated in another one."""
     cur = (job.get("currency") or "").upper()
     if (
@@ -485,27 +475,6 @@ def mark_saved_run(saved_id: int) -> None:
 # --------------------------------------------------------------------------- board searches
 
 
-def last_board_search(fingerprint: str) -> datetime | None:
-    """When an identical board search last succeeded, if ever."""
-    with connect() as conn:
-        r = conn.execute(
-            "SELECT ran_at FROM board_searches WHERE fingerprint = ?", (fingerprint,)
-        ).fetchone()
-    return datetime.fromisoformat(r["ran_at"]) if r else None
-
-
-def record_board_search(fingerprint: str) -> None:
-    with connect() as conn:
-        conn.execute(
-            "INSERT INTO board_searches (fingerprint, ran_at) VALUES (?, ?) "
-            "ON CONFLICT(fingerprint) DO UPDATE SET ran_at = excluded.ran_at",
-            (fingerprint, _now()),
-        )
-
-
-# --------------------------------------------------------------------------- board usage
-
-
 def record_requests(site: str, requests: int) -> None:
     """Log the requests of one board search (counted against the daily budget)."""
     if not requests:
@@ -530,25 +499,28 @@ def requests_since(site: str, since: datetime) -> int:
         ).fetchone()[0]
 
 
-def pause_board(site: str, until: datetime) -> None:
+def pause_board(site: str, until: datetime, strikes: int = 1) -> None:
     with connect() as conn:
         conn.execute(
-            "INSERT INTO board_pauses (site, until) VALUES (?, ?) "
-            "ON CONFLICT(site) DO UPDATE SET until = excluded.until",
-            (site, until.isoformat(timespec="seconds")),
+            "INSERT INTO board_pauses (site, until, strikes) VALUES (?, ?, ?) "
+            "ON CONFLICT(site) DO UPDATE SET until = excluded.until, strikes = excluded.strikes",
+            (site, until.isoformat(timespec="seconds"), strikes),
         )
+
+
+def last_pause(site: str) -> tuple[datetime, int] | None:
+    """The latest pause on `site` (ended or not): when it ends, and its strike count."""
+    with connect() as conn:
+        r = conn.execute(
+            "SELECT until, strikes FROM board_pauses WHERE site = ?", (site,)
+        ).fetchone()
+    return (datetime.fromisoformat(r["until"]), r["strikes"]) if r else None
 
 
 def board_paused_until(site: str) -> datetime | None:
     """When a pause on `site` ends, if one is still running."""
-    with connect() as conn:
-        r = conn.execute(
-            "SELECT until FROM board_pauses WHERE site = ?", (site,)
-        ).fetchone()
-    if not r:
-        return None
-    until = datetime.fromisoformat(r["until"])
-    return until if until > datetime.now(UTC) else None
+    last = last_pause(site)
+    return last[0] if last and last[0] > datetime.now(UTC) else None
 
 
 # --- Settings -----------------------------------------------------------------------------

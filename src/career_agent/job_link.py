@@ -1,27 +1,25 @@
-"""Opening one posting from a link pasted by the user.
+"""Opening one posting: from a search's list, or from a link pasted by the user.
 
-A posting already saved opens from the database, without asking the board. A new one is read
-within the same limits as a search: refused while its board is paused (or, on LinkedIn, the
-daily budget is spent), counted, and a sign of throttling pauses the board. LinkedIn: from the
-posting's page. Indeed: by its key through the app API JobSpy searches with.
+Opening is what stores a posting. One already saved opens from the database, and one a cached
+search returned with its text (Indeed) is saved from there: neither asks the board. Otherwise
+it's read within the same limits as a search: refused while its board is paused or out of
+requests, counted, and a sign of throttling pauses the board. LinkedIn: from the posting's
+page. Indeed: by its key through the app API JobSpy searches with.
 
 When the board won't show it (a login wall, a pause, a removed posting), the user may paste the
 posting's text instead: it's saved under the same link, as if the board had returned it.
 """
 
 import re
+import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import parse_qs, urlparse
 
-from . import boards, db, scraper
+from . import boards, db, feed, scraper
 from .i18n import t
 
 LinkSite = Literal["linkedin", "indeed"]
-
-# Where pasted postings are filed in the `hits` table.
-LINK_PLACE = "link"
 
 _LINKEDIN_ID = re.compile(r"(?:^|-)(\d{6,12})/?$")
 
@@ -85,30 +83,42 @@ def open_link(raw: str, currency: str) -> tuple[dict, bool]:
         raise LinkError(t("link_unsupported"), 400)
     known = db.find_job(link.site, link.key, currency)
     if known:
+        db.add_places(
+            known["url"], feed.places(link.url)
+        )  # where it was just found again
         return known, True
     if link.site == "indeed" and boards.indeed_country(_host(link.url)) is None:
         raise LinkError(t("link_unsupported"), 400)
+    cached = feed.cached(link.url)
+    if cached and cached[1]:  # the search brought its text: nothing to ask
+        db.save_job(cached[0], feed.places(link.url))
+        return db.find_job(link.site, link.key, currency), False
 
     site = link.site
-    hold = scraper.hold_reason(site)
-    if hold:
-        raise LinkError(hold, 409)
-    result = (
-        boards.open_linkedin(link.key)
-        if site == "linkedin"
-        else boards.open_indeed(_host(link.url), link.key)
-    )
-    db.record_requests(site, result.requests)
-    if result.blocked:
-        until = datetime.now(UTC) + scraper.BLOCK_PAUSE
-        db.pause_board(site, until)
-        raise LinkError(scraper.paused_message(site, until), 409)
+    # Same pacing as a search: opening postings one after another isn't a burst either. The
+    # hold is checked, and a block recorded, under the board's lock: a run waiting for it then
+    # sees the pause, and this doesn't ask a board a run has just seen throttle.
+    with scraper.board_lock(site):
+        if hold := scraper.hold_reason(site):
+            raise LinkError(hold, 409)
+        time.sleep(scraper.turn_wait(site))
+        try:
+            result = (
+                boards.open_linkedin(link.key)
+                if site == "linkedin"
+                else boards.open_indeed(_host(link.url), link.key)
+            )
+        finally:
+            scraper.asked(site)
+        db.record_requests(site, result.requests)
+        if result.blocked:
+            until = scraper.block(site)
+            raise LinkError(scraper.paused_message(site, until), 409)
     if result.error and not result.rows:
         raise LinkError(t("link_failed", site=scraper.SITE_NAME[site]), 502)
     if not result.rows:
         raise LinkError(t("link_unreadable"), 404)
-    job = scraper.job_row(site, result.rows[0])
-    db.save_many([job], LINK_PLACE, None, "")
+    db.save_job(scraper.job_row(site, result.rows[0]), feed.places(link.url))
     return db.find_job(link.site, link.key, currency), False
 
 
@@ -171,7 +181,7 @@ def paste_job(
         "currency": None,
         "description": text,
     }
-    db.save_many([job], LINK_PLACE, None, "")
+    db.save_job(job, feed.places(link.url))
     return db.find_job(link.site, link.key, currency), False
 
 

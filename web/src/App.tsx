@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router"
-import { AlertCircleIcon, MoreHorizontalIcon, Settings2Icon } from "lucide-react"
+import { AlertCircleIcon, Loader2Icon, MoreHorizontalIcon, RefreshCwIcon, Settings2Icon } from "lucide-react"
 import { AnimatePresence, motion, type Transition } from "motion/react"
 
 import { Logo, useNeedleSpin } from "@/components/brand/logo"
@@ -17,6 +17,7 @@ import { StartSearchButton } from "@/components/run/start-search"
 import { useStartSearch } from "@/lib/use-start-search"
 import { SaveSearchButton, SavedSearchShelf, SavedSearchesMenu } from "@/components/saved/saved-searches"
 import { Button } from "@/components/ui/button"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import {
   DropdownMenu,
@@ -25,12 +26,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { api, type Job, type PastedPosting, type SavedSearch } from "@/lib/api"
+import { api, type Job, type Order, type PastedPosting, type Query, type SavedSearch } from "@/lib/api"
 import type { Application } from "@/lib/applications"
 import type { LinkSite } from "@/lib/job-link"
 import { applicationItem, legacyPath, parseRoute, postingItem, postingUrl, routePath, type AppTab, type JobTab, type Route } from "@/lib/routes"
 import { CLEARED, activeCount, fromQuery, toQuery, useFilters, type FilterState } from "@/lib/filters"
-import { useJobs, useRunStatus } from "@/lib/queries"
+import { useFeed, useRunStatus } from "@/lib/queries"
+import { ago } from "@/lib/format"
 import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { MOD_KEY } from "@/lib/platform"
@@ -38,6 +40,8 @@ import { openPreferences, setPreferencesOpen, usePreferencesOpen } from "@/lib/p
 
 const SPRING: Transition = { type: "spring", stiffness: 260, damping: 32, mass: 0.9 }
 const hasQuery = (f: FilterState) => activeCount(f) > 0 || !!f.q
+/** A query the boards can be asked with: at least a place and a title. */
+const searchable = (q: Query) => q.scopes.length > 0 && q.title_any.length > 0
 
 
 function Results({
@@ -57,30 +61,69 @@ function Results({
   const t = all.app
   const [, setFilters] = useFilters()
   const query = useMemo(() => toQuery(filters), [filters])
-  const jobs = useJobs(query, filters.sort, filters.dir)
+  const order = filters.order
+  const feed = useFeed(query, order)
   const running = !!useRunStatus().data?.running
-  const pages = jobs.data?.pages ?? []
-  // Pages share one snapshot, but dedupe anyway: row keys must be unique for the animations.
-  const items = [...new Map(pages.flatMap((p) => p.items).map((j) => [j.url, j])).values()]
-  const first = pages[0]
+  const start = useStartSearch()
+  const busy = running || start.isPending
+  const data = feed.data
+  const items = data?.items ?? []
+  // Some of this query's searches are read and still fresh: «Aggiorna» reads them again.
+  const loadedAny = !!data && data.missing < data.searches
+  const askLinkedIn = query.sites.length === 0 || query.sites.includes("linkedin")
+  const left = askLinkedIn ? (data?.boards.linkedin.left ?? null) : null
+  const changeOrder = (next: Order) => {
+    setFilters({ order: next })
+    // Picking the other order is asking for it: read it (each order is cached on its own).
+    if (searchable(query) && !busy) start.mutate({ query, order: next })
+  }
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h2 className="text-sm font-medium">{t.jobs}</h2>
-        {first && (
+        {data && data.loaded > 0 && (
           <motion.span
-            key={`${first.total}/${first.overall}`}
+            key={`${items.length}/${data.loaded}`}
             initial={{ opacity: 0, y: -2 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-xs text-muted-foreground tabular-nums"
           >
-            {first.total === first.overall ? first.overall : t.of(first.total, first.overall)}
+            {items.length === data.loaded ? data.loaded : t.of(items.length, data.loaded)}
           </motion.span>
         )}
-        <div className="ml-auto flex items-center gap-1.5">
-          {/* Saving and fetching live here, not in the composer: the bar only filters what's saved. */}
-          <StartSearchButton query={query} running={running} />
+        {data?.fetched_at && <span className="text-xs text-muted-foreground">{t.updated(ago(data.fetched_at))}</span>}
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            spacing={0}
+            value={order}
+            aria-label={t.order}
+            onValueChange={(v) => v && v !== order && changeOrder(v as Order)}
+          >
+            <ToggleGroupItem value="relevant" className="text-xs">
+              {t.orderRelevant}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="recent" className="text-xs">
+              {t.orderRecent}
+            </ToggleGroupItem>
+          </ToggleGroup>
+          {loadedAny && data.missing === 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              title={t.refreshHint}
+              disabled={busy}
+              onClick={() => start.mutate({ query, order, force: true })}
+            >
+              <RefreshCwIcon className={cn(busy && "animate-spin")} />
+              {t.refresh}
+            </Button>
+          ) : (
+            <StartSearchButton query={query} order={order} running={running} />
+          )}
           {/* Saving and loading live side by side: the bookmark pair of the results. */}
           <SavedSearchesMenu current={query} running={running} onLoad={onLoadSaved} onRun={onRunSaved} />
           <SaveSearchButton query={query} disabled={activeCount(filters) === 0} />
@@ -89,11 +132,11 @@ function Results({
 
       <RunProgress />
 
-      {jobs.isError && (
+      {feed.isError && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           <AlertCircleIcon className="size-4 shrink-0" />
-          {t.loadError(jobs.error.message)}
-          <Button variant="outline" size="xs" className="ml-auto" onClick={() => jobs.refetch()}>
+          {t.loadError(feed.error.message)}
+          <Button variant="outline" size="xs" className="ml-auto" onClick={() => feed.refetch()}>
             {all.common.retry}
           </Button>
         </div>
@@ -102,26 +145,29 @@ function Results({
       <div className="overflow-hidden rounded-xl border bg-card">
         <JobsTable
           jobs={items}
-          loading={jobs.isPending}
-          overall={first?.overall ?? 0}
+          loading={feed.isPending}
+          loaded={data?.loaded ?? 0}
           onOpen={onOpen}
           onClearFilters={onClearFilters}
-          sort={filters.sort}
-          direction={filters.dir}
-          // First click sorts descending (newest / highest); clicking the active column flips it.
-          onSort={(sort) =>
-            setFilters(sort === filters.sort ? { dir: filters.dir === "desc" ? "asc" : "desc" } : { sort, dir: null })
-          }
           searching={running}
-          searchAction={<StartSearchButton query={query} running={running} label={t.searchPortals} prominent />}
+          searchAction={<StartSearchButton query={query} order={order} running={running} label={t.searchPortals} prominent />}
         />
-        {first && items.length > 0 && jobs.hasNextPage && (
+        {data && data.loaded > 0 && (data.more ? (
           <div className="flex justify-center border-t px-4 py-2.5">
-            <Button variant="outline" size="sm" onClick={() => jobs.fetchNextPage()} disabled={jobs.isFetchingNextPage}>
+            <Button
+              variant="outline"
+              size="sm"
+              title={t.showMoreHint(left)}
+              disabled={busy}
+              onClick={() => start.mutate({ query, order, more: true })}
+            >
+              {busy && <Loader2Icon className="animate-spin" />}
               {t.showMore}
             </Button>
           </div>
-        )}
+        ) : data.missing === 0 && (
+          <p className="border-t px-4 py-2.5 text-center text-xs text-muted-foreground">{t.noMore}</p>
+        ))}
       </div>
     </div>
   )
@@ -192,11 +238,16 @@ export default function App() {
     enabled: !!jobItem,
     staleTime: 30_000,
   })
+  // The search's results, from the same cache the list reads (never a board request): whether
+  // the open posting is in them, marked as outside the filters.
+  const listedFeed = useFeed(query, filters.order)
   const [pending, setPending] = useState<PendingJob | null>(null)
   // Only the latest link may fill the sheet: closing it, or pasting another, drops a late answer.
   const linkRun = useRef(0)
   const openJobItem = (item: string, tab: JobTab = "posting") =>
     go({ page: "jobs", item, tab }, { replace: !!jobItem, keepBack: !!jobItem })
+  /** A row of the list: one already opened shows at once; another is read first (that's what stores it). */
+  const openRow = (job: Job) => (job.opened ? showJob(job) : void openLink(job.url, job.site))
   const showJob = (job: Job) => {
     const item = postingItem(job.url)
     if (!item) return
@@ -294,12 +345,12 @@ export default function App() {
 
   const loadSaved = (s: SavedSearch) => {
     if (route.page !== "jobs") openPage("jobs")
-    setFilters({ ...fromQuery(s.query), sort: filters.sort, dir: filters.dir })
+    setFilters({ ...fromQuery(s.query), order: filters.order })
     setSubmitted(true)
   }
   const runSavedSearch = (s: SavedSearch) => {
     loadSaved(s)
-    runSaved.mutate({ saved: s })
+    runSaved.mutate({ saved: s, order: filters.order })
   }
   const goHome = () => {
     linkRun.current++
@@ -394,7 +445,12 @@ export default function App() {
           </AnimatePresence>
           <Composer
             autoFocus={!submitted}
-            onSubmit={() => setSubmitted(true)}
+            onSubmit={() => {
+              setSubmitted(true)
+              // Running the query is asking the boards; what's cached comes back without a request.
+              if (searchable(query) && !status?.running && !runSaved.isPending)
+                runSaved.mutate({ query, order: filters.order })
+            }}
           />
           <AnimatePresence>
             {!submitted && (
@@ -434,7 +490,7 @@ export default function App() {
             >
               <Results
                 filters={filters}
-                onOpen={showJob}
+                onOpen={openRow}
                 onClearFilters={goHome}
                 onLoadSaved={loadSaved}
                 onRunSaved={runSavedSearch}
@@ -449,6 +505,7 @@ export default function App() {
         job={route.page === "jobs" && !pending ? (jobQuery.data ?? null) : null}
         pending={route.page === "jobs" ? sheetPending : null}
         query={submitted && !view ? query : null}
+        listed={!!jobQuery.data && !!listedFeed.data?.items.some((i) => i.url === jobQuery.data?.url && i.unmet?.length)}
         tab={jobTab}
         onTab={(tab) => jobItem && go({ page: "jobs", item: jobItem, tab }, { replace: true, keepBack: true })}
         onClose={closeSheet}

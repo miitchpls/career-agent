@@ -73,6 +73,12 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "de": "Limit von {n} Anfragen an {site} in den letzten 24 Stunden erreicht: versuche es später",
         "ko": "최근 24시간 동안 {site} 요청 한도 {n}회에 도달했습니다: 나중에 다시 시도하세요",
     },
+    "expired": {
+        "it": "ricerca scaduta nel frattempo: premi Aggiorna",
+        "en": "the search expired meanwhile: press Refresh",
+        "de": "die Suche ist inzwischen abgelaufen: drücke Aktualisieren",
+        "ko": "그사이 검색이 만료되었습니다: 새로고침을 누르세요",
+    },
     "throttled": {
         "it": "il portale ha limitato le richieste: riprova più tardi",
         "en": "the job board throttled the requests: try again later",
@@ -91,23 +97,11 @@ MESSAGES: dict[str, dict[Locale, str]] = {
         "de": "das Jobportal hat einen Fehler gemeldet",
         "ko": "채용 사이트가 오류를 반환했습니다",
     },
-    "missed": {
-        "it": "{n} non lette ({why}): riprovo alla prossima ricerca",
-        "en": "{n} not read ({why}): retrying on the next search",
-        "de": "{n} nicht gelesen ({why}): neuer Versuch bei der nächsten Suche",
-        "ko": "{n}건을 읽지 못함 ({why}): 다음 검색 때 다시 시도합니다",
-    },
-    "missed_budget": {
-        "it": "limite giornaliero di richieste raggiunto",
-        "en": "daily request limit reached",
-        "de": "tägliches Anfragelimit erreicht",
-        "ko": "일일 요청 한도 도달",
-    },
-    "missed_page": {
-        "it": "pagina dell'annuncio non leggibile",
-        "en": "posting page not readable",
-        "de": "Anzeigenseite nicht lesbar",
-        "ko": "채용공고 페이지를 읽을 수 없음",
+    "budget_hour": {
+        "it": "raggiunto il limite di {n} richieste a {site} nell'ultima ora: riprova più tardi",
+        "en": "reached the limit of {n} requests to {site} in the last hour: try again later",
+        "de": "Limit von {n} Anfragen an {site} in der letzten Stunde erreicht: versuche es später",
+        "ko": "최근 1시간 동안 {site} 요청 한도 {n}회에 도달했습니다: 나중에 다시 시도하세요",
     },
     # API
     "saved_not_found": {

@@ -265,7 +265,7 @@ def _settled():
 
 
 def _seed(description=JOB["description"]):
-    db.save_many([JOB | {"description": description}], "geo:1", "Zurigo", "go")
+    db.save_job(JOB | {"description": description})
 
 
 def test_scoring_needs_a_saved_posting_with_text_and_a_profile(monkeypatch):
@@ -274,7 +274,7 @@ def test_scoring_needs_a_saved_posting_with_text_and_a_profile(monkeypatch):
     assert start().status_code == 404
     _seed(description="")
     assert start().status_code == 400
-    db.save_many([JOB], "geo:1", "Zurigo", "go")  # a known url keeps its row
+    db.save_job(JOB)  # a known url keeps its row
     with db.connect() as conn:
         conn.execute(
             "UPDATE jobs SET description = ? WHERE url = ?", (JOB["description"], URL)
@@ -308,8 +308,8 @@ def test_a_score_runs_shows_in_the_list_and_goes_stale(monkeypatch):
     assert s["result"]["requirements"][0]["jdQuote"] and s["stale"] is False
     assert "English" in calls[0]["system"] and "No body rental" in calls[0]["prompt"]
 
-    page = client.post("/api/jobs", json={}).json()
-    assert page["items"][0]["score"] == {"value": 4.2, "decision": "apply"}
+    item = db.opened([URL], "CHF", {})[URL]
+    assert item["score"] == {"value": 4.2, "decision": "apply"}
 
     # Changing the preferences (or the profile, or the posting) makes it stale.
     client.put("/api/score/preferences", json={"note": "Only product companies."})
@@ -340,7 +340,7 @@ def test_a_failed_score_keeps_the_last_finished_one(monkeypatch):
     )
     assert body["earlier"]["id"] == first["id"]
     # The list keeps the finished score.
-    assert client.post("/api/jobs", json={}).json()["items"][0]["score"]["value"] == 4.2
+    assert db.opened([URL], "CHF", {})[URL]["score"]["value"] == 4.2
 
 
 def test_cancel_and_one_run_per_posting(monkeypatch):
@@ -414,7 +414,8 @@ def test_a_malformed_answer_fails_as_unexpected_shape(monkeypatch):
 def test_at_most_three_run_and_slots_are_let_go(monkeypatch):
     client.put("/api/profile", json={"profile": PROFILE})
     urls = [f"https://www.linkedin.com/jobs/view/40000000{i}" for i in range(4)]
-    db.save_many([JOB | {"url": u} for u in urls], "geo:1", "Zurigo", "go")
+    for u in urls:
+        db.save_job(JOB | {"url": u})
     _engine(monkeypatch, answer(), delay=0.3)
     for u in urls[:3]:
         assert client.post("/api/jobs/score", json={"url": u}).status_code == 202

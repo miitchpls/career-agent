@@ -1,6 +1,6 @@
 import pytest
 
-from career_agent import ai, boards, db, fx, geo
+from career_agent import ai, boards, db, feed, fx, geo, scraper
 
 
 @pytest.fixture(autouse=True)
@@ -9,6 +9,22 @@ def tmp_db(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "jobs.db")
     db.init()
     return db.DB_PATH
+
+
+@pytest.fixture(autouse=True)
+def empty_feed(monkeypatch):
+    """Every test starts with no cached search, and the boards' memory reset."""
+    feed.clear()
+    monkeypatch.setattr(boards, "_empty_pages", [])
+    monkeypatch.setattr(boards, "_indeed_by_date", True)
+    monkeypatch.setattr(scraper, "_last_request", {})
+    monkeypatch.setattr(boards, "INDEED_RETRY_PAUSE", 0)
+    # No real pauses between requests (the test of the pacing sets its own).
+    monkeypatch.setattr(
+        scraper, "REQUEST_PAUSE", {"linkedin": (0, 0), "indeed": (0, 0)}
+    )
+    yield
+    feed.clear()
 
 
 @pytest.fixture(autouse=True)

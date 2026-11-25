@@ -4,7 +4,7 @@ import type { RunStatus, RunStep } from "@/lib/api"
 import { offersPhrase, runMessage, stepOutcome } from "@/lib/run-messages"
 
 const step = (over: Partial<RunStep>): RunStep => ({
-  site: "linkedin", keyword: "contabile", place: "Basel", status: "pending", found: 0, new: 0, abroad: 0, off_title: 0, missed: 0, error: null, note: null, ran_at: null, ...over,
+  site: "linkedin", keyword: "contabile", place: "Basel", status: "pending", found: 0, new: 0, abroad: 0, off_title: 0, error: null, note: null, ran_at: null, ...over,
 })
 const status = (over: Partial<RunStatus>): RunStatus => ({
   running: true, started: "t", finished: null, phase: "searching", current: 0, pause_seconds: null,

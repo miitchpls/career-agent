@@ -4,8 +4,8 @@ import { getLocale, msgs } from "@/lib/i18n"
 export type WorkMode = "onsite" | "hybrid" | "remote" | "unknown"
 export type Site = "linkedin" | "indeed"
 export type JobType = "fulltime" | "parttime" | "contract" | "internship" | "volunteer"
-export type Sort = "posted" | "salary"
-export type Direction = "desc" | "asc"
+/** How the boards order a search: their "Most relevant" or "Most recent" button. */
+export type Order = "relevant" | "recent"
 
 export interface Place {
   city: string
@@ -62,10 +62,18 @@ export interface Job {
   max_amount: number | null
   currency: string | null
   description: string | null
-  first_seen: string
+  /** When it was opened (stored); null for a posting only listed by a search. */
+  first_seen: string | null
+  /** Opened: its page was read and it's stored, with its text. */
+  opened: boolean
+  /**
+   * In a search's list: what an opened LinkedIn posting's page says against the filters. Its
+   * list card didn't say it, so it showed; it stays, marked, rather than vanish once opened.
+   */
+  unmet?: MatchCheck["kind"][]
   /** Salary range in the filter's currency, when the posting states it in another one. */
   salary_converted: { min: number | null; max: number | null; currency: string } | null
-  /** Which board searches found this job; `label` is the place's name ("Zurigo", "Ovunque"). */
+  /** Which cached searches found this job; `label` is the place's name ("Zurigo", "Ovunque"). */
   hits: { place: string; label: string | null; keyword: string }[]
   /** The posting's last finished fit score, if any. */
   score: { value: number; decision: ScoreDecision } | null
@@ -73,14 +81,22 @@ export interface Job {
   has_cv?: boolean
 }
 
-export interface JobsPage {
+/** What a search shows: the pages read in the last hours (`/api/feed`), never a request. */
+export interface Feed {
+  /** Matching the filters, in the boards' order, page after page. */
   items: Job[]
-  total: number
-  overall: number
-  /** Pagination snapshot: pass it back for the next pages. */
-  as_of: number
-  /** Date of the exchange rates used for salaries. */
+  /** Postings loaded, before the filters. */
+  loaded: number
+  /** Board searches the query makes, and how many of them aren't loaded (or expired). */
+  searches: number
+  missing: number
+  /** Some search has a next page. */
+  more: boolean
+  /** When the oldest loaded search read its first page. */
+  fetched_at: string | null
   fx_date: string
+  /** Each board's requests left now (null: no budget) and why it's on hold, if it is. */
+  boards: Record<Site, { left: number | null; hold: string | null }>
 }
 
 /** Returned when a portal search starts. */
@@ -103,19 +119,17 @@ export interface RunStep {
   keyword: string
   place: string
   /**
-   * "recent": an identical search ran shortly before, so it was skipped.
+   * "recent": its first page is cached, so it wasn't asked again.
    * "skipped": put off, its board is paused or out of requests (why: `error`).
    */
   status: "pending" | "running" | "done" | "error" | "recent" | "skipped"
-  /** Matching the query, new or already saved. */
+  /** On the page read and matching the query; `new`: of those, never opened. */
   found: number
   new: number
   /** Discarded: outside the searched country. */
   abroad: number
   /** Discarded: the title can't match the query. */
   off_title: number
-  /** Matching, but their page couldn't be read this time. */
-  missed: number
   error: string | null
   /** A caveat on a "done" step, e.g. the board started throttling. */
   note: string | null
@@ -457,6 +471,8 @@ export interface MatchCheck {
   value?: string | number | string[] | null
   expected?: number | string[]
   currency?: string
+  /** It keeps the posting out of the search's results (the server's rule, as for the list). */
+  excludes?: boolean
 }
 
 /** A posting copied by the user from the board's page, when the board won't show it to us. */
@@ -467,11 +483,19 @@ export interface PastedPosting {
   description: string
 }
 
+export interface SearchOptions {
+  order: Order
+  more?: boolean
+  force?: boolean
+}
+
+const searchParams = ({ order, more = false, force = false }: SearchOptions) =>
+  new URLSearchParams({ order, more: String(more), force: String(force) }).toString()
+
 export const api = {
   places: (q: string) =>
     request<{ places: PlaceOption[]; offline: boolean }>(`/api/places?q=${encodeURIComponent(q)}`),
-  jobs: (query: Query, sort: Sort, direction: Direction, offset: number, asOf: number | null, limit = 50) =>
-    post<JobsPage>("/api/jobs", { query, sort, direction, offset, limit, as_of: asOf }),
+  feed: (query: Query, order: Order) => post<Feed>("/api/feed", { query, order }),
   /** One posting from a pasted link: from the database when saved, else read from the board. */
   openLink: (url: string, currency: string) => post<{ job: Job; known: boolean }>("/api/jobs/open", { url, currency }),
   applications: {
@@ -498,14 +522,15 @@ export const api = {
   },
   /** How a saved posting meets each condition of a search: no AI, no request to a board. */
   match: (url: string, query: Query) => post<{ checks: MatchCheck[] }>("/api/jobs/match", { url, query }),
-  search: (query: Query, force = false) => post<RunSummary>(`/api/search${force ? "?force=true" : ""}`, query),
+  /** `more`: the next page of each search. `force`: the first pages again, even if cached. */
+  search: (query: Query, opts: SearchOptions) => post<RunSummary>(`/api/search?${searchParams(opts)}`, query),
   cancel: () => post<{ ok: true }>("/api/cancel", {}),
   status: () => request<RunStatus>("/api/status"),
   saved: {
     list: () => request<SavedSearch[]>("/api/saved"),
     save: (name: string, query: Query) => post<SavedSearch & { created: boolean }>("/api/saved", { name, query }),
     remove: (id: number) => request<{ ok: true }>(`/api/saved/${id}`, { method: "DELETE" }),
-    run: (id: number, force = false) => post<RunSummary>(`/api/saved/${id}/run${force ? "?force=true" : ""}`, {}),
+    run: (id: number, opts: SearchOptions) => post<RunSummary>(`/api/saved/${id}/run?${searchParams(opts)}`, {}),
   },
   ai: {
     get: () => request<AiEngines>("/api/ai"),

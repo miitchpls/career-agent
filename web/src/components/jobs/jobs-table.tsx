@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, InboxIcon, SearchXIcon, type LucideIcon } from "lucide-react"
+import { InboxIcon, SearchXIcon, TriangleAlertIcon, type LucideIcon } from "lucide-react"
 import { AnimatePresence, motion, type Variants } from "motion/react"
 
 import { CvMark } from "@/components/cv/tailored-cv"
@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { Direction, Job, Sort } from "@/lib/api"
+import type { Job } from "@/lib/api"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
 import { useT } from "@/lib/i18n"
 import { DECISION_DOT, formatScore } from "@/lib/job-score"
+import { missedFilters } from "@/lib/search-match"
 import { cn } from "@/lib/utils"
 
 const MotionBody = motion.create(TableBody)
@@ -23,6 +24,29 @@ const body: Variants = { show: { transition: { staggerChildren: 0.035, delayChil
 const row: Variants = {
   hidden: { opacity: 0, y: 8 },
   show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } },
+}
+
+/**
+ * An opened posting whose page says what its list card didn't, against the filters: it stays
+ * where it was (rows never vanish under the user), marked like the row's other marks.
+ */
+function OffFiltersMark({ kinds }: { kinds: NonNullable<Job["unmet"]> }) {
+  const t = useT().jobs
+  if (!kinds.length) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="ml-1.5 inline-flex h-4 cursor-default items-center gap-0.5 rounded border border-amber-500/40 bg-amber-500/10 px-1 align-middle text-[10px] font-medium text-amber-700 dark:text-amber-300"
+          aria-label={t.offFiltersHint(missedFilters(kinds))}
+        >
+          <TriangleAlertIcon className="size-2.5" />
+          {t.offFilters}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-64">{t.offFiltersHint(missedFilters(kinds))}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 function EmptyState({
@@ -50,71 +74,22 @@ function EmptyState({
   )
 }
 
-/** A column header that sorts the list: arrow shows the active column and direction. */
-function SortableHead({
-  field,
-  sort,
-  direction,
-  onSort,
-  className,
-  children,
-}: {
-  field: Sort
-  sort: Sort
-  direction: Direction
-  onSort: (sort: Sort) => void
-  className?: string
-  children: React.ReactNode
-}) {
-  const active = sort === field
-  const Icon = !active ? ArrowUpDownIcon : direction === "desc" ? ArrowDownIcon : ArrowUpIcon
-  return (
-    <TableHead
-      aria-sort={active ? (direction === "desc" ? "descending" : "ascending") : "none"}
-      className="p-0"
-    >
-      <button
-        type="button"
-        onClick={() => onSort(field)}
-        className={cn(
-          // Same look as the other headers; only the arrow tells it's sortable / active.
-          "group/sort flex h-10 w-full items-center gap-1 px-2 font-medium",
-          className,
-        )}
-      >
-        {children}
-        <Icon
-          className={cn(
-            "size-3.5 text-muted-foreground",
-            !active && "opacity-0 transition-opacity group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100",
-          )}
-        />
-      </button>
-    </TableHead>
-  )
-}
-
 export function JobsTable({
   jobs,
   loading,
-  overall,
+  loaded,
   onOpen,
   onClearFilters,
-  sort,
-  direction,
-  onSort,
   searchAction,
   searching = false,
 }: {
   jobs: Job[]
   loading: boolean
-  overall: number
+  /** Postings the search loaded, before the filters. */
+  loaded: number
   onOpen: (job: Job) => void
   onClearFilters: () => void
-  sort: Sort
-  direction: Direction
-  onSort: (sort: Sort) => void
-  /** Fetch new postings from the boards: the next step when nothing saved matches. */
+  /** Read the search from the boards: the next step when nothing is loaded. */
   searchAction?: React.ReactNode
   /** A portal search is running: an empty list means "not yet", not "nothing found". */
   searching?: boolean
@@ -142,7 +117,7 @@ export function JobsTable({
     )
 
   if (!jobs.length)
-    return overall === 0 ? (
+    return loaded === 0 ? (
       <EmptyState
         icon={InboxIcon}
         title={t.noneSaved}
@@ -153,7 +128,7 @@ export function JobsTable({
       <EmptyState
         icon={SearchXIcon}
         title={t.noMatch}
-        description={t.noMatchHint(overall)}
+        description={t.noMatchHint(loaded)}
         action={
           <div className="flex items-center gap-2">
             {searchAction}
@@ -172,14 +147,10 @@ export function JobsTable({
           <TableHead className="w-[42%] pl-4">{t.position}</TableHead>
           <TableHead>{t.location}</TableHead>
           <TableHead>{t.mode}</TableHead>
-          <SortableHead field="salary" sort={sort} direction={direction} onSort={onSort}>
-            {t.salary}
-          </SortableHead>
+          <TableHead>{t.salary}</TableHead>
           <TableHead>{t.scoreColumn}</TableHead>
           <TableHead>{t.site}</TableHead>
-          <SortableHead field="posted" sort={sort} direction={direction} onSort={onSort} className="pr-4">
-            {t.postedOn}
-          </SortableHead>
+          <TableHead className="pr-4">{t.postedOn}</TableHead>
         </TableRow>
       </TableHeader>
       <MotionBody variants={body} initial="hidden" animate="show">
@@ -196,6 +167,7 @@ export function JobsTable({
             <TableCell className="max-w-0 pl-4">
               <div className="truncate font-medium">
                 {job.title}
+                <OffFiltersMark kinds={job.unmet ?? []} />
                 <CvMark shown={!!job.has_cv} />
                 <ApplicationMark url={job.url} />
               </div>

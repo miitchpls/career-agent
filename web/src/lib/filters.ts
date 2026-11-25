@@ -93,9 +93,8 @@ const filterParsers = {
   jtnull: parseAsBoolean.withDefault(true),
   sites: parseAsArrayOf(parseAsStringLiteral(["linkedin", "indeed"] as const)).withDefault([]),
   q: parseAsString.withDefault(""),
-  // Sorting is set from the table headers; old links with sort=added fall back to the default.
-  sort: parseAsStringLiteral(["posted", "salary"] as const).withDefault("posted"),
-  dir: parseAsStringLiteral(["desc", "asc"] as const).withDefault("desc"),
+  // The boards' own order: their "Most relevant" or "Most recent" button.
+  order: parseAsStringLiteral(["relevant", "recent"] as const).withDefault("relevant"),
 }
 
 /** Keys that count as "a filter" (excludes free-text search and sort, like Grabbit). */

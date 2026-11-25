@@ -26,9 +26,14 @@ each one it gives the line of your profile that covers it, or the gap to prepare
 isn't in the posting is dropped, and a dimension with no evidence doesn't count instead of becoming a neutral 3.
 If the posting states one of your dealbreakers, the advice is to skip, even with a high score.
 
-**It doesn't get you banned.** Each run allows 16 searches, 10–20 seconds apart. LinkedIn gets at most 150 requests
-a day. An identical search from the last six hours is skipped, because its results are already saved. At the first
-sign of throttling, that board is left alone for 45 minutes, and the pause holds across a restart.
+**It browses the boards like you would.** Results come live from LinkedIn and Indeed, most relevant or most
+recent, as the boards' own buttons sort them. **Show more** loads the next page of each search. A search costs one
+request per page; a posting's own page is read only when you open it, and only what you open is stored.
+
+**It doesn't get you banned.** Requests to a board are 3–7 seconds apart. LinkedIn gets at most 70 requests an hour
+and 150 a day, Indeed 100 a day. A page read in the last hour (newest first) or three hours (by relevance) comes
+from memory, not the board. At the first sign of throttling, that board is left alone for 45 minutes, then 6 and
+24 hours if it happens again within a day, and the pause holds across a restart.
 
 **Applications keep the posting.** Each application keeps a copy of the posting's text, taken when you add it, so
 you can still prepare for the interview after the ad is gone. Above the list, a Sankey chart shows where your
