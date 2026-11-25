@@ -66,6 +66,8 @@ export interface Job {
   salary_converted: { min: number | null; max: number | null; currency: string } | null
   /** Which board searches found this job; `label` is the place's name ("Zurigo", "Ovunque"). */
   hits: { place: string; label: string | null; keyword: string }[]
+  /** The posting's last finished fit score, if any. */
+  score: { value: number; decision: ScoreDecision } | null
 }
 
 export interface JobsPage {
@@ -299,11 +301,107 @@ export interface ReviewState {
   earlier: ProfileReview | null
 }
 
+// --- Fit score (career_agent.score) -------------------------------------------------------------
+
+/** From the score through one table: 4.5 strong apply, 4.0 apply, 3.0 consider, below skip. */
+export type ScoreDecision = "strong_apply" | "apply" | "consider" | "skip"
+export type ScoreDimension = "cv" | "salary" | "company"
+export type Importance = "critical" | "high" | "meaningful" | "preferred" | "low_signal"
+
+export interface ScoreResult {
+  /** 1.0-5.0 */
+  score: number
+  decision: ScoreDecision
+  verdict: string
+  /** How many dimensions rest on evidence; not a probability. */
+  confidence: "high" | "medium" | "low"
+  /** A dimension without evidence has `score` null: it doesn't count. */
+  dimensions: Record<ScoreDimension, { status: "supported" | "partial" | "unknown"; score: number | null; note: string }>
+  /** Most important first; within a band, unmet first. */
+  requirements: {
+    requirement: string
+    importance: Importance
+    /** What the importance rests on: the posting's words, its structure, or an estimate. */
+    evidence: "stated" | "structural" | "inferred"
+    jdQuote: string | null
+    match: "strong" | "partial" | "missing" | "na"
+    profileEvidence: string
+  }[]
+  /** Requirements past the row budget. */
+  omitted: number
+  redFlags: { text: string; jdQuote: string | null; hardStop: boolean }[]
+  hardStop: boolean
+  gaps: { requirement: string; risk: string; mitigation: string }[]
+  checks: string[]
+}
+
+export interface JobScore {
+  id: number
+  url: string
+  status: "running" | "ready" | "failed"
+  provider: string
+  model: string | null
+  value: number | null
+  decision: ScoreDecision | null
+  result: ScoreResult | null
+  error: string | null
+  created_at: string
+  /** Ready scores: the profile, the score preferences or the posting changed since. */
+  stale?: boolean
+}
+
+/** A posting's latest score and, while a new one runs or after it fails, the last finished one. */
+export interface ScoreState {
+  score: JobScore | null
+  earlier: JobScore | null
+}
+
+/** What the fit score reads whatever the search (`career_agent.score.ScorePrefs`). */
+export interface ScorePrefs {
+  /** Hard no's in the user's words: a posting that states one is a "skip". */
+  dealbreakers: string[]
+  note: string
+}
+
+/** How a posting meets one condition of the current search (`career_agent.query.match`). */
+export interface MatchCheck {
+  kind: "place" | "mode" | "salary" | "job_type" | "posted"
+  /** unknown: the posting doesn't say. */
+  state: "ok" | "unknown" | "no"
+  value?: string | number | string[] | null
+  expected?: number | string[]
+  currency?: string
+}
+
+/** A posting copied by the user from the board's page, when the board won't show it to us. */
+export interface PastedPosting {
+  title: string
+  company: string
+  location: string
+  description: string
+}
+
 export const api = {
   places: (q: string) =>
     request<{ places: PlaceOption[]; offline: boolean }>(`/api/places?q=${encodeURIComponent(q)}`),
   jobs: (query: Query, sort: Sort, direction: Direction, offset: number, asOf: number | null, limit = 50) =>
     post<JobsPage>("/api/jobs", { query, sort, direction, offset, limit, as_of: asOf }),
+  /** One posting from a pasted link: from the database when saved, else read from the board. */
+  openLink: (url: string, currency: string) => post<{ job: Job; known: boolean }>("/api/jobs/open", { url, currency }),
+  /** A posting the board wouldn't show, from the text the user copied: no request is made. */
+  pasteJob: (url: string, posting: PastedPosting, currency: string) =>
+    post<{ job: Job; known: boolean }>("/api/jobs/paste", { url, ...posting, currency }),
+  score: {
+    get: (url: string) => request<ScoreState>(`/api/jobs/score?url=${encodeURIComponent(url)}`),
+    start: (url: string) => post<ScoreState>("/api/jobs/score", { url }),
+    cancel: (url: string) => del<ScoreState>(`/api/jobs/score?url=${encodeURIComponent(url)}`),
+  },
+  scorePrefs: {
+    get: () => request<ScorePrefs>("/api/score/preferences"),
+    save: (prefs: ScorePrefs) => put<ScorePrefs>("/api/score/preferences", prefs),
+  },
+  /** How a saved posting meets each condition of a search: no AI, no request to a board. */
+  match: (url: string, query: Query) => post<{ checks: MatchCheck[] }>("/api/jobs/match", { url, query }),
   search: (query: Query, force = false) => post<RunSummary>(`/api/search${force ? "?force=true" : ""}`, query),
   cancel: () => post<{ ok: true }>("/api/cancel", {}),
   status: () => request<RunStatus>("/api/status"),
