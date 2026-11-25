@@ -230,6 +230,25 @@ export const zh: Messages = {
     position: "职位",
     location: "地点",
     site: "招聘网站",
+    hide: "隐藏",
+    hideHint: "隐藏职位",
+    hideSheetHint: "不感兴趣？它会从所有搜索的结果中消失，随时可以恢复。",
+    restore: "恢复",
+    restoreHint: "重新显示在搜索结果中",
+    hidden: "职位已隐藏",
+    undo: "撤销",
+    hideFailed: "无法隐藏",
+    restoreFailed: "无法恢复",
+    hiddenMark: "已隐藏",
+    hiddenCount: (n) => `已隐藏 ${n} 个`,
+    showHiddenHint: "同时显示已隐藏的职位",
+    hideHiddenHint: "再次隐藏已隐藏的职位",
+    allHidden: "你隐藏了所有职位",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "唯一符合筛选条件的职位已被隐藏。请加载更多页面，或重新查看它。"
+        : `符合筛选条件的 ${n} 个职位都已隐藏。请加载更多页面，或重新查看它们。`,
+    showHidden: "显示已隐藏",
   },
 
   saved: {

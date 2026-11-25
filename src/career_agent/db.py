@@ -14,7 +14,7 @@ from .query import Query
 log = logging.getLogger(__name__)
 
 DB_PATH = Path("data/jobs.db")
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -155,6 +155,13 @@ CREATE TABLE IF NOT EXISTS application_events (
     at             TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS application_events_app ON application_events(application_id, id);
+CREATE TABLE IF NOT EXISTS dismissed (   -- v13: postings the user hid from the results
+    url           TEXT PRIMARY KEY,
+    site          TEXT,
+    title         TEXT,
+    company       TEXT,
+    dismissed_at  TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS profile_files (
     id          TEXT PRIMARY KEY,   -- random, used in the URL
     filename    TEXT,
@@ -256,6 +263,31 @@ def _keep_opened_jobs(conn: sqlite3.Connection) -> None:
         )
     conn.execute("DROP TABLE IF EXISTS hits")
     conn.execute("DROP TABLE IF EXISTS board_searches")
+
+
+def dismiss(url: str, site: str | None, title: str | None, company: str | None) -> None:
+    """Hide a posting from every search's results; hiding it again keeps the first date."""
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO dismissed (url, site, title, company, dismissed_at) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(url) DO NOTHING",
+            (url, site, title, company, _now()),
+        )
+
+
+def restore(url: str) -> bool:
+    """Show a hidden posting again; False when it wasn't hidden."""
+    with connect() as conn:
+        return conn.execute("DELETE FROM dismissed WHERE url = ?", (url,)).rowcount > 0
+
+
+def dismissed_urls() -> list[str]:
+    """The postings the user hid, most recent first."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT url FROM dismissed ORDER BY dismissed_at DESC, rowid DESC"
+        ).fetchall()
+    return [r["url"] for r in rows]
 
 
 def _places_text(places: set[str]) -> str | None:

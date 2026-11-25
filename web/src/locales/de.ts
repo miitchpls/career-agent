@@ -232,6 +232,25 @@ export const de: Messages = {
     position: "Position",
     location: "Ort",
     site: "Jobportal",
+    hide: "Ausblenden",
+    hideHint: "Stelle ausblenden",
+    hideSheetHint: "Kein Interesse? Sie verschwindet aus den Ergebnissen jeder Suche, und du kannst sie jederzeit wiederherstellen.",
+    restore: "Wiederherstellen",
+    restoreHint: "Zeigt sie wieder in den Suchergebnissen",
+    hidden: "Stelle ausgeblendet",
+    undo: "Rückgängig",
+    hideFailed: "Ausblenden fehlgeschlagen",
+    restoreFailed: "Wiederherstellen fehlgeschlagen",
+    hiddenMark: "Ausgeblendet",
+    hiddenCount: (n) => `${n} ausgeblendet`,
+    showHiddenHint: "Auch die ausgeblendeten Stellen zeigen",
+    hideHiddenHint: "Die ausgeblendeten Stellen wieder ausblenden",
+    allHidden: "Du hast alle Stellen ausgeblendet",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "Die einzige Stelle, die zu den Filtern passt, ist ausgeblendet. Lade weitere Seiten oder sieh sie dir noch einmal an."
+        : `Alle ${n} Stellen, die zu den Filtern passen, sind ausgeblendet. Lade weitere Seiten oder sieh sie dir noch einmal an.`,
+    showHidden: "Ausgeblendete zeigen",
   },
 
   saved: {

@@ -1,5 +1,6 @@
-import { InboxIcon, SearchXIcon, TriangleAlertIcon, type LucideIcon } from "lucide-react"
-import { AnimatePresence, motion, type Variants } from "motion/react"
+import { useState } from "react"
+import { EyeIcon, EyeOffIcon, InboxIcon, SearchXIcon, TriangleAlertIcon, Undo2Icon, type LucideIcon } from "lucide-react"
+import { AnimatePresence, motion, useReducedMotion, type TargetAndTransition, type Variants } from "motion/react"
 
 import { CvMark } from "@/components/cv/tailored-cv"
 import { ApplicationMark } from "@/components/jobs/apply-control"
@@ -23,7 +24,71 @@ const MotionRow = motion.create(TableRow)
 const body: Variants = { show: { transition: { staggerChildren: 0.035, delayChildren: 0.05 } } }
 const row: Variants = {
   hidden: { opacity: 0, y: 8 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } },
+  show: { opacity: 1, y: 0, filter: "blur(0px)", x: 0, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } },
+}
+/** A row the filters took out: it just fades. */
+const FADE: TargetAndTransition = { opacity: 0, transition: { duration: 0.12 } }
+/**
+ * A row the user hid: it slips aside and blurs away, then the rows below close the gap (their
+ * layout animation), two beats rather than one jump. To the left: overflow on that side can't
+ * be scrolled to, so the table's horizontal scrollbar doesn't flash while it leaves.
+ */
+const TOSS: TargetAndTransition = {
+  opacity: 0,
+  x: -20,
+  filter: "blur(3px)",
+  transition: { duration: 0.2, ease: [0.4, 0, 1, 1] },
+}
+/** The rows below glide up into the space a row left. */
+const GLIDE = { layout: { type: "spring", stiffness: 520, damping: 42, mass: 0.8 } } as const
+
+/** A hidden posting shown with the others («N nascoste» pressed): dimmed, labelled. */
+function HiddenMark() {
+  const t = useT().jobs
+  return (
+    <span className="ml-1.5 inline-flex h-4 items-center gap-0.5 rounded border px-1 align-middle text-[10px] font-medium text-muted-foreground">
+      <EyeOffIcon className="size-2.5" />
+      {t.hiddenMark}
+    </span>
+  )
+}
+
+/** The end of a row: hide it (shown on hover or focus) or, once hidden, restore it. */
+function HideButton({ hidden, onClick }: { hidden: boolean; onClick: () => void }) {
+  const t = useT().jobs
+  const label = hidden ? t.restore : t.hideHint
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={label}
+          onClick={(e) => {
+            e.stopPropagation() // not a click on the row, which opens the posting
+            onClick()
+          }}
+          className={cn(
+            "text-muted-foreground transition-opacity hover:text-foreground focus-visible:opacity-100",
+            // Touch screens have no hover: the button stays in sight there.
+            !hidden && "opacity-0 group-hover/row:opacity-100 pointer-coarse:opacity-100",
+          )}
+        >
+          {/* The new icon pops in with a small turn: restoring reads as the opposite gesture. */}
+          <motion.span
+            key={hidden ? "restore" : "hide"}
+            initial={{ opacity: 0, scale: 0.6, rotate: hidden ? -90 : 0 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="grid place-items-center"
+          >
+            {hidden ? <Undo2Icon /> : <EyeOffIcon />}
+          </motion.span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 /**
@@ -78,16 +143,29 @@ export function JobsTable({
   jobs,
   loading,
   loaded,
+  dismissed,
+  showDismissed = false,
   onOpen,
+  onDismiss,
+  onRestore,
+  onShowDismissed,
   onClearFilters,
   searchAction,
   searching = false,
 }: {
+  /** The postings that meet the filters, hidden ones included. */
   jobs: Job[]
   loading: boolean
   /** Postings the search loaded, before the filters. */
   loaded: number
+  /** The links of the postings the user hid: left out, unless `showDismissed`. */
+  dismissed: ReadonlySet<string>
+  /** Show the hidden postings too, dimmed, each with its button to restore it. */
+  showDismissed?: boolean
   onOpen: (job: Job) => void
+  onDismiss: (job: Job) => void
+  onRestore: (job: Job) => void
+  onShowDismissed: () => void
   onClearFilters: () => void
   /** Read the search from the boards: the next step when nothing is loaded. */
   searchAction?: React.ReactNode
@@ -95,6 +173,23 @@ export function JobsTable({
   searching?: boolean
 }) {
   const t = useT().jobs
+  const reduced = useReducedMotion()
+  const visible = showDismissed ? jobs : jobs.filter((j) => !dismissed.has(j.url))
+  const allHidden = visible.length === 0 && jobs.length > 0
+  // Hiding the last row: the table stays until the row has left, then the empty state comes.
+  // `leaving` is set only when rows were on screen and are now all gone (so they're exiting),
+  // and dropped as soon as that's no longer the case: reaching "all hidden" any other way (new
+  // results, a reload) shows the empty state at once. (State adjusted during render.)
+  const onScreen = loading ? 0 : visible.length
+  const [before, setBefore] = useState(onScreen)
+  const [leaving, setLeaving] = useState(false)
+  if (onScreen !== before) {
+    setBefore(onScreen)
+    setLeaving(onScreen === 0 && before > 0 && allHidden)
+  } else if (leaving && (loading || !allHidden)) setLeaving(false)
+  const exit = (url: string) => (gone: ReadonlySet<string> | undefined) =>
+    gone?.has(url) ? (reduced ? { opacity: 0, transition: { duration: 0.15 } } : TOSS) : FADE
+
   if (loading)
     return (
       <div className="space-y-2 p-4">
@@ -114,6 +209,23 @@ export function JobsTable({
           {t.arriving}
         </p>
       </div>
+    )
+
+  if (allHidden && !leaving)
+    return (
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
+        <EmptyState
+          icon={EyeOffIcon}
+          title={t.allHidden}
+          description={t.allHiddenHint(jobs.length)}
+          action={
+            <Button variant="outline" size="sm" onClick={onShowDismissed}>
+              <EyeIcon />
+              {t.showHidden}
+            </Button>
+          }
+        />
+      </motion.div>
     )
 
   if (!jobs.length)
@@ -150,23 +262,39 @@ export function JobsTable({
           <TableHead>{t.salary}</TableHead>
           <TableHead>{t.scoreColumn}</TableHead>
           <TableHead>{t.site}</TableHead>
-          <TableHead className="pr-4">{t.postedOn}</TableHead>
+          <TableHead>{t.postedOn}</TableHead>
+          <TableHead className="w-10 pr-3">
+            <span className="sr-only">{t.hideHint}</span>
+          </TableHead>
         </TableRow>
       </TableHeader>
       <MotionBody variants={body} initial="hidden" animate="show">
-        <AnimatePresence initial={true}>
-        {jobs.map((job) => (
+        {/* `custom`: a leaving row reads the hidden links of now, so it knows whether it was
+            hidden (its own props are frozen once it's gone). */}
+        <AnimatePresence
+          initial={true}
+          custom={dismissed}
+          onExitComplete={() => setLeaving(false)}
+        >
+        {visible.map((job) => {
+          const hidden = dismissed.has(job.url)
+          return (
           <MotionRow
             key={job.url}
             layout="position"
-            variants={row}
-            exit={{ opacity: 0, transition: { duration: 0.12 } }}
-            className="cursor-pointer"
+            variants={{ ...row, exit: exit(job.url) }}
+            exit="exit"
+            transition={GLIDE}
+            className={cn(
+              "group/row cursor-pointer [&>td]:transition-opacity [&>td]:duration-300",
+              hidden && "[&>td:not(:last-child)]:opacity-50",
+            )}
             onClick={() => onOpen(job)}
           >
             <TableCell className="max-w-0 pl-4">
               <div className="truncate font-medium">
                 {job.title}
+                {hidden && <HiddenMark />}
                 <OffFiltersMark kinds={job.unmet ?? []} />
                 <CvMark shown={!!job.has_cv} />
                 <ApplicationMark url={job.url} />
@@ -196,7 +324,7 @@ export function JobsTable({
             <TableCell>
               <SiteMark site={job.site} />
             </TableCell>
-            <TableCell className="pr-4 text-xs text-muted-foreground tabular-nums">
+            <TableCell className="text-xs text-muted-foreground tabular-nums">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span>{relativeDay(job.date_posted)}</span>
@@ -204,8 +332,12 @@ export function JobsTable({
                 <TooltipContent>{fullDate(job.date_posted)}</TooltipContent>
               </Tooltip>
             </TableCell>
+            <TableCell className="w-10 pr-3 text-right">
+              <HideButton hidden={hidden} onClick={() => (hidden ? onRestore(job) : onDismiss(job))} />
+            </TableCell>
           </MotionRow>
-        ))}
+          )
+        })}
         </AnimatePresence>
       </MotionBody>
     </Table>

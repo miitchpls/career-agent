@@ -232,6 +232,25 @@ export const en: Messages = {
     position: "Position",
     location: "Location",
     site: "Job board",
+    hide: "Hide",
+    hideHint: "Hide job",
+    hideSheetHint: "Not interested? It leaves the results of every search, and you can always restore it.",
+    restore: "Restore",
+    restoreHint: "Puts it back in the search results",
+    hidden: "Job hidden",
+    undo: "Undo",
+    hideFailed: "Couldn't hide it",
+    restoreFailed: "Couldn't restore it",
+    hiddenMark: "Hidden",
+    hiddenCount: (n) => `${n} hidden`,
+    showHiddenHint: "Show the hidden jobs too",
+    hideHiddenHint: "Hide the hidden jobs again",
+    allHidden: "You've hidden every job",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "The only job that matches the filters is hidden. Load more pages or review it."
+        : `All ${n} jobs that match the filters are hidden. Load more pages or review them.`,
+    showHidden: "Show hidden",
   },
 
   saved: {

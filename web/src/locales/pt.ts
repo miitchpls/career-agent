@@ -232,6 +232,25 @@ export const pt: Messages = {
     position: "Cargo",
     location: "Lugar",
     site: "Portal",
+    hide: "Ocultar",
+    hideHint: "Ocultar vaga",
+    hideSheetHint: "Não tem interesse? Ela some dos resultados de todas as buscas, e você sempre pode restaurá-la.",
+    restore: "Restaurar",
+    restoreHint: "Volta a mostrá-la nos resultados",
+    hidden: "Vaga ocultada",
+    undo: "Desfazer",
+    hideFailed: "Não foi possível ocultá-la",
+    restoreFailed: "Não foi possível restaurá-la",
+    hiddenMark: "Oculta",
+    hiddenCount: (n) => (n === 1 ? "1 oculta" : `${n} ocultas`),
+    showHiddenHint: "Mostrar também as vagas ocultas",
+    hideHiddenHint: "Ocultar de novo as vagas ocultas",
+    allHidden: "Você ocultou todas as vagas",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "A única vaga que corresponde aos filtros está oculta. Carregue mais páginas ou reveja-a."
+        : `As ${n} vagas que correspondem aos filtros estão ocultas. Carregue mais páginas ou reveja-as.`,
+    showHidden: "Mostrar ocultas",
   },
 
   saved: {

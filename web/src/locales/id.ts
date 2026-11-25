@@ -230,6 +230,25 @@ export const id: Messages = {
     position: "Posisi",
     location: "Lokasi",
     site: "Situs lowongan",
+    hide: "Sembunyikan",
+    hideHint: "Sembunyikan lowongan",
+    hideSheetHint: "Tidak tertarik? Lowongan ini hilang dari hasil setiap pencarian, dan selalu bisa dipulihkan.",
+    restore: "Pulihkan",
+    restoreHint: "Menampilkannya lagi di hasil pencarian",
+    hidden: "Lowongan disembunyikan",
+    undo: "Urungkan",
+    hideFailed: "Gagal menyembunyikan",
+    restoreFailed: "Gagal memulihkan",
+    hiddenMark: "Tersembunyi",
+    hiddenCount: (n) => `${n} tersembunyi`,
+    showHiddenHint: "Tampilkan juga lowongan yang disembunyikan",
+    hideHiddenHint: "Sembunyikan lagi lowongan yang disembunyikan",
+    allHidden: "Anda menyembunyikan semua lowongan",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "Satu-satunya lowongan yang cocok dengan filter disembunyikan. Muat halaman lain atau tinjau lagi."
+        : `Semua ${n} lowongan yang cocok dengan filter disembunyikan. Muat halaman lain atau tinjau lagi.`,
+    showHidden: "Tampilkan yang tersembunyi",
   },
 
   saved: {

@@ -494,3 +494,30 @@ def test_a_pause_a_run_records_while_this_waits_stops_the_open(monkeypatch):
     )
     r = open_(CANONICAL)
     assert r.status_code == 409
+
+
+def test_a_hidden_posting_is_listed_until_restored():
+    first = "https://www.linkedin.com/jobs/view/1001"
+    second = "https://www.linkedin.com/jobs/view/1002"
+    assert client.get("/api/dismissed").json() == {"urls": []}
+    for url in (first, second):
+        body = {"url": url, "site": "linkedin", "title": "Data Engineer", "company": "Acme Analytics"}
+        assert client.post("/api/dismissed", json=body).json() == {"ok": True}
+    # Hiding it again changes nothing (the undo of a double click stays one restore).
+    client.post("/api/dismissed", json={"url": first})
+    assert set(client.get("/api/dismissed").json()["urls"]) == {first, second}
+
+    assert client.delete("/api/dismissed", params={"url": first}).json()["restored"] is True
+    assert client.delete("/api/dismissed", params={"url": first}).json()["restored"] is False
+    assert client.get("/api/dismissed").json() == {"urls": [second]}
+
+
+def test_hiding_needs_a_link():
+    assert client.post("/api/dismissed", json={"url": ""}).status_code == 422
+
+
+def test_a_posting_with_a_long_title_can_still_be_hidden():
+    url = "https://www.indeed.com/viewjob?jk=abc123"
+    body = {"url": url, "site": "indeed", "title": "Engineer " * 100, "company": "Initech " * 60}
+    assert client.post("/api/dismissed", json=body).status_code == 200
+    assert client.get("/api/dismissed").json() == {"urls": [url]}

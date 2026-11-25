@@ -232,6 +232,25 @@ export const es: Messages = {
     position: "Puesto",
     location: "Lugar",
     site: "Portal",
+    hide: "Ocultar",
+    hideHint: "Ocultar oferta",
+    hideSheetHint: "¿No te interesa? Desaparece de los resultados de todas las búsquedas, y siempre puedes restaurarla.",
+    restore: "Restaurar",
+    restoreHint: "La vuelve a mostrar en los resultados",
+    hidden: "Oferta oculta",
+    undo: "Deshacer",
+    hideFailed: "No se pudo ocultar",
+    restoreFailed: "No se pudo restaurar",
+    hiddenMark: "Oculta",
+    hiddenCount: (n) => (n === 1 ? "1 oculta" : `${n} ocultas`),
+    showHiddenHint: "Mostrar también las ofertas ocultas",
+    hideHiddenHint: "Volver a ocultar las ofertas ocultas",
+    allHidden: "Has ocultado todas las ofertas",
+    allHiddenHint: (n) =>
+      n === 1
+        ? "La única oferta que coincide con los filtros está oculta. Carga más páginas o revísala."
+        : `Las ${n} ofertas que coinciden con los filtros están ocultas. Carga más páginas o revísalas.`,
+    showHidden: "Mostrar ocultas",
   },
 
   saved: {

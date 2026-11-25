@@ -76,6 +76,37 @@ def jobs_paste(body: PasteJobRequest):
     return {"job": job, "known": known}
 
 
+class DismissRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+    # Kept to recognise the posting later; cut rather than refused, so any posting can be hidden.
+    site: str | None = None
+    title: str | None = None
+    company: str | None = None
+
+
+def _cut(text: str | None, size: int) -> str | None:
+    return text[:size] if text else None
+
+
+@router.get("/api/dismissed")
+def dismissed_list():
+    """The postings the user hid: the results leave them out, whichever search found them."""
+    return {"urls": db.dismissed_urls()}
+
+
+@router.post("/api/dismissed")
+def dismissed_add(body: DismissRequest):
+    """Hide a posting from the results ("not interested"). Nothing is asked of the board."""
+    db.dismiss(body.url, _cut(body.site, 20), _cut(body.title, 300), _cut(body.company, 300))
+    return {"ok": True}
+
+
+@router.delete("/api/dismissed")
+def dismissed_remove(url: str):
+    """Show a hidden posting again (undo, or "restore" from the hidden ones)."""
+    return {"ok": True, "restored": db.restore(url)}
+
+
 class MatchRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2000)
     query: Query
