@@ -20,7 +20,8 @@ from .facts import Known as _Known
 from .facts import has as _has
 from .facts import norm as _norm
 from .i18n import LOCALE, t
-from .profile import _LANGUAGE_NAMES, Profile, _Model, _obj
+from .profile import Profile
+from .schema import LANGUAGE_NAMES, Model, obj
 
 Kind = Literal["rewrite", "question", "add_skill"]
 Target = Literal["bullet", "description", "summary", "headline", "skill"]
@@ -31,7 +32,7 @@ MAX_SUGGESTIONS = 25
 MAX_BLANKS = 3
 
 
-class Suggestion(_Model):
+class Suggestion(Model):
     id: str
     kind: Kind
     section: Section
@@ -47,11 +48,11 @@ class Suggestion(_Model):
 # --- What the AI fills in ----------------------------------------------------------------------
 
 _NULLABLE_S = {"type": ["string", "null"]}
-REVIEW_SCHEMA = _obj(
+REVIEW_SCHEMA = obj(
     {
         "suggestions": {
             "type": "array",
-            "items": _obj(
+            "items": obj(
                 {
                     "kind": {"type": "string", "enum": list(Kind.__args__)},
                     "entry_id": _NULLABLE_S,
@@ -68,7 +69,7 @@ REVIEW_SCHEMA = _obj(
 
 
 def system_prompt(locale: str) -> str:
-    lang = _LANGUAGE_NAMES.get(locale, "English")
+    lang = LANGUAGE_NAMES.get(locale, "English")
     return f"""You review a job seeker's profile the way a careful career coach would, and \
 suggest edits. The person applies or ignores each suggestion.
 

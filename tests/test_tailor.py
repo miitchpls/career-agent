@@ -4,8 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from career_agent import ai, db, pdf, tailor
-from career_agent.app import _pdf_name, app, tailorer
+from career_agent.app import app, tailorer
 from career_agent.profile import CvPrefs, Profile
+from career_agent.routes.cv import _inline_photo, _pdf_name
 from career_agent.tailor import classify, to_result
 
 client = TestClient(app)
@@ -532,7 +533,6 @@ def test_a_tags_first_word_and_inflected_names():
 
 
 def test_the_pdf_leaves_out_a_photo_no_longer_stored():
-    from career_agent.app import _inline_photo
 
     p = Profile.model_validate({**PROFILE, "photo": "/api/profile/files/" + "a" * 32})
     assert _inline_photo(p).photo is None

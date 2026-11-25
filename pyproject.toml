@@ -27,3 +27,9 @@ dev = [
     "httpx2>=2.16.0",
     "pytest>=9.2.0",
 ]
+
+
+[tool.ruff.lint.per-file-ignores]
+# Pydantic models (through schema.Model, which ruff can't follow across modules): their
+# list defaults are copied per instance, not shared.
+"src/career_agent/profile.py" = ["RUF012"]

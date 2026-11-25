@@ -1,4 +1,5 @@
-"""Background AI runs, one at a time per kind (a CV import, a profile review).
+"""Background AI runs: one at a time per kind (a CV import, a profile review), or one per
+posting (a fit score, a tailored CV).
 
 An AI CLI takes a minute or two, so a run goes to a thread and the request returns at once.
 Cancelling frees the slot immediately: the run's process is killed as soon as it exists (even
@@ -7,9 +8,15 @@ if it starts after the cancel), and the run's result is thrown away by its owner
 """
 
 import contextvars
+import json
 import subprocess
 import threading
 from collections.abc import Callable
+
+from pydantic import ValidationError
+
+from . import ai
+from .i18n import t
 
 
 class _Run:
@@ -137,3 +144,75 @@ class Pool:
         slot = self._slots.get(key)
         if slot and slot.idle():
             del self._slots[key]
+
+
+class PostingRuns:
+    """AI runs about one posting each (a fit score, a tailored CV), sharing one lifecycle:
+    a row is recorded as running, the AI CLI runs in a thread, its answer is checked and
+    stored as ready, or the run is failed with a message for the user. At most `cap` run at
+    once, one per posting; cancelling marks the row and kills the process.
+
+    `update(run_id, when_status=..., **fields)` writes the run's row (db.update_score,
+    db.update_cv)."""
+
+    def __init__(self, update: Callable[..., bool], cap: int = 3) -> None:
+        self._update = update
+        self._pool = Pool(cap)
+
+    def running(self, url: str) -> bool:
+        return self._pool.running(url)
+
+    def idle(self) -> bool:
+        return self._pool.idle()
+
+    def launch(
+        self,
+        url: str,
+        create: Callable[[], int],
+        busy: str,
+        busy_many: str,
+        provider: ai.Provider,
+        call: Callable[[Callable], dict],
+        check: Callable[[dict], dict],
+    ) -> None:
+        """Record a run with `create` and start it: `call(on_start)` asks the AI and returns
+        its answer, `check(answer)` returns the columns to store as ready (raising
+        TypeError/ValueError/KeyError/AttributeError/ValidationError on a wrong shape).
+        RuntimeError(busy or busy_many) when it can't start."""
+        slot, run_id = self._pool.claim(url, create, busy, busy_many)
+        slot.spawn(self._run, url, slot, run_id, provider, call, check)
+
+    def cancel(self, url: str) -> None:
+        self._pool.cancel(
+            url,
+            lambda run_id: self._update(
+                run_id, when_status="running", status="cancelled"
+            ),
+        )
+
+    def _run(self, url, slot: Slot, run_id: int, provider, call, check) -> None:
+        def fail(**fields) -> None:
+            self._update(run_id, when_status="running", status="failed", **fields)
+
+        try:
+            if slot.cancelled(run_id):
+                return
+            try:
+                raw = call(slot.started(run_id))
+            except ai.AiError as e:
+                fail(error=str(e))
+                return
+            raw_json = json.dumps(raw, ensure_ascii=False)
+            try:
+                fields = check(raw)
+            except (ValidationError, TypeError, ValueError, KeyError, AttributeError):
+                fail(error=t("ai_invalid", name=provider.name), raw=raw_json)
+                return
+            self._update(
+                run_id, when_status="running", status="ready", raw=raw_json, **fields
+            )
+        except Exception as e:  # never leave a run "running" forever
+            fail(error=t("ai_failed", name=provider.name, why=type(e).__name__))
+            raise
+        finally:
+            self._pool.done(url, slot, run_id)
