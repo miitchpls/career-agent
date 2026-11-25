@@ -245,7 +245,13 @@ function FooterRow({
   const name = (on: boolean) => (on ? t.footerOn : t.footerOff)
   if (!defaults.footer.trim())
     return (
-      <SettingRow label={label} changed={false} resetLabel="" onReset={() => {}}>
+      // Nothing to include; a choice stored for this posting still shows, so it can be cleared.
+      <SettingRow
+        label={label}
+        changed={overrides.footer !== null}
+        resetLabel={t.resetOne(name(false))}
+        onReset={() => onChange(null)}
+      >
         <span className="px-1 text-xs text-muted-foreground">{t.noFooter}</span>
       </SettingRow>
     )

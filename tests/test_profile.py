@@ -751,6 +751,22 @@ def test_the_old_consent_setting_becomes_a_footer():
     assert client.get("/api/cv/preferences").json()["footer"] == ""
 
 
+def test_a_postings_old_consent_choice_becomes_its_footer_choice():
+    from career_agent import profile
+
+    url = "https://www.linkedin.com/jobs/view/1"
+    db.set_setting(
+        f"cv_overrides:{url}",
+        '{"consent": "never", "photoStyle": "square", "style": "ats"}',
+    )
+    o = profile.cv_overrides(url)
+    assert o.footer is False and o.style == "ats"
+    db.set_setting(f"cv_overrides:{url}", '{"consent": "always"}')
+    assert profile.cv_overrides(url).footer is True
+    db.set_setting(f"cv_overrides:{url}", '{"consent": "auto"}')
+    assert profile.cv_overrides(url).empty()
+
+
 def test_pdf_internal_value_error_is_the_readable_message(monkeypatch):
     import pypdf
 

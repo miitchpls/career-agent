@@ -44,7 +44,7 @@ export function StyleGallery({ open, onOpenChange }: { open: boolean; onOpenChan
     profile: source === "mine" && hasOwn ? profile : null,
   })
   const pages = open ? preview.data?.pages : undefined
-  const use = (template: CvTemplate) => save.mutate({ ...prefs, style: template })
+  const use = (template: CvTemplate) => save.mutate({ style: template })
 
   return (
     <Dialog

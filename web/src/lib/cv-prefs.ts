@@ -23,18 +23,28 @@ export function useCvPrefs(): CvPrefs {
   return data ?? DEFAULT_CV_PREFS
 }
 
-/** Changes apply at once; a failed save puts the previous value back. */
+/**
+ * Saves a change to some preferences. It applies at once; a failed save puts the previous value
+ * back. The rest is what the server holds (read first if it isn't loaded yet), never the
+ * defaults shown while loading, so a change made early can't reset the others.
+ */
 export function useSaveCvPrefs() {
   const client = useQueryClient()
+  const key = ["cv-prefs"]
   return useMutation({
-    mutationFn: api.cv.savePrefs,
-    onMutate: (next) => {
-      const before = client.getQueryData<CvPrefs>(["cv-prefs"])
-      client.setQueryData(["cv-prefs"], next)
+    scope: { id: "cv-prefs" }, // one after the other, so the last change is the one stored
+    mutationFn: async (patch: Partial<CvPrefs>) => {
+      const base = client.getQueryData<CvPrefs>(key) ?? (await client.fetchQuery({ queryKey: key, queryFn: api.cv.prefs }))
+      return api.cv.savePrefs({ ...base, ...patch } as CvPrefs)
+    },
+    onMutate: (patch) => {
+      const before = client.getQueryData<CvPrefs>(key)
+      if (before) client.setQueryData(key, { ...before, ...patch } as CvPrefs)
       return { before }
     },
-    onError: (e, _next, ctx) => {
-      client.setQueryData(["cv-prefs"], ctx?.before)
+    onSuccess: (saved) => client.setQueryData(key, saved),
+    onError: (e, _patch, ctx) => {
+      if (ctx?.before) client.setQueryData(key, ctx.before)
       toast.error(msgs().profile.saveFailed, { description: e.message })
     },
   })
@@ -51,16 +61,18 @@ const LETTER = new Set(["us", "ca"])
 const NO_PHOTO = new Set(["us", "ca", "gb", "ie"])
 
 // Common words of the languages written in Latin letters, ten each: the most frequent wins.
-const STOPWORDS: Record<"it" | "en" | "de" | "es" | "fr" | "pt" | "nl" | "tr" | "id", string[]> = {
-  it: ["il", "della", "per", "che", "con", "sono", "nel", "delle", "una", "esperienza"],
-  en: ["the", "and", "with", "you", "our", "for", "will", "are", "experience", "team"],
-  de: ["und", "der", "die", "mit", "für", "wir", "sie", "ist", "das", "erfahrung"],
-  es: ["el", "los", "las", "con", "para", "por", "del", "una", "experiencia", "equipo"],
+// Words common in one language's postings and in none of the others' (the test checks they stay
+// apart): a word two languages share, like "de" or "di", would vote for the wrong one.
+export const STOPWORDS: Record<"it" | "en" | "de" | "es" | "fr" | "pt" | "nl" | "tr" | "id", string[]> = {
+  it: ["della", "che", "sono", "nel", "delle", "degli", "gli", "anche", "esperienza", "nostro", "lavoro", "alla"],
+  en: ["the", "and", "with", "you", "our", "for", "will", "are", "experience", "team", "your"],
+  de: ["und", "der", "die", "mit", "für", "wir", "sie", "ist", "das", "erfahrung", "ihre", "eine"],
+  es: ["el", "los", "las", "y", "experiencia", "equipo", "nuestro", "buscamos", "también", "conocimientos"],
   fr: ["le", "les", "des", "avec", "pour", "vous", "nous", "est", "dans", "expérience"],
-  pt: ["os", "das", "dos", "com", "para", "uma", "você", "não", "experiência", "equipe"],
-  nl: ["de", "het", "een", "van", "met", "voor", "je", "wij", "ervaring", "zijn"],
-  tr: ["ve", "bir", "için", "ile", "bu", "olarak", "deneyim", "olan", "iş", "en"],
-  id: ["dan", "yang", "untuk", "dengan", "di", "kami", "anda", "pengalaman", "dalam", "akan"],
+  pt: ["os", "dos", "com", "uma", "você", "não", "experiência", "equipe", "também", "conhecimento"],
+  nl: ["het", "een", "van", "voor", "wij", "ervaring", "zijn", "je", "jouw", "onze"],
+  tr: ["ve", "bir", "için", "ile", "bu", "olarak", "deneyim", "olan", "iş"],
+  id: ["yang", "untuk", "dengan", "kami", "anda", "pengalaman", "dalam", "akan", "kerja", "tim"],
 }
 
 /**

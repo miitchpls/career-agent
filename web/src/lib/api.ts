@@ -295,7 +295,6 @@ export interface CvOverrides {
   format: CvPrefs["format"] | null
   style: CvPrefs["style"] | null
   photo: CvPrefs["photo"] | null
-  photoStyle: CvPrefs["photoStyle"] | null
   /** Whether this posting's CV ends with the footer, wherever the posting is. */
   footer: boolean | null
   locked: LockedSection[] | null

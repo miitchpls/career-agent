@@ -248,7 +248,7 @@ class CvOverrides(Model):
     format: FormatPref | None = None
     style: StylePref | None = None
     photo: AutoPref | None = None
-    photo_style: PhotoStylePref | None = None
+    # The photo's shape is the photo's own (set on the profile), the same on every CV.
     # Whether this posting's CV ends with the footer, whatever its countries.
     footer: bool | None = None
     locked: list[LockedSection] | None = Field(None, max_length=len(LOCKED_SECTIONS))
@@ -286,7 +286,14 @@ def _overrides_key(url: str) -> str:
 def cv_overrides(url: str) -> CvOverrides:
     raw = db.get_setting(_overrides_key(url))
     try:
-        return CvOverrides.model_validate_json(raw) if raw else CvOverrides()
+        data = json.loads(raw) if raw else {}
+        if not isinstance(data, dict):
+            return CvOverrides()
+        # Before the footer, a posting could turn Italy's consent on or off ("auto": the default).
+        consent = data.pop("consent", None)
+        if "footer" not in data and consent in ("always", "never"):
+            data["footer"] = consent == "always"
+        return CvOverrides.model_validate(data)
     except ValueError:  # unreadable, or written by an older version: none
         return CvOverrides()
 

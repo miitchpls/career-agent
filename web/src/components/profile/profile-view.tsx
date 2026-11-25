@@ -409,7 +409,7 @@ function Photo({ profile: p, onChange }: { profile: Profile; onChange: Change })
             <DropdownMenuLabel className="text-xs text-muted-foreground">{t.photoShape}</DropdownMenuLabel>
             <DropdownMenuRadioGroup
               value={prefs.photoStyle}
-              onValueChange={(v) => save.mutate({ ...prefs, photoStyle: v as CvPrefs["photoStyle"] })}
+              onValueChange={(v) => save.mutate({ photoStyle: v as CvPrefs["photoStyle"] })}
             >
               {(["rounded", "circle", "square"] as const).map((v) => (
                 <DropdownMenuRadioItem key={v} value={v} onSelect={(e) => e.preventDefault()}>
@@ -795,7 +795,9 @@ function EducationSection({ profile: p, onChange }: { profile: Profile; onChange
 
 /** The skill line the category dialog edits: a new one (maybe with a skill already on it),
  * or an existing one. */
-type CategoryEdit = { from: null; skills: string[] } | { from: string } | null
+const NO_SKILLS: string[] = []
+// The line's skills are taken when the dialog opens, so a re-render can't reset what's picked.
+type CategoryEdit = { from: string | null; skills: string[] } | null
 
 function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }) {
   const all = useT()
@@ -839,7 +841,7 @@ function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }
                     <button
                       type="button"
                       aria-label={t.renameCategory(category)}
-                      onClick={() => setNaming({ from: category })}
+                      onClick={() => setNaming({ from: category, skills: p.skills.filter((x) => lineOf(x) === category).map((x) => x.name) })}
                       className="group/line -mx-1.5 inline-flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
                     >
                       {category}
@@ -886,13 +888,7 @@ function Skills({ profile: p, onChange }: { profile: Profile; onChange: Change }
         open={naming !== null}
         onOpenChange={(o) => !o && setNaming(null)}
         initial={naming?.from ?? ""}
-        skills={
-          naming === null
-            ? []
-            : naming.from === null
-              ? naming.skills
-              : p.skills.filter((s) => lineOf(s) === naming.from).map((s) => s.name)
-        }
+        skills={naming?.skills ?? NO_SKILLS}
         known={p.skills.map((s) => s.name)}
         taken={categories}
         onSave={(name, skills) => {
@@ -1381,7 +1377,7 @@ function CvPrefsCard() {
   const choices = useCvChoices()
   const prefs = useCvPrefs()
   const save = useSaveCvPrefs()
-  const set = <K extends keyof CvPrefs>(key: K) => (value: string) => save.mutate({ ...prefs, [key]: value as CvPrefs[K] })
+  const set = <K extends keyof CvPrefs>(key: K) => (value: string) => save.mutate({ [key]: value as CvPrefs[K] })
   return (
     <Card className="gap-3 px-5 py-4">
       <h2 className="text-sm font-medium">{t.cvPrefs}</h2>
@@ -1398,9 +1394,9 @@ function CvPrefsCard() {
           {t.compareStyles}
         </LinkButton>
         <Pref label={t.photo} value={prefs.photo} onChange={set("photo")} options={choices.photo} />
-        <FooterPref prefs={prefs} onSave={(footer, footerCountries) => save.mutate({ ...prefs, footer, footerCountries })} />
-        <LockedPref prefs={prefs} onChange={(locked) => save.mutate({ ...prefs, locked })} />
-        <GuidancePref prefs={prefs} onSave={(guidance) => save.mutate({ ...prefs, guidance })} />
+        <FooterPref prefs={prefs} onSave={(footer, footerCountries) => save.mutate({ footer, footerCountries })} />
+        <LockedPref prefs={prefs} onChange={(locked) => save.mutate({ locked })} />
+        <GuidancePref prefs={prefs} onSave={(guidance) => save.mutate({ guidance })} />
       </div>
       <StyleGallery open={gallery} onOpenChange={setGallery} />
     </Card>

@@ -173,6 +173,17 @@ describe("skill lines", () => {
     ])
   })
 
+  it("merges a line saved under a name another line has", () => {
+    const merged = saveCategory(p, "Languages", "Frontend", ["Go", "Rust"])
+    expect(merged.skills.map((s) => [s.name, s.category ?? ""])).toEqual([
+      ["Go", "Frontend"],
+      ["React", "Frontend"],
+      ["Docker", ""],
+      ["Rust", "Frontend"],
+    ])
+    expect(saveCategory(p, null, "Frontend", ["Docker"]).skills[1]).toEqual({ name: "React", category: "Frontend" })
+  })
+
   it("exports one line per category, like career-ops' cv.md", () => {
     const md = toMarkdown({ ...p, name: "X" })
     expect(md).toContain("- **Languages:** Go, Rust")

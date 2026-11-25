@@ -279,9 +279,9 @@ export function renameCategory(p: Profile, from: string, to: string): Profile {
 }
 
 /**
- * A skill line saved from its dialog: `name` holds exactly `skills` afterwards. Skills new to
- * the profile join it; ones taken off the line stay, with no category. `from`: the line's name
- * before (null for a new one), so renaming moves it.
+ * A skill line saved from its dialog: `skills` end up on `name`. Skills new to the profile join
+ * it; ones taken off the edited line stay, with no category. `from`: the line's name before (null
+ * for a new one), so renaming moves it. A name another line already has merges the two.
  */
 export function saveCategory(p: Profile, from: string | null, name: string, skills: string[]): Profile {
   const line = name.trim()
@@ -289,7 +289,8 @@ export function saveCategory(p: Profile, from: string | null, name: string, skil
   const out = p.skills.map((s) => {
     const cat = s.category?.trim() ?? ""
     if (chosen.has(s.name.toLowerCase())) return { ...s, category: line }
-    return cat === line || (from !== null && cat === from) ? { ...s, category: "" } : s
+    // Skills taken off the edited line; another line with the same name merges, keeping its own.
+    return from !== null && cat === from ? { ...s, category: "" } : s
   })
   const known = new Set(p.skills.map((s) => s.name.toLowerCase()))
   const added = skills.filter((s) => !known.has(s.toLowerCase())).map((name) => ({ name, category: line }))
