@@ -362,12 +362,12 @@ def test_preview_takes_a_postings_own_photo_shape():
         update={"photo": "data:image/png;base64,AAAA"}
     )
     body = {"templates": ["standard"], "photo": True, "profile": p.dump()}
-    page = client.post("/api/cv/preview", json={**body, "photoStyle": "circle"}).json()[
+    page = client.post("/api/cv/preview", json={**body, "photoStyle": "square"}).json()[
         "pages"
     ]["standard"]
-    assert "cv-photo--circle" in page
+    assert "cv-photo--square" in page
     page = client.post("/api/cv/preview", json=body).json()["pages"]["standard"]
-    assert "cv-photo--rounded" in page  # the saved preference
+    assert "cv-photo--circle" in page  # the saved preference
 
 
 def test_dates_in_the_cvs_languages():

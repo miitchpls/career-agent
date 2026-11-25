@@ -700,7 +700,7 @@ def test_cv_preferences_are_saved():
         "format": "auto",
         "style": "standard",
         "photo": "auto",
-        "photoStyle": "rounded",
+        "photoStyle": "circle",
         "footer": "",
         "footerCountries": [],
         "locked": [],
@@ -711,7 +711,7 @@ def test_cv_preferences_are_saved():
         "format": "a4",
         "style": "jake",
         "photo": "never",
-        "photoStyle": "circle",
+        "photoStyle": "square",
         "footer": " Work permit: B (Switzerland). ",
         "footerCountries": ["ch", "li", "ch"],
         "locked": ["summary", "headline"],
@@ -734,6 +734,8 @@ def test_cv_preferences_are_saved():
     )
     db.set_setting("cv_prefs", '{"style": "removed-style"}')  # unreadable: defaults
     assert client.get("/api/cv/preferences").json()["style"] == "standard"
+    db.set_setting("cv_prefs", '{"photo_style": "rounded"}')  # a shape no longer offered
+    assert client.get("/api/cv/preferences").json()["photoStyle"] == "circle"
     bad = {**prefs, "footerCountries": ["Italy"]}
     assert client.put("/api/cv/preferences", json=bad).status_code == 422
 

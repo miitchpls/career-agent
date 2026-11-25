@@ -443,10 +443,7 @@ export function LanguageDialog({ open, onOpenChange, entry, profile, onSave, onD
           ))}
         </div>
       )}
-      <Field
-        label={t.level}
-        hint={cefr ? t.levelCefrHint : t.levelSelfHint}
-      >
+      <Field label={t.level}>
         <Select value={d.level} onValueChange={(v) => setD({ ...d, level: v as LanguageLevel })}>
           <SelectTrigger className="w-full">
             <SelectValue />
@@ -572,7 +569,6 @@ export function AwardDialog({ open, onOpenChange, entry, onSave, onDelete }: Ent
       open={open}
       onOpenChange={onOpenChange}
       title={entry ? t.editAward : t.addAward}
-      description={t.awardHint}
       canSave={!!d.title.trim()}
       onDelete={entry ? () => onDelete(entry) : undefined}
       onSave={() => onSave({ ...d, id: d.id || uid(), review: null, title: d.title.trim(), issuer: d.issuer.trim() })}
@@ -603,9 +599,9 @@ export function AwardDialog({ open, onOpenChange, entry, onSave, onDelete }: Ent
 // --- Skill lines -----------------------------------------------------------------------------
 
 /**
- * A skill line, in one step: its name and its skills, picked from the profile's or typed new.
- * Editing one renames it, changes what's on it, or deletes it (its skills stay, ungrouped).
- * Saving a name another line has merges the two.
+ * Skills added in one step, picked from the profile's or typed new: at least one, with a
+ * category name or without (they stay ungrouped). Editing a line renames it, changes what's on
+ * it, or deletes it (its skills stay, ungrouped). Saving a name another line has merges the two.
  */
 export function CategoryDialog({
   open,
@@ -638,16 +634,15 @@ export function CategoryDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={initial ? t.editCategory : t.newCategory}
-      description={t.categoryHint}
-      canSave={!!name.trim()}
+      title={initial ? t.editCategory : t.addSkills}
+      canSave={picked.length > 0}
       onDelete={onDelete}
       onSave={() => onSave(name.trim(), picked)}
     >
-      <Field label={t.categoryName} required hint={merges ? t.categoryMerges : undefined}>
+      <Field label={t.categoryName} hint={merges ? t.categoryMerges : undefined}>
         <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder="Cloud & DevOps" />
       </Field>
-      <FormGroup title={t.skills} description={t.categorySkillsHint}>
+      <FormGroup title={t.skills} required>
         <SkillPicker value={picked} onChange={setPicked} known={known} />
       </FormGroup>
     </FormDialog>

@@ -188,7 +188,7 @@ StylePref = Literal[
     "standard", "modern", "compact", "executive", "leadership", "jake", "ats"
 ]
 AutoPref = Literal["auto", "always", "never"]
-PhotoStylePref = Literal["rounded", "circle", "square"]
+PhotoStylePref = Literal["circle", "square"]
 
 
 class CvPrefs(Model):
@@ -198,7 +198,7 @@ class CvPrefs(Model):
     format: FormatPref = "auto"
     style: StylePref = "standard"
     photo: AutoPref = "auto"  # auto: where CVs usually have one
-    photo_style: PhotoStylePref = "rounded"
+    photo_style: PhotoStylePref = "circle"
     # A line printed at the bottom of the CV (career-ops' `consent`): a data-processing
     # consent, a work permit, anything the user's markets expect there. Shown on every CV, or
     # only for postings in `footer_countries` (ISO 3166-1 alpha-2, lowercase).
@@ -229,6 +229,9 @@ def cv_prefs() -> CvPrefs:
         # Before career-ops' templates the styles were modern/classic/compact.
         if data.get("style") == "classic":
             data["style"] = "executive"
+        # "rounded" was the default shape, beside circle and square: circle is now.
+        if data.get("photo_style") == "rounded":
+            data["photo_style"] = "circle"
         # Before the footer, a consent setting printed Italy's data-processing consent: for
         # Italian postings ("auto") or on every CV ("always"). Kept as it was.
         consent = data.pop("consent", None)
