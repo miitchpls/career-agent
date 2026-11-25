@@ -33,7 +33,7 @@ from . import ai, db, runs
 from .cv_render import CvLanguage, plain
 from .facts import TOKEN, Corpus, Known, has, is_name, norm
 from .i18n import LOCALE, t
-from .profile import CvPrefs, Experience, Profile, Project, Skill, cv_prefs
+from .profile import CvPrefs, Experience, Profile, Project, Skill, effective_cv_prefs
 from .schema import LANGUAGE_NAMES, Model, obj
 
 MAX_KEYWORDS = 20
@@ -693,7 +693,7 @@ class Tailorer:
         profile = Profile.model_validate(saved["data"])
         if not (profile.experiences or profile.summary or profile.projects):
             raise ValueError(t("cv_thin_profile"))
-        prefs = cv_prefs()
+        prefs = effective_cv_prefs(url)  # the defaults, with this posting's own
         evaluation = evaluation_for(db.last_ready_score(url), saved["id"])
         provider, model = ai.resolve()  # raises AiError: shown as is
 
@@ -741,7 +741,7 @@ def state(url: str) -> dict:
     earlier = db.last_ready_cv(url) if latest and latest["status"] != "ready" else None
     job = db.get_job(url)
     profile = db.latest_profile()
-    prefs = cv_prefs()
+    prefs = effective_cv_prefs(url)
     for c in (latest, earlier):
         if c and c["status"] == "ready":
             now = fingerprint(job, prefs, c["language"]) if job else None

@@ -562,6 +562,11 @@ def get_setting(key: str) -> str | None:
     return row["value"] if row else None
 
 
+def delete_setting(key: str) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+
+
 def set_setting(key: str, value: str) -> None:
     with connect() as conn:
         conn.execute(

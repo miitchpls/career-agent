@@ -29,17 +29,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { api, type Job, type PastedPosting, type Query } from "@/lib/api"
 import type { LinkSite } from "@/lib/job-link"
+import type { JobTab } from "@/lib/routes"
 import { convertedLabel, fullDate, relativeDay, salaryLabel } from "@/lib/format"
 import { useT } from "@/lib/i18n"
 import { formatScore, shownScore, useCanScore, useScore, useStartScore } from "@/lib/job-score"
 import { describe } from "@/lib/search-match"
 import { cn } from "@/lib/utils"
 import { parseStoredJobTypes } from "@/lib/job-types"
-import { resolveCv, useCvPrefs } from "@/lib/cv-prefs"
-import { useProfile } from "@/lib/profile"
-import { shownCv, useCanTailor, useStartCv, useTailoredCv } from "@/lib/tailored-cv"
+import { shownCv, useCanTailor, useCvLook, useStartCv, useTailoredCv } from "@/lib/tailored-cv"
 
-type Tab = "job" | "fit" | "cv"
 
 const MATCH_ICON = {
   unknown: { icon: CircleHelpIcon, className: "text-muted-foreground" },
@@ -103,11 +101,16 @@ export function JobSheet({
   job,
   pending = null,
   query = null,
+  tab,
+  onTab,
   onClose,
   onPaste,
   onOpenProfile,
   onOpenApplication,
 }: {
+  /** The tab shown, from the address: each one has its own, so back and forward return to it. */
+  tab: JobTab
+  onTab: (tab: JobTab) => void
   /** Opens a tracked posting's application, on the Applications page. */
   onOpenApplication: (id: number) => void
   job: Job | null
@@ -130,6 +133,8 @@ export function JobSheet({
             key={job.url}
             job={job}
             query={query}
+            tab={tab}
+            onTab={onTab}
             onOpenProfile={onOpenProfile}
             onPaste={onPaste}
             onOpenApplication={onOpenApplication}
@@ -145,6 +150,8 @@ export function JobSheet({
 function JobDetails({
   job,
   query,
+  tab,
+  onTab: setTab,
   onOpenProfile,
   onPaste,
   onOpenApplication,
@@ -152,18 +159,18 @@ function JobDetails({
   onOpenApplication: (id: number) => void
   job: Job
   query: Query | null
+  tab: JobTab
+  onTab: (tab: JobTab) => void
   onOpenProfile: () => void
   onPaste: (url: string, posting: PastedPosting) => Promise<void>
 }) {
   const t = useT().jobs
-  const { profile } = useProfile()
-  const prefs = useCvPrefs()
+  const { look } = useCvLook(job)
   const cvState = useTailoredCv(job.url).data
   const cv = shownCv(cvState)
   const writing = cvState?.cv?.status === "running"
   const startCv = useStartCv(job.url)
   const canTailor = useCanTailor(job)
-  const [tab, setTab] = useState<Tab>("job")
   const scoreState = useScore(job.url).data
   const fit = shownScore(scoreState)
   const scoring = scoreState?.score?.status === "running"
@@ -180,7 +187,7 @@ function JobDetails({
     setTab("cv")
     // What's missing (profile, engine, text) the tab says.
     if (canTailor && !writing && !startCv.isPending)
-      startCv.mutate(resolveCv(prefs, job, !!profile.photo).language)
+      startCv.mutate(look.language)
   }
   // Gone to the board's page: on coming back, ask whether the user applied. Only once the page
   // was really left (another tab or window) and is back: a posting opened in a background tab
@@ -266,9 +273,9 @@ function JobDetails({
 
       {/* Right under the actions it answers to. */}
       <ApplyNudge job={job} shown={nudge} onDismiss={() => setNudge(false)} onOpenApplication={onOpenApplication} />
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-h-0 flex-1 gap-0">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as JobTab)} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-10 w-full justify-start gap-4 border-b px-6">
-          <TabsTrigger value="job" className="flex-none px-0">
+          <TabsTrigger value="posting" className="flex-none px-0">
             {t.tabPosting}
           </TabsTrigger>
           <TabsTrigger value="fit" className="flex-none px-0">
@@ -290,7 +297,7 @@ function JobDetails({
         </TabsList>
 
         <ScrollArea className="min-h-0 flex-1">
-          <TabsContent value="job">
+          <TabsContent value="posting">
             <JobBody job={job} onPaste={onPaste} />
           </TabsContent>
           <TabsContent value="fit">

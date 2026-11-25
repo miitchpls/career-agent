@@ -40,10 +40,10 @@ import { DEFAULT_CURRENCY } from "@/lib/currencies"
 import { intlTag, useT } from "@/lib/i18n"
 import { DECISION_DOT, formatScore } from "@/lib/job-score"
 import { hostOf } from "@/lib/job-link"
+import type { AppTab } from "@/lib/routes"
 import { shownCv, useTailoredCv } from "@/lib/tailored-cv"
 import { cn } from "@/lib/utils"
 
-type Tab = "progress" | "fit" | "notes" | "posting" | "cv"
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString(intlTag(), { day: "numeric", month: "short", year: "numeric" })
@@ -66,10 +66,15 @@ export function Source({ app }: { app: Application }) {
  */
 export function ApplicationSheet({
   app,
+  tab,
+  onTab: setTab,
   onOpenProfile,
   onRemoved,
 }: {
   app: Application
+  /** The tab shown, from the address. */
+  tab: AppTab
+  onTab: (tab: AppTab) => void
   onOpenProfile: () => void
   onRemoved: () => void
 }) {
@@ -77,7 +82,6 @@ export function ApplicationSheet({
   const remove = useDeleteApplication()
   const [confirm, setConfirm] = useState(false)
   const t = all.applications.sheet
-  const [tab, setTab] = useState<Tab>("progress")
   // A CV is written for the saved posting, like the score: only LinkedIn and Indeed ones.
   const generated = !!shownCv(useTailoredCv(app.url, app.site !== "other" && !!app.url).data)
 
@@ -129,7 +133,7 @@ export function ApplicationSheet({
         </AlertDialogContent>
       </AlertDialog>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-h-0 flex-1 gap-0">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as AppTab)} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-10 w-full justify-start gap-5 border-b px-6">
           <TabsTrigger value="progress" className="flex-none px-0">
             {t.progress}

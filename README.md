@@ -22,6 +22,24 @@ uv run career-agent                               # http://127.0.0.1:8000
 
 Data goes to `data/` in the working directory (see [Data on disk](#data-on-disk)).
 
+## Addresses
+
+Every page and every open posting or application has its own address, so back and forward, a reload
+or a bookmark return to it, on the same tab:
+
+| Address | Shows |
+|---|---|
+| `/` | Postings; the search's filters are in the query string |
+| `/jobs/linkedin-4458087343` · `/fit` · `/cv` | The same, with that posting's sheet open on a tab |
+| `/applications` | Applications |
+| `/applications/linkedin-4458087343` · `/fit` · `/notes` · `/posting` · `/cv` | With that application open |
+| `/profile` | Profile |
+
+A LinkedIn or Indeed posting has the same id on both pages: its board and the board's own id. An application
+with no such link uses its number (`/applications/app-12`). Opening a sheet adds a history entry and closing it
+steps back; changing tab or switching to another posting replaces the entry. A posting address that isn't among
+the saved postings offers to read it from the board or to paste its text. The old `?view=` addresses still work.
+
 ## Searching
 
 The page opens empty. In the search bar, what you type is turned into filters (title, place, work mode, salary,
@@ -237,7 +255,11 @@ returns structured content and the server builds and checks the CV:
   (Chrome, Chromium, Edge, Brave, or Playwright's Chromium), headless, without network: the same engine career-ops
   prints with.
 
-Each generation is a new version; a CV goes stale when the profile, the posting or the guidance changes.
+**Settings** in the CV tab change the CV settings for that posting only (language, format, style, photo, consent,
+fixed sections, plus guidance added to the default one); the defaults stay as set on the profile page. Language,
+fixed sections and guidance apply from the next generation; the others change the preview and the PDF at once.
+
+Each generation is a new version; a CV goes stale when the profile, the posting or the guidance changes. A posting's own settings that steer the writing count too.
 
 ### CV templates
 
@@ -386,6 +408,7 @@ tests/
 | `GET/PUT /api/ai` | AI engines found, saved choice |
 | `GET/PUT /api/cv/preferences` | CV language, format, style, photo, consent, fixed sections, guidance |
 | `GET /api/jobs/cv?url=` · `POST /api/jobs/cv` · `DELETE /api/jobs/cv?url=` | A posting's tailored CV (and the last finished one) · start (`language`) · cancel |
+| `GET/PUT /api/jobs/cv/settings` | A posting's own CV settings (each one set replaces the default for it only) |
 | `POST /api/jobs/cv/pdf` · `GET /api/jobs/cv/count` | The last finished CV as a PDF, in a template and format · postings with a CV |
 | `POST /api/cv/preview` | CV templates filled with a profile (or the sample) as HTML, several per request; optional highlighted texts |
 | `GET/PUT/DELETE /api/profile` | Profile and open draft · save · delete everything |

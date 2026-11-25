@@ -1,12 +1,12 @@
-import { useMemo, useState } from "react"
-import { parseAsInteger, useQueryState } from "nuqs"
+import { useEffect, useMemo, useState } from "react"
 
 import { AddApplication } from "@/components/applications/add-application"
 import { PeriodSelect } from "@/components/applications/filter-bar"
 import { FlowChart } from "@/components/applications/flow-chart"
 import { History } from "@/components/applications/history"
 import { inPeriod, NO_FILTERS, type ListFilters, type Period } from "@/lib/application-filters"
-import { summary, useApplications, type AppGroup } from "@/lib/applications"
+import { summary, useApplications, type AppGroup, type Application } from "@/lib/applications"
+import { applicationItem, findApplication, type AppTab } from "@/lib/routes"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -16,7 +16,22 @@ import type { FlowPick } from "@/lib/sankey"
  * Applications, general to particular: the key numbers, how the lot flows (a click on the chart
  * filters the list), and the list, where each status changes.
  */
-export function ApplicationsPage({ onOpenProfile }: { onOpenProfile: () => void }) {
+export function ApplicationsPage({
+  item,
+  tab,
+  onOpen,
+  onTab,
+  onOpenProfile,
+}: {
+  /** The application open in the sheet, from the address. */
+  item: string | null
+  tab: AppTab
+  /** Open one (by itself, or by number when just added), or close it with null. `replace`:
+   * only rewrite the address of the one open. */
+  onOpen: (app: Application | number | null, replace?: boolean) => void
+  onTab: (tab: AppTab) => void
+  onOpenProfile: () => void
+}) {
   const t = useT().applications
   const list = useApplications()
   const all = useMemo(() => list.data ?? [], [list.data])
@@ -27,8 +42,14 @@ export function ApplicationsPage({ onOpenProfile }: { onOpenProfile: () => void 
   const s = summary(apps)
   const [group, setGroup] = useState<AppGroup>("all")
   const [pick, setPick] = useState<FlowPick | null>(null)
-  // In the URL (?app=…): a posting's sheet can open its application here, and back works.
-  const [openId, setOpenId] = useQueryState("app", parseAsInteger.withOptions({ history: "push" }))
+  // In the address: a posting's sheet can open its application here, and back works.
+  const open = findApplication(all, item)
+  const openId = open?.id ?? null
+  const setOpenId = (id: number | null) => onOpen(id === null ? null : (all.find((a) => a.id === id) ?? id))
+  // Opened by its number (just added, or an old link): the address takes its posting's id.
+  useEffect(() => {
+    if (open && item !== applicationItem(open)) onOpen(open, true)
+  }, [open, item, onOpen])
   const stats = [
     { label: t.stats.sent, value: s.sent, sub: null },
     { label: t.stats.answered, value: s.answered, sub: t.of(s.answered, s.sent) },
@@ -126,6 +147,8 @@ export function ApplicationsPage({ onOpenProfile }: { onOpenProfile: () => void 
               onClearPick={() => setPick(null)}
               openId={openId}
               onOpenId={setOpenId}
+              tab={tab}
+              onTab={onTab}
               filters={filters}
               onFilters={setFilters}
               onOpenProfile={onOpenProfile}

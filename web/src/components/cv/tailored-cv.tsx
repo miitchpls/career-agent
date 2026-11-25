@@ -8,12 +8,14 @@ import {
   FileUserIcon,
   LoaderCircleIcon,
   RefreshCwIcon,
+  Settings2Icon,
   ShieldCheckIcon,
   XIcon,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 
 import { CvPage } from "@/components/cv/cv-page"
+import { LinkButton } from "@/components/link-button"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Progress } from "@/components/ui/progress"
@@ -21,14 +23,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { CV_TEMPLATES, type CvTemplate, type Job, type TailoredCv as Cv, type TailoredCvResult } from "@/lib/api"
+import { CV_TEMPLATES, type CvPrefs, type CvTemplate, type Job, type TailoredCv as Cv, type TailoredCvResult } from "@/lib/api"
 import { useCvPreview } from "@/lib/cv-preview"
-import { resolveCv, useCvPrefs, useSaveCvPrefs, type ResolvedCv } from "@/lib/cv-prefs"
+import { type ResolvedCv } from "@/lib/cv-prefs"
+import { CvSettings } from "@/components/cv/cv-settings"
 import { intlTag, useT } from "@/lib/i18n"
 import { shownScore, useScore } from "@/lib/job-score"
 import { openPreferences } from "@/lib/preferences"
 import { hasProfile, useProfile } from "@/lib/profile"
-import { shownCv, useCancelCv, useDownloadCv, useStartCv, useTailoredCv } from "@/lib/tailored-cv"
+import {
+  overrideCount,
+  shownCv,
+  useCancelCv,
+  useCvLook,
+  useCvSettings,
+  useDownloadCv,
+  useSaveCvSettings,
+  useStartCv,
+  useTailoredCv,
+} from "@/lib/tailored-cv"
+import { useCvPrefs } from "@/lib/cv-prefs"
 import { activeEngine, useAiEngines } from "@/lib/use-ai"
 import { cn } from "@/lib/utils"
 
@@ -41,8 +55,8 @@ export function TailoredCv({ job, onOpenProfile }: { job: Job; onOpenProfile: ()
   const cancel = useCancelCv(job.url)
   const profile = useProfile()
   const engine = activeEngine(useAiEngines().data)
-  const prefs = useCvPrefs()
-  const look = resolveCv(prefs, job, !!profile.profile.photo)
+  // The defaults with this posting's own settings: what it's written and printed with.
+  const { look, prefs } = useCvLook(job)
 
   const latest = state.data?.cv ?? null
   const shown = shownCv(state.data)
@@ -106,24 +120,13 @@ export function TailoredCv({ job, onOpenProfile }: { job: Job; onOpenProfile: ()
           result={shown.result}
           job={job}
           look={look}
+          prefs={prefs}
           busy={running || start.isPending || !!blocked}
           onRegenerate={generate}
           onOpenProfile={onOpenProfile}
         />
       )}
     </div>
-  )
-}
-
-function LinkButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-foreground underline decoration-foreground/25 underline-offset-4 hover:decoration-foreground/60"
-    >
-      {children}
-    </button>
   )
 }
 
@@ -197,7 +200,13 @@ function Idle({
       </Button>
       <p className="text-xs text-muted-foreground">
         {t.willWrite(languageName[look.language], look.format === "a4" ? "A4" : "Letter", all.cv.templates[look.style].name)}{" "}
-        <LinkButton onClick={onOpenProfile}>{t.changePrefs}</LinkButton>
+        <CvSettings
+          job={job}
+          onOpenDefaults={onOpenProfile}
+          trigger={
+<LinkButton>{t.settings.customize}</LinkButton>
+          }
+        />
       </p>
       {blockedNote}
       {!scored && !blocked && <p className="max-w-sm text-xs text-pretty text-muted-foreground">{t.scoreFirst}</p>}
@@ -267,6 +276,7 @@ function Result({
   result: r,
   job,
   look,
+  prefs,
   busy,
   onRegenerate,
   onOpenProfile,
@@ -275,6 +285,7 @@ function Result({
   result: TailoredCvResult
   job: Job
   look: ResolvedCv
+  prefs: CvPrefs
   busy: boolean
   onRegenerate: () => void
   onOpenProfile: () => void
@@ -314,6 +325,7 @@ function Result({
             {t.regenerate}
           </Button>
         )}
+        <CvSettings job={job} onOpenDefaults={onOpenProfile} trigger={<SettingsButton url={job.url} />} />
         <Button
           size="sm"
           disabled={download.isPending}
@@ -397,12 +409,12 @@ function Result({
                 <Switch size="sm" checked={marks} onCheckedChange={setMarks} />
               </label>
             )}
-            <TemplatePicker value={look.style} />
+            <TemplatePicker url={job.url} value={look.style} />
           </div>
         }
       >
         <div className="rounded-lg border bg-muted/40 p-4 sm:p-6">
-          <TailoredPage result={r} look={look} marks={marks} />
+          <TailoredPage result={r} look={look} photoStyle={prefs.photoStyle} marks={marks} />
         </div>
       </Section>
     </div>
@@ -476,13 +488,17 @@ function Checks({ warnings }: { warnings: TailoredCvResult["warnings"] }) {
   )
 }
 
-/** The template the CV is shown and downloaded in: the preference, changed right here. */
-function TemplatePicker({ value }: { value: CvTemplate }) {
+/** The template the CV is shown and downloaded in, for this posting only. */
+function TemplatePicker({ url, value }: { url: string; value: CvTemplate }) {
   const all = useT()
-  const prefs = useCvPrefs()
-  const save = useSaveCvPrefs()
+  const defaults = useCvPrefs()
+  const overrides = useCvSettings(url)
+  const save = useSaveCvSettings(url)
   return (
-    <Select value={value} onValueChange={(style) => save.mutate({ ...prefs, style: style as CvTemplate })}>
+    <Select
+      value={value}
+      onValueChange={(style) => save.mutate({ ...overrides, style: style === defaults.style ? null : (style as CvTemplate) })}
+    >
       <SelectTrigger size="sm" className="h-7 w-32 text-xs" aria-label={all.profileView.style}>
         <SelectValue />
       </SelectTrigger>
@@ -497,8 +513,35 @@ function TemplatePicker({ value }: { value: CvTemplate }) {
   )
 }
 
+/** "Settings", with how many of them this posting changes. */
+function SettingsButton({ url, ...props }: { url: string } & React.ComponentProps<typeof Button>) {
+  const t = useT().cv.settings
+  const n = overrideCount(useCvSettings(url))
+  return (
+    <Button variant="outline" size="sm" {...props}>
+      <Settings2Icon />
+      {t.trigger}
+      {n > 0 && (
+        <span className="-mr-1 rounded-full bg-foreground px-1.5 text-[10px] font-medium text-background tabular-nums" aria-label={t.changed(n)}>
+          {n}
+        </span>
+      )}
+    </Button>
+  )
+}
+
 /** The tailored CV in the chosen template, rewritten and moved texts highlighted. */
-function TailoredPage({ result, look, marks }: { result: TailoredCvResult; look: ResolvedCv; marks: boolean }) {
+function TailoredPage({
+  result,
+  look,
+  photoStyle,
+  marks,
+}: {
+  result: TailoredCvResult
+  look: ResolvedCv
+  photoStyle: CvPrefs["photoStyle"]
+  marks: boolean
+}) {
   const preview = useCvPreview({
     templates: [look.style],
     language: result.language,
@@ -508,6 +551,7 @@ function TailoredPage({ result, look, marks }: { result: TailoredCvResult; look:
     marked: marks ? result.marked : [],
     competencies: result.competencies,
     consent: look.consent,
+    photoStyle,
   })
   return (
     <CvPage

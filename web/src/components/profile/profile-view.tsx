@@ -26,6 +26,7 @@ import {
 import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 
+import { useCvChoices } from "@/components/cv/cv-settings"
 import { StyleGallery } from "@/components/cv/style-gallery"
 import { Field, FormDialog, MediaStrip, SkillLine } from "@/components/profile/fields"
 import { ScorePrefsCard } from "@/components/profile/score-prefs"
@@ -101,7 +102,7 @@ import {
   type Project,
   type Skill,
 } from "@/lib/profile"
-import { CV_TEMPLATES, LOCKED_SECTIONS, type CvPrefs } from "@/lib/api"
+import { LOCKED_SECTIONS, type CvPrefs } from "@/lib/api"
 import { useCvCount } from "@/lib/tailored-cv"
 import { useCvPrefs, useSaveCvPrefs } from "@/lib/cv-prefs"
 import { useT } from "@/lib/i18n"
@@ -1295,6 +1296,7 @@ function CvPrefsCard() {
   const all = useT()
   const t = all.profileView
   const [gallery, setGallery] = useState(false)
+  const choices = useCvChoices()
   const prefs = useCvPrefs()
   const save = useSaveCvPrefs()
   const set = <K extends keyof CvPrefs>(key: K) => (value: string) => save.mutate({ ...prefs, [key]: value as CvPrefs[K] })
@@ -1305,19 +1307,19 @@ function CvPrefsCard() {
         label={t.language}
         value={prefs.language}
         onChange={set("language")}
-        options={[["job", t.languageJob], ["it", t.languageIt], ["en", t.languageEn], ["de", t.languageDe], ["ko", t.languageKo]]}
+        options={choices.language}
       />
       <Pref
         label={t.format}
         value={prefs.format}
         onChange={set("format")}
-        options={[["auto", t.formatAuto], ["a4", "A4"], ["letter", "Letter"]]}
+        options={choices.format}
       />
       <Pref
         label={t.style}
         value={prefs.style}
         onChange={set("style")}
-        options={CV_TEMPLATES.map((id) => [id, all.cv.templates[id].name])}
+        options={choices.style}
       />
       <Button variant="outline" size="sm" className="w-full" onClick={() => setGallery(true)}>
         <LayoutGridIcon />
@@ -1328,14 +1330,14 @@ function CvPrefsCard() {
         label={t.photo}
         value={prefs.photo}
         onChange={set("photo")}
-        options={[["auto", t.photoAuto], ["always", t.photoAlways], ["never", t.photoNever]]}
+        options={choices.photo}
       />
       {prefs.photo !== "never" && (
         <Pref
           label={t.photoStyle}
           value={prefs.photoStyle}
           onChange={set("photoStyle")}
-          options={[["rounded", t.photoRounded], ["circle", t.photoCircle], ["square", t.photoSquare]]}
+          options={choices.photoStyle}
         />
       )}
       <Pref
@@ -1343,7 +1345,7 @@ function CvPrefsCard() {
         hint={t.consentHint}
         value={prefs.consent}
         onChange={set("consent")}
-        options={[["auto", t.consentAuto], ["always", t.photoAlways], ["never", t.photoNever]]}
+        options={choices.consent}
       />
       <LockedPref prefs={prefs} onChange={(locked) => save.mutate({ ...prefs, locked })} />
       <GuidancePref prefs={prefs} onSave={(guidance) => save.mutate({ ...prefs, guidance })} />

@@ -549,3 +549,45 @@ def test_newest_playwright_build_by_number(monkeypatch, tmp_path):
         pdf, "_PLAYWRIGHT", (str(tmp_path / "chromium-*/chrome-linux*/chrome"),)
     )
     assert "chromium-1105" in pdf.find_browser()
+
+
+def test_a_postings_own_cv_settings_change_only_its_cv(monkeypatch):
+    db.save_many([JOB], "geo:1", "Zurigo", "go")
+    client.put("/api/profile", json={"profile": PROFILE})
+    client.put(
+        "/api/cv/preferences", json={"guidance": "Never 'Senior'.", "style": "jake"}
+    )
+    assert (
+        client.get("/api/jobs/cv/settings", params={"url": URL}).json()["style"] is None
+    )
+    body = {
+        "url": URL,
+        "settings": {
+            "style": "ats",
+            "locked": ["summary", "headline"],
+            "notes": " Stress Go. ",
+        },
+    }
+    saved = client.put("/api/jobs/cv/settings", json=body).json()
+    assert (
+        saved["style"] == "ats"
+        and saved["locked"] == ["headline", "summary"]
+        and saved["notes"] == "Stress Go."
+    )
+    # The defaults don't move.
+    assert client.get("/api/cv/preferences").json()["style"] == "jake"
+    from career_agent.profile import effective_cv_prefs
+
+    p = effective_cv_prefs(URL)
+    assert p.style == "ats" and p.locked == ["headline", "summary"]
+    assert p.guidance == "Never 'Senior'.\n\nFor this posting only:\nStress Go."
+    # The generation reads them: locked sections, the notes in the prompt.
+    calls = _engine(monkeypatch, answer())
+    client.post("/api/jobs/cv", json={"url": URL, "language": "en"})
+    c = _settled()
+    assert "Stress Go." in calls[0]["prompt"]
+    assert c["result"]["profile"]["summary"] == PROFILE["summary"]
+    # Changing them makes that CV stale; clearing them removes the row.
+    client.put("/api/jobs/cv/settings", json={"url": URL, "settings": {}})
+    assert db.get_setting(f"cv_overrides:{URL}") is None
+    assert client.get("/api/jobs/cv", params={"url": URL}).json()["cv"]["stale"]

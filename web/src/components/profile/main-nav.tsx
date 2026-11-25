@@ -4,21 +4,21 @@ import { useT } from "@/lib/i18n"
 import { useProfile } from "@/lib/profile"
 import { cn } from "@/lib/utils"
 
-export type View = "offerte" | "candidature" | "profilo"
+import type { Page } from "@/lib/routes"
 
 /** Top-level sections, beside the logo. The active pill slides between tabs. */
-export function MainNav({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+export function MainNav({ page, onChange }: { page: Page; onChange: (p: Page) => void }) {
   const t = useT().app
   const { stage } = useProfile()
-  const tabs: { id: View; label: string; dot?: boolean }[] = [
-    { id: "offerte", label: t.jobs },
-    { id: "candidature", label: t.applications },
-    { id: "profilo", label: t.profile, dot: stage === "review" },
+  const tabs: { id: Page; label: string; dot?: boolean }[] = [
+    { id: "jobs", label: t.jobs },
+    { id: "applications", label: t.applications },
+    { id: "profile", label: t.profile, dot: stage === "review" },
   ]
   return (
     <nav aria-label={t.sections} className="flex items-center gap-0.5">
       {tabs.map((tab) => {
-        const active = view === tab.id
+        const active = page === tab.id
         return (
           <button
             key={tab.id}
