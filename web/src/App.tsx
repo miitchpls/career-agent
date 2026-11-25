@@ -74,9 +74,10 @@ function Results({
   const dismissed = useDismissed()
   const { hide, restore } = useDismiss()
   const hiddenCount = items.reduce((n, j) => n + (dismissed.urls.has(j.url) ? 1 : 0), 0)
-  // «N nascoste» pressed: the hidden ones show too. It lets go once none is left to show.
+  // «N nascoste» pressed: the hidden ones show too. It lets go once none is left to show
+  // (in results that arrived: not while the first ones load).
   const [showHidden, setShowHidden] = useState(false)
-  if (showHidden && hiddenCount === 0) setShowHidden(false)
+  if (showHidden && data && hiddenCount === 0) setShowHidden(false)
   const shownCount = showHidden ? items.length : items.length - hiddenCount
   // Some of this query's searches are read and still fresh: «Aggiorna» reads them again.
   const loadedAny = !!data && data.missing < data.searches

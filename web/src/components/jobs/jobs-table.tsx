@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { EyeIcon, EyeOffIcon, InboxIcon, SearchXIcon, TriangleAlertIcon, Undo2Icon, type LucideIcon } from "lucide-react"
 import { AnimatePresence, motion, useReducedMotion, type TargetAndTransition, type Variants } from "motion/react"
 
@@ -177,13 +177,16 @@ export function JobsTable({
   const visible = showDismissed ? jobs : jobs.filter((j) => !dismissed.has(j.url))
   const allHidden = visible.length === 0 && jobs.length > 0
   // Hiding the last row: the table stays until the row has left, then the empty state comes.
-  // (State adjusted during render when rows come back; set after the exit otherwise.)
-  const [drained, setDrained] = useState(visible.length === 0)
-  if (visible.length > 0 && drained) setDrained(false)
-  const shown = useRef(visible.length)
-  useEffect(() => {
-    shown.current = visible.length
-  })
+  // `leaving` is set only when rows were on screen and are now all gone (so they're exiting),
+  // and dropped as soon as that's no longer the case: reaching "all hidden" any other way (new
+  // results, a reload) shows the empty state at once. (State adjusted during render.)
+  const onScreen = loading ? 0 : visible.length
+  const [before, setBefore] = useState(onScreen)
+  const [leaving, setLeaving] = useState(false)
+  if (onScreen !== before) {
+    setBefore(onScreen)
+    setLeaving(onScreen === 0 && before > 0 && allHidden)
+  } else if (leaving && (loading || !allHidden)) setLeaving(false)
   const exit = (url: string) => (gone: ReadonlySet<string> | undefined) =>
     gone?.has(url) ? (reduced ? { opacity: 0, transition: { duration: 0.15 } } : TOSS) : FADE
 
@@ -208,7 +211,7 @@ export function JobsTable({
       </div>
     )
 
-  if (allHidden && drained)
+  if (allHidden && !leaving)
     return (
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
         <EmptyState
@@ -271,7 +274,7 @@ export function JobsTable({
         <AnimatePresence
           initial={true}
           custom={dismissed}
-          onExitComplete={() => shown.current === 0 && setDrained(true)}
+          onExitComplete={() => setLeaving(false)}
         >
         {visible.map((job) => {
           const hidden = dismissed.has(job.url)

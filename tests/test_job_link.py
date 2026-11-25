@@ -514,3 +514,10 @@ def test_a_hidden_posting_is_listed_until_restored():
 
 def test_hiding_needs_a_link():
     assert client.post("/api/dismissed", json={"url": ""}).status_code == 422
+
+
+def test_a_posting_with_a_long_title_can_still_be_hidden():
+    url = "https://www.indeed.com/viewjob?jk=abc123"
+    body = {"url": url, "site": "indeed", "title": "Engineer " * 100, "company": "Initech " * 60}
+    assert client.post("/api/dismissed", json=body).status_code == 200
+    assert client.get("/api/dismissed").json() == {"urls": [url]}

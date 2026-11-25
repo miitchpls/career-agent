@@ -78,9 +78,14 @@ def jobs_paste(body: PasteJobRequest):
 
 class DismissRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2000)
-    site: str | None = Field(None, max_length=20)
-    title: str | None = Field(None, max_length=300)
-    company: str | None = Field(None, max_length=300)
+    # Kept to recognise the posting later; cut rather than refused, so any posting can be hidden.
+    site: str | None = None
+    title: str | None = None
+    company: str | None = None
+
+
+def _cut(text: str | None, size: int) -> str | None:
+    return text[:size] if text else None
 
 
 @router.get("/api/dismissed")
@@ -92,7 +97,7 @@ def dismissed_list():
 @router.post("/api/dismissed")
 def dismissed_add(body: DismissRequest):
     """Hide a posting from the results ("not interested"). Nothing is asked of the board."""
-    db.dismiss(body.url, body.site, body.title, body.company)
+    db.dismiss(body.url, _cut(body.site, 20), _cut(body.title, 300), _cut(body.company, 300))
     return {"ok": True}
 
 

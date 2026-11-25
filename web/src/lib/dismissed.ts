@@ -18,8 +18,9 @@ type Hideable = Pick<Job, "url" | "site" | "title" | "company">
  * wait, or the hidden rows would show and then leave.
  */
 export function useDismissed(): { urls: ReadonlySet<string>; ready: boolean } {
-  const q = useQuery({ queryKey: KEY, queryFn: api.dismissed.list, select: toSet, staleTime: Infinity })
-  // A failed list doesn't hold the results up: nothing is hidden then.
+  // No retry: a failed list doesn't hold the results up (nothing is hidden then); the next
+  // hide or restore refetches it.
+  const q = useQuery({ queryKey: KEY, queryFn: api.dismissed.list, select: toSet, staleTime: Infinity, retry: false })
   return { urls: q.data ?? EMPTY, ready: !q.isPending }
 }
 
