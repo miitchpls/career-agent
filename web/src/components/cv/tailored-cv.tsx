@@ -27,7 +27,7 @@ import { CV_TEMPLATES, type CvPrefs, type CvTemplate, type Job, type TailoredCv 
 import { useCvPreview } from "@/lib/cv-preview"
 import { type ResolvedCv } from "@/lib/cv-prefs"
 import { CvSettings } from "@/components/cv/cv-settings"
-import { intlTag, useT } from "@/lib/i18n"
+import { intlTag, languageName, useT } from "@/lib/i18n"
 import { shownScore, useScore } from "@/lib/job-score"
 import { openPreferences } from "@/lib/preferences"
 import { hasProfile, useProfile } from "@/lib/profile"
@@ -158,10 +158,6 @@ function NoProfile({ onOpenProfile }: { onOpenProfile: () => void }) {
   )
 }
 
-function useLanguageName() {
-  const t = useT().profileView
-  return { it: t.languageIt, en: t.languageEn, de: t.languageDe, ko: t.languageKo }
-}
 
 function Idle({
   job,
@@ -184,7 +180,6 @@ function Idle({
 }) {
   const all = useT()
   const t = all.cv
-  const languageName = useLanguageName()
   // career-ops tailors from its evaluation: a finished score aims the CV at what it found.
   const scored = !!shownScore(useScore(job.url).data)
   return (
@@ -199,7 +194,7 @@ function Idle({
         {t.generate}
       </Button>
       <p className="text-xs text-muted-foreground">
-        {t.willWrite(languageName[look.language], look.format === "a4" ? "A4" : "Letter", all.cv.templates[look.style].name)}{" "}
+        {t.willWrite(languageName(look.language), look.format === "a4" ? "A4" : "Letter", all.cv.templates[look.style].name)}{" "}
         <CvSettings
           job={job}
           onOpenDefaults={onOpenProfile}
@@ -292,7 +287,6 @@ function Result({
 }) {
   const all = useT()
   const t = all.cv
-  const languageName = useLanguageName()
   const download = useDownloadCv()
   const [marks, setMarks] = useState(true)
   const when = new Date(cv.created_at).toLocaleString(intlTag(), { dateStyle: "medium", timeStyle: "short" })
@@ -305,7 +299,7 @@ function Result({
       {(cv.stale || otherLanguage) && (
         <div className="flex items-center gap-3 border-b bg-muted/50 px-6 py-2.5">
           <p className="flex-1 text-xs text-pretty text-muted-foreground">
-            {otherLanguage ? t.otherLanguage(languageName[cv.language], languageName[look.language]) : t.stale}
+            {otherLanguage ? t.otherLanguage(languageName(cv.language), languageName(look.language)) : t.stale}
           </p>
           <Button variant="outline" size="xs" disabled={busy} onClick={onRegenerate}>
             <RefreshCwIcon />
@@ -316,7 +310,7 @@ function Result({
 
       <div className="flex flex-wrap items-center gap-2 px-6 pt-5 pb-4">
         <p className="mr-auto text-xs text-muted-foreground tabular-nums">
-          {t.meta(cv.version, languageName[cv.language], look.format === "a4" ? "A4" : "Letter", when)}
+          {t.meta(cv.version, languageName(cv.language), look.format === "a4" ? "A4" : "Letter", when)}
         </p>
         {/* The banner above already offers it. */}
         {!(cv.stale || otherLanguage) && (
@@ -330,7 +324,7 @@ function Result({
           size="sm"
           disabled={download.isPending}
           onClick={() =>
-            download.mutate({ url: job.url, template: look.style, format: look.format, photo: look.photo, consent: look.consent })
+            download.mutate({ url: job.url, template: look.style, format: look.format, photo: look.photo, footer: look.footer })
           }
         >
           {download.isPending ? <LoaderCircleIcon className="animate-spin" /> : <DownloadIcon />}
@@ -550,7 +544,7 @@ function TailoredPage({
     profile: result.profile,
     marked: marks ? result.marked : [],
     competencies: result.competencies,
-    consent: look.consent,
+    footer: look.footer,
     photoStyle,
   })
   return (

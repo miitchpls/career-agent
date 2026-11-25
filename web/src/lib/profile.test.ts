@@ -9,6 +9,7 @@ import {
   profileStore,
   renameCategory,
   reviewCount,
+  saveCategory,
   setSkillCategory,
   skillCategories,
   withDefaults,
@@ -154,6 +155,24 @@ describe("skill lines", () => {
     expect(skillCategories(renameCategory(p, "Frontend", ""))).toEqual(["Languages"])
   })
 
+  it("saves a line from its dialog: new skills join, the ones taken off stay uncategorised", () => {
+    const next = saveCategory(p, null, "Backend", ["Go", "Kafka"])
+    expect(next.skills).toEqual([
+      { name: "Go", category: "Backend" },
+      { name: "React", category: "Frontend" },
+      { name: "Docker" },
+      { name: "Rust", category: "Languages" },
+      { name: "Kafka", category: "Backend" },
+    ])
+    const renamed = saveCategory(p, "Languages", "Linguaggi", ["Rust"])
+    expect(renamed.skills.map((s) => [s.name, s.category ?? ""])).toEqual([
+      ["Go", ""],
+      ["React", "Frontend"],
+      ["Docker", ""],
+      ["Rust", "Linguaggi"],
+    ])
+  })
+
   it("exports one line per category, like career-ops' cv.md", () => {
     const md = toMarkdown({ ...p, name: "X" })
     expect(md).toContain("- **Languages:** Go, Rust")
@@ -189,7 +208,7 @@ describe("company groups", () => {
   it("compares employers ignoring case, accents, punctuation and legal form", () => {
     expect(companyKey("Acme S.p.A.")).toBe(companyKey("ACME"))
     expect(companyKey("Société Générale SA")).toBe(companyKey("societe generale"))
-    expect(companyKey("Glutz AG")).toBe("glutz")
+    expect(companyKey("Lumen AG")).toBe("lumen")
     expect(companyKey("J.P. Morgan")).toBe("jp morgan")
     expect(companyKey("Inc")).toBe("inc")
     expect(companyKey("Acme")).not.toBe(companyKey("Acme Labs"))
@@ -199,7 +218,7 @@ describe("company groups", () => {
     expect(withoutLegalForm("Acme S.p.A.")).toBe("Acme")
     expect(withoutLegalForm("Gamma Srl")).toBe("Gamma")
     expect(withoutLegalForm("Initech, Inc.")).toBe("Initech")
-    expect(withoutLegalForm("Glutz AG")).toBe("Glutz")
+    expect(withoutLegalForm("Lumen AG")).toBe("Lumen")
     expect(withoutLegalForm("Co")).toBe("Co")
     expect(withoutLegalForm("Acme Labs")).toBe("Acme Labs")
   })

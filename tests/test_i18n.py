@@ -4,21 +4,29 @@ from fastapi.testclient import TestClient
 
 from career_agent import geo, scraper
 from career_agent.app import app
-from career_agent.i18n import LOCALE, MESSAGES, parse_accept_language, t
+from career_agent.i18n import LOCALE, LOCALES, MESSAGES, parse_accept_language, t
 
 client = TestClient(app)
 
 
-def test_every_message_exists_in_every_language():
+def test_every_message_exists_in_every_language_with_the_same_placeholders():
+    import string
+
+    def fields(text):
+        return {f for _, f, _, _ in string.Formatter().parse(text) if f}
+
     for key, by_locale in MESSAGES.items():
-        assert set(by_locale) == {"it", "en", "de", "ko"}, key
+        assert set(by_locale) == set(LOCALES), key
+        for lang, text in by_locale.items():
+            assert fields(text) == fields(by_locale["en"]), (key, lang)
 
 
 def test_accept_language_picks_the_first_supported_language():
     assert parse_accept_language("en-GB,en;q=0.9") == "en"
-    assert parse_accept_language("fr-FR, de;q=0.8") == "de"
+    assert parse_accept_language("fr-FR, de;q=0.8") == "fr"
     assert parse_accept_language("ko-KR,ko;q=0.9") == "ko"
-    assert parse_accept_language("fr") == "it"
+    assert parse_accept_language("zh-TW") == "zh"
+    assert parse_accept_language("pl") == "it"
     assert parse_accept_language(None) == "it"
 
 

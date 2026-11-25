@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 import { api, type CvLanguage, type CvPrefs, type Job } from "@/lib/api"
+import { countryOf } from "@/lib/countries"
 import { msgs } from "@/lib/i18n"
 
 export const DEFAULT_CV_PREFS: CvPrefs = {
@@ -11,7 +12,8 @@ export const DEFAULT_CV_PREFS: CvPrefs = {
   style: "standard",
   photo: "auto",
   photoStyle: "rounded",
-  consent: "auto",
+  footer: "",
+  footerCountries: [],
   locked: [],
   guidance: "",
 }
@@ -40,53 +42,46 @@ export function useSaveCvPrefs() {
 
 // --- Resolving "auto" for a posting -------------------------------------------------------------
 
-// Country names and codes as the boards write them at the end of a location.
-const COUNTRIES: [string, RegExp][] = [
-  ["us", /\b(united states|usa|us)$/],
-  ["ca", /\b(canada|ca)$/],
-  ["gb", /\b(united kingdom|uk|gb|england|scotland)$/],
-  ["ie", /\b(ireland|ie)$/],
-  ["ch", /\b(switzerland|schweiz|suisse|svizzera|ch)$/],
-  ["de", /\b(germany|deutschland|germania|de)$/],
-  ["at", /\b(austria|österreich|at)$/],
-  ["it", /\b(italy|italia|it)$/],
-  ["fr", /\b(france|francia|fr)$/],
-  ["es", /\b(spain|españa|spagna|es)$/],
-  ["nl", /\b(netherlands|nederland|paesi bassi|nl)$/],
-  ["kr", /(\b(south korea|korea|republic of korea|kr)|대한민국|한국)$/],
-]
-
 /** ISO code of the posting's country, from the end of its location ("Zurich, ZH, Switzerland"). */
-export function jobCountry(location: string | null): string | null {
-  const text = (location ?? "").trim().toLowerCase().replace(/[.\s]+$/, "")
-  return COUNTRIES.find(([, re]) => re.test(text))?.[0] ?? null
-}
+export const jobCountry = countryOf
 
 // Where the page is Letter, and where a CV without a photo is the norm (anti-discrimination
 // practice). Elsewhere in Europe a photo is common.
 const LETTER = new Set(["us", "ca"])
 const NO_PHOTO = new Set(["us", "ca", "gb", "ie"])
 
-const STOPWORDS: Record<Exclude<CvLanguage, "ko">, string[]> = {
+// Common words of the languages written in Latin letters, ten each: the most frequent wins.
+const STOPWORDS: Record<"it" | "en" | "de" | "es" | "fr" | "pt" | "nl" | "tr" | "id", string[]> = {
   it: ["il", "della", "per", "che", "con", "sono", "nel", "delle", "una", "esperienza"],
   en: ["the", "and", "with", "you", "our", "for", "will", "are", "experience", "team"],
   de: ["und", "der", "die", "mit", "für", "wir", "sie", "ist", "das", "erfahrung"],
+  es: ["el", "los", "las", "con", "para", "por", "del", "una", "experiencia", "equipo"],
+  fr: ["le", "les", "des", "avec", "pour", "vous", "nous", "est", "dans", "expérience"],
+  pt: ["os", "das", "dos", "com", "para", "uma", "você", "não", "experiência", "equipe"],
+  nl: ["de", "het", "een", "van", "met", "voor", "je", "wij", "ervaring", "zijn"],
+  tr: ["ve", "bir", "için", "ile", "bu", "olarak", "deneyim", "olan", "iş", "en"],
+  id: ["dan", "yang", "untuk", "dengan", "di", "kami", "anda", "pengalaman", "dalam", "akan"],
 }
 
 /**
- * The posting's language: Korean when most of its letters are Hangul (Korean postings mix in
- * English tool names, and attach particles to words, so stopwords don't work there); otherwise
- * by its most frequent common words; English when unclear.
+ * The posting's language. Scripts first, as a share of its letters (postings mix in English
+ * tool names): Hangul is Korean, kana Japanese, Han without kana Chinese, Cyrillic Russian.
+ * Otherwise its most frequent common words; English when unclear.
  */
 export function postingLanguage(text: string | null): CvLanguage {
   const letters = (text ?? "").match(/\p{L}/gu) ?? []
-  const hangul = letters.filter((c) => /\p{Script=Hangul}/u.test(c)).length
-  if (hangul && hangul >= letters.length * 0.3) return "ko"
+  const share = (script: RegExp) => letters.filter((c) => script.test(c)).length / (letters.length || 1)
+  if (share(/\p{Script=Hangul}/u) >= 0.3) return "ko"
+  const kana = share(/[\p{Script=Hiragana}\p{Script=Katakana}]/u)
+  const han = share(/\p{Script=Han}/u)
+  if (kana >= 0.1 && kana + han >= 0.3) return "ja"
+  if (han >= 0.3) return "zh"
+  if (share(/\p{Script=Cyrillic}/u) >= 0.3) return "ru"
   const words = (text ?? "").toLowerCase().match(/\p{L}+/gu) ?? []
-  const counts = { it: 0, en: 0, de: 0 }
+  const counts = Object.fromEntries(Object.keys(STOPWORDS).map((l) => [l, 0])) as Record<keyof typeof STOPWORDS, number>
   for (const w of words)
-    for (const lang of ["it", "en", "de"] as const) if (STOPWORDS[lang].includes(w)) counts[lang]++
-  const best = (Object.entries(counts) as ["it" | "en" | "de", number][]).sort((a, b) => b[1] - a[1])[0]
+    for (const lang of Object.keys(STOPWORDS) as (keyof typeof STOPWORDS)[]) if (STOPWORDS[lang].includes(w)) counts[lang]++
+  const best = (Object.entries(counts) as [keyof typeof STOPWORDS, number][]).sort((a, b) => b[1] - a[1])[0]
   return best[1] > 0 ? best[0] : "en"
 }
 
@@ -95,8 +90,13 @@ export interface ResolvedCv {
   format: "a4" | "letter"
   style: CvPrefs["style"]
   photo: boolean
-  /** End with the data-processing consent. */
-  consent: boolean
+  /** The line the CV ends with; "" for none. */
+  footer: string
+}
+
+export function footerApplies(prefs: Pick<CvPrefs, "footer" | "footerCountries">, country: string | null): boolean {
+  if (!prefs.footer.trim()) return false
+  return prefs.footerCountries.length === 0 || (!!country && prefs.footerCountries.includes(country))
 }
 
 /** The preferences applied to one posting: no "auto" left. */
@@ -108,7 +108,7 @@ export function resolveCv(prefs: CvPrefs, job: Pick<Job, "location" | "descripti
     format: prefs.format === "auto" ? (country && LETTER.has(country) ? "letter" : "a4") : prefs.format,
     style: prefs.style,
     photo: hasPhoto && (prefs.photo === "always" || (prefs.photo === "auto" && !(country && NO_PHOTO.has(country)))),
-    // Italian CVs end with it; an Italian posting with no country stated likely is one.
-    consent: prefs.consent === "always" || (prefs.consent === "auto" && (country ? country === "it" : language === "it")),
+    // Everywhere, or only in the countries chosen (a posting that doesn't say where gets none).
+    footer: footerApplies(prefs, country) ? prefs.footer.trim() : "",
   }
 }

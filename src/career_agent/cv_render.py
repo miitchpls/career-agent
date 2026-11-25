@@ -31,7 +31,9 @@ TEMPLATES: dict[str, Path] = {
     "jake": ROOT / "cv-template.jake.html",
     "ats": ROOT / "ats" / "cv-template.ats.html",
 }
-CvLanguage = Literal["it", "en", "de", "ko"]
+CvLanguage = Literal[
+    "it", "en", "de", "ko", "zh", "es", "fr", "ja", "pt", "ru", "id", "nl", "tr"
+]  # fmt: skip
 PageFormat = Literal["a4", "letter"]
 PAGE_WIDTHS = {"a4": "210mm", "letter": "8.5in"}
 PAGE_HEIGHTS = {"a4": "297mm", "letter": "11in"}
@@ -99,6 +101,141 @@ WORDS: dict[str, dict[str, str]] = {
         "present": "현재",
         "other": "기타",
     },
+    "es": {
+        "summary": "Perfil profesional",
+        "competencies": "Competencias clave",
+        "experience": "Experiencia profesional",
+        "projects": "Proyectos",
+        "education": "Formación",
+        "certifications": "Certificaciones",
+        "awards": "Premios y reconocimientos",
+        "interests": "Intereses",
+        "skills": "Habilidades",
+        "technical": "Técnicas",
+        "languages": "Idiomas",
+        "present": "actualidad",
+        "other": "Otras",
+    },
+    "fr": {
+        "summary": "Profil",
+        "competencies": "Compétences clés",
+        "experience": "Expérience professionnelle",
+        "projects": "Projets",
+        "education": "Formation",
+        "certifications": "Certifications",
+        "awards": "Prix et distinctions",
+        "interests": "Centres d'intérêt",
+        "skills": "Compétences",
+        "technical": "Techniques",
+        "languages": "Langues",
+        "present": "aujourd'hui",
+        "other": "Autres",
+    },
+    "pt": {
+        "summary": "Resumo profissional",
+        "competencies": "Competências principais",
+        "experience": "Experiência profissional",
+        "projects": "Projetos",
+        "education": "Formação",
+        "certifications": "Certificações",
+        "awards": "Prêmios e reconhecimentos",
+        "interests": "Interesses",
+        "skills": "Habilidades",
+        "technical": "Técnicas",
+        "languages": "Idiomas",
+        "present": "atual",
+        "other": "Outras",
+    },
+    "nl": {
+        "summary": "Profiel",
+        "competencies": "Kerncompetenties",
+        "experience": "Werkervaring",
+        "projects": "Projecten",
+        "education": "Opleiding",
+        "certifications": "Certificeringen",
+        "awards": "Prijzen en onderscheidingen",
+        "interests": "Interesses",
+        "skills": "Vaardigheden",
+        "technical": "Technisch",
+        "languages": "Talen",
+        "present": "heden",
+        "other": "Overig",
+    },
+    "tr": {
+        "summary": "Profesyonel Özet",
+        "competencies": "Temel Yetkinlikler",
+        "experience": "İş Deneyimi",
+        "projects": "Projeler",
+        "education": "Eğitim",
+        "certifications": "Sertifikalar",
+        "awards": "Ödüller",
+        "interests": "İlgi Alanları",
+        "skills": "Beceriler",
+        "technical": "Teknik",
+        "languages": "Diller",
+        "present": "günümüz",
+        "other": "Diğer",
+    },
+    "id": {
+        "summary": "Ringkasan Profesional",
+        "competencies": "Kompetensi Inti",
+        "experience": "Pengalaman Kerja",
+        "projects": "Proyek",
+        "education": "Pendidikan",
+        "certifications": "Sertifikasi",
+        "awards": "Penghargaan",
+        "interests": "Minat",
+        "skills": "Keahlian",
+        "technical": "Teknis",
+        "languages": "Bahasa",
+        "present": "sekarang",
+        "other": "Lainnya",
+    },
+    "ru": {
+        "summary": "Профиль",
+        "competencies": "Ключевые компетенции",
+        "experience": "Опыт работы",
+        "projects": "Проекты",
+        "education": "Образование",
+        "certifications": "Сертификаты",
+        "awards": "Награды",
+        "interests": "Интересы",
+        "skills": "Навыки",
+        "technical": "Технические",
+        "languages": "Языки",
+        "present": "н. в.",
+        "other": "Другое",
+    },
+    "ja": {
+        "summary": "職務要約",
+        "competencies": "コアスキル",
+        "experience": "職務経歴",
+        "projects": "プロジェクト",
+        "education": "学歴",
+        "certifications": "資格",
+        "awards": "受賞歴",
+        "interests": "興味・関心",
+        "skills": "スキル",
+        "technical": "技術",
+        "languages": "語学",
+        "present": "現在",
+        "other": "その他",
+    },
+    "zh": {
+        "summary": "个人简介",
+        "competencies": "核心能力",
+        "experience": "工作经历",
+        "projects": "项目经历",
+        "education": "教育背景",
+        "certifications": "证书",
+        "awards": "荣誉奖项",
+        "interests": "兴趣爱好",
+        "skills": "技能",
+        "technical": "技术",
+        "languages": "语言",
+        "present": "至今",
+        "other": "其他",
+    },
 }
 MONTHS = {
     "en": [
@@ -143,6 +280,104 @@ MONTHS = {
         "Nov.",
         "Dez.",
     ],
+    "es": [
+        "ene",
+        "feb",
+        "mar",
+        "abr",
+        "may",
+        "jun",
+        "jul",
+        "ago",
+        "sept",
+        "oct",
+        "nov",
+        "dic",
+    ],
+    "fr": [
+        "janv.",
+        "févr.",
+        "mars",
+        "avr.",
+        "mai",
+        "juin",
+        "juil.",
+        "août",
+        "sept.",
+        "oct.",
+        "nov.",
+        "déc.",
+    ],
+    "pt": [
+        "jan",
+        "fev",
+        "mar",
+        "abr",
+        "mai",
+        "jun",
+        "jul",
+        "ago",
+        "set",
+        "out",
+        "nov",
+        "dez",
+    ],
+    "nl": [
+        "jan",
+        "feb",
+        "mrt",
+        "apr",
+        "mei",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "okt",
+        "nov",
+        "dec",
+    ],
+    "tr": [
+        "Oca",
+        "Şub",
+        "Mar",
+        "Nis",
+        "May",
+        "Haz",
+        "Tem",
+        "Ağu",
+        "Eyl",
+        "Eki",
+        "Kas",
+        "Ara",
+    ],
+    "id": [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "Mei",
+        "Jun",
+        "Jul",
+        "Agu",
+        "Sep",
+        "Okt",
+        "Nov",
+        "Des",
+    ],
+    "ru": [
+        "янв.",
+        "февр.",
+        "март",
+        "апр.",
+        "май",
+        "июнь",
+        "июль",
+        "авг.",
+        "сент.",
+        "окт.",
+        "нояб.",
+        "дек.",
+    ],
 }
 LEVELS = {
     "en": {"elementary": "elementary", "limited": "limited working", "professional": "professional working",
@@ -153,18 +388,17 @@ LEVELS = {
            "full": "fließend", "native": "Muttersprache"},
     "ko": {"elementary": "초급", "limited": "제한적 업무 가능", "professional": "업무 가능",
            "full": "비즈니스 능통", "native": "원어민"},
+    "es": {'elementary': 'básico', 'limited': 'limitado', 'professional': 'profesional', 'full': 'profesional completo', 'native': 'nativo'},
+    "fr": {'elementary': 'notions', 'limited': 'usage professionnel limité', 'professional': 'usage professionnel', 'full': 'courant', 'native': 'langue maternelle'},
+    "pt": {'elementary': 'básico', 'limited': 'limitado', 'professional': 'profissional', 'full': 'fluente', 'native': 'nativo'},
+    "nl": {'elementary': 'basis', 'limited': 'beperkt', 'professional': 'professioneel', 'full': 'vloeiend', 'native': 'moedertaal'},
+    "tr": {'elementary': 'başlangıç', 'limited': 'sınırlı', 'professional': 'profesyonel', 'full': 'ileri', 'native': 'ana dil'},
+    "id": {'elementary': 'dasar', 'limited': 'terbatas', 'professional': 'profesional', 'full': 'fasih', 'native': 'bahasa ibu'},
+    "ru": {'elementary': 'начальный', 'limited': 'ограниченный', 'professional': 'рабочий', 'full': 'свободный', 'native': 'родной'},
+    "ja": {'elementary': '初級', 'limited': '日常会話', 'professional': 'ビジネス', 'full': 'ビジネス上級', 'native': 'ネイティブ'},
+    "zh": {'elementary': '初级', 'limited': '有限工作能力', 'professional': '工作熟练', 'full': '专业精通', 'native': '母语'},
 }  # fmt: skip
 
-# The data-processing consent Italian CVs end with, in the CV's language (career-ops' `consent`).
-CONSENT = {
-    "it": "Autorizzo il trattamento dei dati personali contenuti nel mio curriculum vitae ai sensi "
-    "del Regolamento UE 2016/679 (GDPR) e del D.Lgs. 196/2003.",
-    "en": "I authorise the processing of the personal data in this CV under Regulation (EU) "
-    "2016/679 (GDPR).",
-    "de": "Ich willige in die Verarbeitung der personenbezogenen Daten in diesem Lebenslauf gemäß "
-    "der Verordnung (EU) 2016/679 (DSGVO) ein.",
-    "ko": "본 이력서에 포함된 개인정보의 수집 및 이용에 동의합니다.",
-}
 PhotoStyle = Literal["rounded", "circle", "square"]
 
 
@@ -314,6 +548,8 @@ def strip_empty(source: str, filled: dict[str, bool]) -> str:
 def _date(d: MonthYear | None, lang: str) -> str:
     if not d:
         return ""
+    if lang in ("zh", "ja"):  # 2020年3月
+        return f"{d.year}年{d.month + 1}月" if d.month is not None else f"{d.year}年"
     if lang == "ko":  # Korean CVs write dates as 2020.03
         return f"{d.year}.{d.month + 1:02d}" if d.month is not None else str(d.year)
     return f"{MONTHS[lang][d.month]} {d.year}" if d.month is not None else str(d.year)
@@ -498,6 +734,15 @@ _MODES = {
     "it": {"onsite": "In sede", "hybrid": "Ibrido", "remote": "Da remoto"},
     "de": {"onsite": "Vor Ort", "hybrid": "Hybrid", "remote": "Remote"},
     "ko": {"onsite": "사무실 근무", "hybrid": "하이브리드", "remote": "원격 근무"},
+    "es": {"onsite": "Presencial", "hybrid": "Híbrido", "remote": "En remoto"},
+    "fr": {"onsite": "Sur site", "hybrid": "Hybride", "remote": "Télétravail"},
+    "pt": {"onsite": "Presencial", "hybrid": "Híbrido", "remote": "Remoto"},
+    "nl": {"onsite": "Op locatie", "hybrid": "Hybride", "remote": "Op afstand"},
+    "tr": {"onsite": "Ofiste", "hybrid": "Hibrit", "remote": "Uzaktan"},
+    "id": {"onsite": "Di kantor", "hybrid": "Hibrida", "remote": "Jarak jauh"},
+    "ru": {"onsite": "В офисе", "hybrid": "Гибрид", "remote": "Удалённо"},
+    "ja": {"onsite": "出社", "hybrid": "ハイブリッド", "remote": "リモート"},
+    "zh": {"onsite": "现场办公", "hybrid": "混合办公", "remote": "远程"},
 }
 
 
@@ -666,12 +911,12 @@ def render(
     photo: bool = False,
     marked: frozenset[str] = frozenset(),
     competencies: tuple[str, ...] | list[str] = (),
-    consent: bool = False,
+    footer: str = "",
     photo_style: PhotoStyle = "rounded",
 ) -> str:
     """The CV as an HTML document. Texts in `marked` (bullets, the summary, a project's
     description) are highlighted: the parts a tailored CV changed. `competencies` are a
-    tailored CV's keyword tags; `consent` adds the data-processing line at the bottom."""
+    tailored CV's keyword tags; `footer` is a line printed at the bottom (a consent, a permit)."""
 
     def mark(text: str) -> str:
         return (
@@ -720,7 +965,7 @@ def render(
         "NAME": esc(p.name),
         "SUMMARY_TEXT": mark(p.summary),
         "INTERESTS": _interests(p),
-        "CONSENT": esc(CONSENT[lang]) if consent else "",
+        "CONSENT": esc(footer.strip()),
         "PHOTO": f'<img class="cv-photo cv-photo--{photo_style}" src="{esc(photo_src)}" alt="{esc(p.name)}">'
         if photo_src
         else "",

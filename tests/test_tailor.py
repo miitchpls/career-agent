@@ -413,7 +413,7 @@ def test_pdf_of_the_last_cv(monkeypatch):
         return b"%PDF-1.7 fake"
 
     monkeypatch.setattr(pdf, "html_to_pdf", fake)
-    r = client.post("/api/jobs/cv/pdf", json={**body, "consent": True})
+    r = client.post("/api/jobs/cv/pdf", json={**body, "footer": "GDPR consent."})
     assert r.status_code == 200 and r.content.startswith(b"%PDF")
     assert 'filename="Giulia-Ferri-CV-Acme.pdf"' in r.headers["content-disposition"]
     assert "Event-driven services" in seen["html"]  # the competencies
@@ -591,3 +591,12 @@ def test_a_postings_own_cv_settings_change_only_its_cv(monkeypatch):
     client.put("/api/jobs/cv/settings", json={"url": URL, "settings": {}})
     assert db.get_setting(f"cv_overrides:{URL}") is None
     assert client.get("/api/jobs/cv", params={"url": URL}).json()["cv"]["stale"]
+
+
+def test_a_postings_footer_setting_overrides_the_countries():
+    from career_agent.profile import CvOverrides
+
+    prefs = CvPrefs(footer="Consent.", footer_countries=["it"])
+    assert CvOverrides(footer=True).apply(prefs).footer_countries == []  # here too
+    assert CvOverrides(footer=False).apply(prefs).footer == ""
+    assert CvOverrides().apply(prefs) == prefs

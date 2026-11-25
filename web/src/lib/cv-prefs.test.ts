@@ -32,14 +32,14 @@ describe("cv preferences", () => {
       format: "letter",
       style: "standard",
       photo: false,
-      consent: false,
+      footer: "",
     })
     expect(resolveCv(DEFAULT_CV_PREFS, ch, true)).toEqual({
       language: "de",
       format: "a4",
       style: "standard",
       photo: true,
-      consent: false,
+      footer: "",
     })
     expect(resolveCv(DEFAULT_CV_PREFS, ch, false).photo).toBe(false) // nothing to show
   })
@@ -52,18 +52,34 @@ describe("cv preferences", () => {
       format: "a4",
       style: "executive",
       photo: true,
-      consent: false,
+      footer: "",
     })
     expect(resolveCv({ ...prefs, photo: "never" }, us, true).photo).toBe(false)
   })
 
-  it("adds the consent line for Italy, or an Italian posting with no country", () => {
+  it("ends with the footer everywhere, or only in the countries picked", () => {
     const milan = { location: "Milano, Lombardia, Italia", description: "You will join the team" }
-    const remote = { location: "Remote", description: "Cerchiamo una persona con esperienza per il team" }
-    expect(resolveCv(DEFAULT_CV_PREFS, milan, false).consent).toBe(true)
-    expect(resolveCv(DEFAULT_CV_PREFS, remote, false).consent).toBe(true)
-    expect(resolveCv({ ...DEFAULT_CV_PREFS, consent: "never" }, milan, false).consent).toBe(false)
     const zurich = { location: "Zurich, Switzerland", description: "You will join the team" }
-    expect(resolveCv({ ...DEFAULT_CV_PREFS, consent: "always" }, zurich, false).consent).toBe(true)
+    const remote = { location: "Remote", description: "Cerchiamo una persona con esperienza" }
+    const consent = { ...DEFAULT_CV_PREFS, footer: " Autorizzo il trattamento dei dati. ", footerCountries: ["it"] }
+    expect(resolveCv(consent, milan, false).footer).toBe("Autorizzo il trattamento dei dati.")
+    expect(resolveCv(consent, zurich, false).footer).toBe("")
+    expect(resolveCv(consent, remote, false).footer).toBe("") // no country: not one of them
+    expect(resolveCv({ ...consent, footerCountries: [] }, zurich, false).footer).toBe("Autorizzo il trattamento dei dati.")
+    expect(resolveCv(DEFAULT_CV_PREFS, milan, false).footer).toBe("") // none written
+  })
+})
+
+describe("posting language, in every language a CV can be written in", () => {
+  it("reads the script, then the common words", () => {
+    expect(postingLanguage("バックエンドエンジニアを募集しています。Python の経験がある方")).toBe("ja")
+    expect(postingLanguage("我们正在招聘后端工程师，需要 Python 经验")).toBe("zh")
+    expect(postingLanguage("Мы ищем backend-разработчика с опытом работы на Python")).toBe("ru")
+    expect(postingLanguage("Buscamos una persona con experiencia para el equipo de producto")).toBe("es")
+    expect(postingLanguage("Nous cherchons une personne avec de l'expérience pour les équipes")).toBe("fr")
+    expect(postingLanguage("Procuramos uma pessoa com experiência para a equipe dos produtos")).toBe("pt")
+    expect(postingLanguage("Wij zoeken een collega met ervaring voor het team van de afdeling")).toBe("nl")
+    expect(postingLanguage("Ekibimiz için deneyimli bir yazılım geliştirici arıyoruz ve bu iş")).toBe("tr")
+    expect(postingLanguage("Kami mencari kandidat dengan pengalaman untuk tim yang dinamis dan")).toBe("id")
   })
 })

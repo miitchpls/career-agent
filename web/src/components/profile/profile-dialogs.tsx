@@ -583,7 +583,7 @@ export function AwardDialog({ open, onOpenChange, entry, onSave, onDelete }: Ent
         </Field>
         <div className="grid grid-cols-2 items-start gap-3">
           <Field label={t.awardIssuer}>
-            <Input value={d.issuer} onChange={text("issuer")} placeholder="HackZurich" />
+            <Input value={d.issuer} onChange={text("issuer")} placeholder="Open Source Summit" />
           </Field>
           <MonthYearField label={t.awardDate} value={d.date} onChange={(date) => setD({ ...d, date })} />
         </div>
@@ -602,36 +602,54 @@ export function AwardDialog({ open, onOpenChange, entry, onSave, onDelete }: Ent
 
 // --- Skill lines -----------------------------------------------------------------------------
 
-/** A name for a skill line: a new one, or a rename. Saving an existing name merges the two. */
+/**
+ * A skill line, in one step: its name and its skills, picked from the profile's or typed new.
+ * Editing one renames it, changes what's on it, or deletes it (its skills stay, ungrouped).
+ * Saving a name another line has merges the two.
+ */
 export function CategoryDialog({
   open,
   onOpenChange,
   initial,
+  skills,
+  known,
   taken,
   onSave,
+  onDelete,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
+  /** The line's name; "" for a new one. */
   initial: string
+  /** What's on it when the dialog opens. */
+  skills: string[]
+  /** Every skill of the profile, to pick from. */
+  known: string[]
   /** The other lines' names, to say a rename merges. */
   taken: string[]
-  onSave: (name: string) => void
+  onSave: (name: string, skills: string[]) => void
+  onDelete?: () => void
 }) {
   const t = useT().profile
   const [name, setName] = useDraft(open, initial)
+  const [picked, setPicked] = useDraft(open, skills)
   const merges = !!name.trim() && name.trim() !== initial && taken.includes(name.trim())
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={initial ? t.renameCategory : t.newCategory}
+      title={initial ? t.editCategory : t.newCategory}
       description={t.categoryHint}
       canSave={!!name.trim()}
-      onSave={() => onSave(name.trim())}
+      onDelete={onDelete}
+      onSave={() => onSave(name.trim(), picked)}
     >
-      <Field label={t.categoryName} hint={merges ? t.categoryMerges : undefined}>
+      <Field label={t.categoryName} required hint={merges ? t.categoryMerges : undefined}>
         <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder="Cloud & DevOps" />
       </Field>
+      <FormGroup title={t.skills} description={t.categorySkillsHint}>
+        <SkillPicker value={picked} onChange={setPicked} known={known} />
+      </FormGroup>
     </FormDialog>
   )
 }

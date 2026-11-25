@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router"
 import { AlertCircleIcon, MoreHorizontalIcon, Settings2Icon } from "lucide-react"
 import { AnimatePresence, motion, type Transition } from "motion/react"
 
+import { Logo, useNeedleSpin } from "@/components/brand/logo"
 import { Composer } from "@/components/composer/composer"
 import { MainNav } from "@/components/profile/main-nav"
 import { ProfilePage } from "@/components/profile/profile-page"
@@ -38,17 +39,6 @@ import { openPreferences, setPreferencesOpen, usePreferencesOpen } from "@/lib/p
 const SPRING: Transition = { type: "spring", stiffness: 260, damping: 32, mass: 0.9 }
 const hasQuery = (f: FilterState) => activeCount(f) > 0 || !!f.q
 
-/** Compass needle: full "north" half, faded "south" half, tilted towards the top right. */
-function Logo() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-6" aria-hidden>
-      <g transform="rotate(45 12 12)" fill="currentColor">
-        <path d="M12 1.8 15.6 12H8.4Z" />
-        <path d="M8.4 12h7.2L12 22.2Z" opacity=".32" />
-      </g>
-    </svg>
-  )
-}
 
 function Results({
   filters,
@@ -286,6 +276,7 @@ export default function App() {
     if (empty) setSubmitted(false)
   }
 
+  const needle = useNeedleSpin()
   const prefs = usePreferencesOpen()
   // ⌘, / Ctrl+, opens the preferences, as in most desktop apps.
   useEffect(() => {
@@ -327,7 +318,7 @@ export default function App() {
         )}
       >
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-6">
-          <button type="button" onClick={goHome} className="flex items-center gap-2" aria-label={t.home}>
+          <button type="button" onClick={goHome} className="flex items-center gap-2" aria-label={t.home} {...needle}>
             <Logo />
             <span className="text-sm font-medium">career-agent</span>
           </button>

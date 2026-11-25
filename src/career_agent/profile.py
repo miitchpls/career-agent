@@ -13,7 +13,7 @@ import json
 import re
 import unicodedata
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, ValidationError
 
@@ -178,7 +178,10 @@ LockedSection = Literal["headline", "summary", "experience", "projects", "skills
 LOCKED_SECTIONS: tuple[LockedSection, ...] = LockedSection.__args__
 
 
-LanguagePref = Literal["job", "it", "en", "de", "ko"]  # job: the posting's language
+# job: the posting's language
+LanguagePref = Literal[
+    "job", "it", "en", "de", "ko", "zh", "es", "fr", "ja", "pt", "ru", "id", "nl", "tr"
+]  # fmt: skip
 FormatPref = Literal["auto", "a4", "letter"]  # auto: Letter in the US and Canada
 # career-ops' CV templates (cv_render.TEMPLATES)
 StylePref = Literal[
@@ -196,8 +199,13 @@ class CvPrefs(Model):
     style: StylePref = "standard"
     photo: AutoPref = "auto"  # auto: where CVs usually have one
     photo_style: PhotoStylePref = "rounded"
-    # The data-processing consent line Italian CVs end with (career-ops' `consent`).
-    consent: AutoPref = "auto"  # auto: postings in Italy
+    # A line printed at the bottom of the CV (career-ops' `consent`): a data-processing
+    # consent, a work permit, anything the user's markets expect there. Shown on every CV, or
+    # only for postings in `footer_countries` (ISO 3166-1 alpha-2, lowercase).
+    footer: str = Field("", max_length=600)
+    footer_countries: list[Annotated[str, Field(pattern=r"^[a-z]{2}$")]] = Field(
+        default=[], max_length=60
+    )
     # Sections a tailored CV copies from the profile as they are (career-ops' cv.locked_sections).
     locked: list[LockedSection] = Field(default=[], max_length=len(LOCKED_SECTIONS))
     # What every tailored CV should know: the story to tell, house rules ("never 'Senior' in the
@@ -206,6 +214,10 @@ class CvPrefs(Model):
 
 
 _CV_PREFS_KEY = "cv_prefs"
+ITALIAN_CONSENT = (
+    "Autorizzo il trattamento dei dati personali contenuti nel mio curriculum vitae ai sensi "
+    "del Regolamento UE 2016/679 (GDPR) e del D.Lgs. 196/2003."
+)
 
 
 def cv_prefs() -> CvPrefs:
@@ -217,6 +229,12 @@ def cv_prefs() -> CvPrefs:
         # Before career-ops' templates the styles were modern/classic/compact.
         if data.get("style") == "classic":
             data["style"] = "executive"
+        # Before the footer, a consent setting printed Italy's data-processing consent: for
+        # Italian postings ("auto") or on every CV ("always"). Kept as it was.
+        consent = data.pop("consent", None)
+        if "footer" not in data and consent in ("auto", "always"):
+            data["footer"] = ITALIAN_CONSENT
+            data["footer_countries"] = ["it"] if consent == "auto" else []
         return CvPrefs.model_validate(data)
     except ValueError:  # unreadable, or written by an older version: the defaults
         return CvPrefs()
@@ -231,7 +249,8 @@ class CvOverrides(Model):
     style: StylePref | None = None
     photo: AutoPref | None = None
     photo_style: PhotoStylePref | None = None
-    consent: AutoPref | None = None
+    # Whether this posting's CV ends with the footer, whatever its countries.
+    footer: bool | None = None
     locked: list[LockedSection] | None = Field(None, max_length=len(LOCKED_SECTIONS))
     notes: str = Field("", max_length=1500)
 
@@ -245,8 +264,12 @@ class CvOverrides(Model):
         changes = {
             k: getattr(self, k)
             for k in type(self).model_fields
-            if k != "notes" and getattr(self, k) is not None
+            if k not in ("notes", "footer") and getattr(self, k) is not None
         }
+        if self.footer is True:
+            changes["footer_countries"] = []  # on this one, wherever it is
+        elif self.footer is False:
+            changes["footer"] = ""
         if self.notes:
             changes["guidance"] = "\n\n".join(
                 x
@@ -294,6 +317,8 @@ def save_cv_prefs(prefs: CvPrefs) -> CvPrefs:
         update={
             "locked": [s for s in LOCKED_SECTIONS if s in prefs.locked],
             "guidance": prefs.guidance.strip(),
+            "footer": prefs.footer.strip(),
+            "footer_countries": list(dict.fromkeys(prefs.footer_countries)),
         }
     )
     db.set_setting(_CV_PREFS_KEY, clean.model_dump_json())

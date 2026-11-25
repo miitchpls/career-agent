@@ -11,7 +11,7 @@ client = TestClient(app)
 
 
 @pytest.mark.parametrize("template", list(cv_render.TEMPLATES))
-@pytest.mark.parametrize("lang", ["it", "en", "de", "ko"])
+@pytest.mark.parametrize("lang", cv_render.CvLanguage.__args__)
 def test_every_template_renders_the_profile(template, lang):
     out = cv_render.render(
         template, cv_render.sample_profile(), lang, "a4", photo=False
@@ -190,7 +190,7 @@ def test_marked_texts_are_highlighted():
 def test_company_key_matches_the_ui():
     assert cv_render.company_key("Acme S.p.A.") == cv_render.company_key("ACME")
     assert cv_render.company_key("Société Générale SA") == "societe generale"
-    assert cv_render.company_key("Glutz AG") == "glutz"
+    assert cv_render.company_key("Lumen AG") == "lumen"
     assert cv_render.company_key("J.P. Morgan") == "jp morgan"
     assert cv_render.company_key("Inc") == "inc"
     assert cv_render.company_key("Acme") != cv_render.company_key("Acme Labs")
@@ -279,7 +279,7 @@ def _full():
                 Award(
                     id="a",
                     title="Hackathon winner",
-                    issuer="HackZurich",
+                    issuer="CityHack",
                     date={"year": 2023},
                 )
             ],
@@ -307,7 +307,7 @@ def test_phone_context_awards_interests_and_bold():
     page = cv_render.render("standard", _full(), "en", "a4")
     assert '<a href="tel:+41760000000">+41 76 000 00 00</a>' in page
     assert '<div class="job-context">Fintech scale-up, ~200 people</div>' in page
-    assert "Hackathon winner" in page and "HackZurich" in page
+    assert "Hackathon winner" in page and "CityHack" in page
     assert "Chess, Hiking" in page  # as typed
     # Escaping first: the markers become <strong>, typed markup stays text.
     assert "Cut <strong>p95</strong> latency &lt;b&gt;fast&lt;/b&gt;" in page
@@ -324,7 +324,7 @@ def test_skills_go_on_one_line_per_category():
     assert cv_render.skill_groups(p, "en") == [("Technical", ["Docker"])]
 
 
-def test_competencies_consent_and_photo_style():
+def test_competencies_footer_and_photo_style():
     p = _full().model_copy(update={"photo": "data:image/png;base64,AAAA"})
     page = cv_render.render(
         "standard",
@@ -333,16 +333,19 @@ def test_competencies_consent_and_photo_style():
         "a4",
         True,
         competencies=["Event-driven", "Go"],
-        consent=True,
+        footer=" Autorizzo il trattamento dei dati (GDPR). ",
         photo_style="circle",
     )
     assert '<span class="competency-tag">Event-driven</span>' in page
-    assert "Regolamento UE 2016/679" in page
+    assert (
+        '<div class="cv-consent">Autorizzo il trattamento dei dati (GDPR).</div>'
+        in page
+    )
     assert "cv-photo--circle" in page
     # Without them, both sections go.
     page = cv_render.render("standard", p, "it", "a4")
     assert "competency-tag" not in page.split("</head>")[1]
-    assert "Regolamento" not in page
+    assert "Autorizzo" not in page
 
 
 def test_ats_gets_the_competencies_as_a_skills_line():
@@ -365,3 +368,13 @@ def test_preview_takes_a_postings_own_photo_shape():
     assert "cv-photo--circle" in page
     page = client.post("/api/cv/preview", json=body).json()["pages"]["standard"]
     assert "cv-photo--rounded" in page  # the saved preference
+
+
+def test_dates_in_the_cvs_languages():
+    from career_agent.profile import MonthYear
+
+    d = MonthYear(month=2, year=2020)
+    assert cv_render._date(d, "ja") == "2020年3月"
+    assert cv_render._date(d, "ko") == "2020.03"
+    assert cv_render._date(d, "fr") == "mars 2020"
+    assert cv_render._date(MonthYear(year=2020), "zh") == "2020年"
